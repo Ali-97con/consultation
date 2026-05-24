@@ -1172,14 +1172,14 @@ const D=[
 [223,'عيسى عبيد الكندي','971 50 363 6565','','PREMIUM',4299,'تحويل بنكي',4299,0,0,0,'عبدالإله','عبدرحمن','2026-05','enrolled'],
 ];
 let clients = []; // populated by initApp() from /api/clients
-let activityLog = [];
+let activityLog = JSON.parse(localStorage.getItem('crm_activity') || '[]');
 function logActivity(icon, title, subtitle, bg, color) {
   const now = new Date();
   const h = String(now.getHours()).padStart(2,'0'), m = String(now.getMinutes()).padStart(2,'0');
   const dayStr = now.toLocaleDateString('ar-SA-u-nu-latn', {month:'short', day:'numeric'});
   activityLog.unshift({ icon, title, subtitle, bg: bg||'var(--pbg)', color: color||'var(--p2)', tm: h+':'+m+' · '+dayStr });
   if (activityLog.length > 50) activityLog.pop();
-  // Refresh activity feed if visible
+  localStorage.setItem('crm_activity', JSON.stringify(activityLog));
   const feed = document.getElementById('act-feed');
   if (feed) renderActivityFeed();
 }
