@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% block title %}Analytics Dashboard{% endblock %}
+{% block extra_head %}
+  <!-- Auto-refresh every 60 seconds (Section 8) -->
+  <meta http-equiv="refresh" content="60"/>
+{% endblock %}
+{% block content %}
+<h2 class="mb-4">Analytics Dashboard <small class="text-muted fs-6">Owner Only</small></h2>
+<p class="text-muted small">Auto-refreshes every 60 seconds. Last updated: {{ now|date:"H:i:s" }}</p>
+
+<!-- Member Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-md-2">
+    <div class="card p-3 text-center"><div class="fs-2 fw-bold text-primary">{{ member_stats.total }}</div><div class="small text-muted">Total Members</div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card p-3 text-center"><div class="fs-2 fw-bold text-warning">{{ member_stats.pending }}</div><div class="small text-muted">Pending Approval</div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card p-3 text-center"><div class="fs-2 fw-bold text-success">{{ member_stats.new_this_week }}</div><div class="small text-muted">New This Week</div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card p-3 text-center"><div class="fs-2 fw-bold text-danger">{{ member_stats.suspended }}</div><div class="small text-muted">Suspended</div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card p-3 text-center"><div class="fs-2 fw-bold text-info">{{ site_stats.today }}</div><div class="small text-muted">Visits Today</div></div>
+  </div>
+  <div class="col-md-2">
+    <div class="card p-3 text-center"><div class="fs-2 fw-bold text-secondary">{{ active_sessions }}</div><div class="small text-muted">Active Now</div></div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Peak Hours Chart -->
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5>Peak Usage Hours (Today)</h5>
+      <canvas id="hourlyChart" height="150"></canvas>
+    </div>
+  </div>
+
+  <!-- Security Overview -->
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5>Security Overview</h5>
+      <table class="table table-dark table-sm">
+        <tr><td>Failed Logins (24h)</td><td class="text-danger fw-bold">{{ failed_24h }}</td></tr>
+        <tr><td>Failed Logins (7d)</td><td class="text-warning">{{ failed_7d }}</td></tr>
+        <tr><td>Active Sessions</td><td class="text-success">{{ active_sessions }}</td></tr>
+        <tr><td>Page Visits This Week</td><td>{{ site_stats.this_week }}</td></tr>
+        <tr><td>Unique Visitors Today</td><td>{{ site_stats.unique_today }}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Blocked IPs -->
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5>Recently Blocked IPs</h5>
+      <table class="table table-dark table-sm">
+        <thead><tr><th>IP</th><th>Reason</th><th>Time</th></tr></thead>
+        <tbody>
+          {% for ip in blocked_ips %}
+          <tr><td>{{ ip.ip_address }}</td><td>{{ ip.reason }}</td><td class="small text-muted">{{ ip.blocked_at|date:"M d H:i" }}</td></tr>
+          {% empty %}<tr><td colspan="3" class="text-muted">No blocked IPs</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Most Active Members -->
+  <div class="col-md-6">
+    <div class="card p-3">
+      <h5>Most Active Members (This Week)</h5>
+      <table class="table table-dark table-sm">
+        <thead><tr><th>Member</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for m in most_active %}
+          <tr><td>{{ m.user__full_name }}</td><td class="fw-bold">{{ m.action_count }}</td></tr>
+          {% empty %}<tr><td colspan="2" class="text-muted">No activity yet</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Top Pages -->
+  <div class="col-md-12">
+    <div class="card p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Most Visited Pages (This Week)</h5>
+        <a href="/analytics/export/" class="btn btn-sm btn-outline-secondary">Export CSV</a>
+      </div>
+      <table class="table table-dark table-sm">
+        <thead><tr><th>Path</th><th>Visits</th></tr></thead>
+        <tbody>
+          {% for p in top_pages %}
+          <tr><td>{{ p.path }}</td><td>{{ p.c }}</td></tr>
+          {% empty %}<tr><td colspan="2" class="text-muted">No data</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const hourlyData = {{ hourly_data|safe }};
+const hours = Array.from({length:24}, (_,i) => i + ':00');
+const counts = hours.map((_, i) => hourlyData[String(i)] || 0);
+
+new Chart(document.getElementById('hourlyChart'), {
+  type: 'bar',
+  data: {
+    labels: hours,
+    datasets: [{ label: 'Page Visits', data: counts, backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 4 }]
+  },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,.05)' } },
+      y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,.05)' } }
+    }
+  }
+});
+</script>
+{% endblock %}

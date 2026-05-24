@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Verify 2FA{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-4">
+    <div class="card p-4 mt-5">
+      <h3>Two-Factor Verification</h3>
+      <p class="text-muted">Enter the 6-digit code from your authenticator app.</p>
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label">Authentication Code</label>
+          {{ form.token }}
+          {% if form.token.errors %}
+            <div class="text-danger small mt-1">{{ form.token.errors|join:", " }}</div>
+          {% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Verify</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}Report Detail{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <div class="card p-4">
+      <h4>Report Detail</h4>
+      <dl class="row mt-3">
+        <dt class="col-sm-3">Reporter</dt><dd class="col-sm-9">{{ report.reporter.full_name|default:"&mdash;" }}</dd>
+        <dt class="col-sm-3">Reported</dt><dd class="col-sm-9">{{ report.reported_user.full_name|default:"Deleted" }}</dd>
+        <dt class="col-sm-3">Reason</dt><dd class="col-sm-9">{{ report.get_reason_display }}</dd>
+        <dt class="col-sm-3">Description</dt><dd class="col-sm-9">{{ report.description }}</dd>
+        <dt class="col-sm-3">Status</dt><dd class="col-sm-9"><span class="badge bg-warning text-dark">{{ report.status }}</span></dd>
+        <dt class="col-sm-3">Submitted</dt><dd class="col-sm-9">{{ report.created_at|date:"M d Y H:i" }}</dd>
+      </dl>
+
+      {% if user.role in 'owner,co_owner' and report.status == 'OPEN' %}
+      <hr/>
+      <h5>Take Action</h5>
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label">Resolution Note</label>
+          <textarea name="resolution" rows="3" class="form-control bg-dark text-light border-secondary" placeholder="Describe the action taken..."></textarea>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button name="action" value="warn" class="btn btn-warning btn-sm">Warn User</button>
+          <button name="action" value="suspend" class="btn btn-sm" style="background:#f97316;border:none;color:#fff">Suspend</button>
+          <button name="action" value="delete" class="btn btn-danger btn-sm" onclick="return confirm('Delete user permanently?')">Delete User</button>
+          <button name="action" value="dismiss" class="btn btn-secondary btn-sm">Dismiss</button>
+        </div>
+      </form>
+      {% endif %}
+
+      <div class="mt-3"><a href="/reports/" class="btn btn-sm btn-outline-secondary">&larr; Back</a></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AH97 — تسجيل الدخول</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#07071a;--sf:#0b0b20;
+  --p:#6366f1;--p2:#818cf8;--pd:#4f46e5;
+  --g:#10b981;--y:#f59e0b;--r:#ef4444;
+  --t1:#e8e8f8;--t2:#8888aa;--t3:#404060;
+  --b1:rgba(99,102,241,.18);--b2:rgba(99,102,241,.08);
+}
+html,body{height:100%;overflow:hidden}
+body{
+  font-family:'Inter','Segoe UI',sans-serif;
+  background:var(--bg);color:var(--t1);
+  display:flex;
+}
+
+/* ═══════════════ LEFT PANEL ══════════════════════════════════════ */
+.lp{
+  flex:1;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,#060614 0%,#0a0a1f 40%,#070718 100%);
+}
+#cv{position:absolute;inset:0;width:100%;height:100%}
+
+/* gradient mask so right edge bleeds into form */
+.lp::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(to right,transparent 75%,#09091e 100%);
+  pointer-events:none;z-index:2;
+}
+
+/* ── ticker ─────────────────────────────────────────────────────── */
+.ticker{
+  position:absolute;top:0;left:0;right:0;z-index:10;
+  height:34px;
+  background:rgba(6,6,20,.88);
+  border-bottom:1px solid rgba(99,102,241,.14);
+  display:flex;align-items:center;overflow:hidden;
+}
+.ticker-track{
+  display:flex;gap:52px;white-space:nowrap;
+  animation:scroll-left 28s linear infinite;
+  padding-right:52px;
+}
+.tk{display:inline-flex;align-items:center;gap:8px;font-size:11px}
+.tk-s{font-weight:700;color:var(--p2);letter-spacing:.3px}
+.tk-v{color:var(--t2)}
+.tk-u{color:var(--g);font-weight:600}
+.tk-d{color:var(--r);font-weight:600}
+.tk-sep{color:var(--t3);font-size:9px}
+@keyframes scroll-left{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* ── floating stat cards ─────────────────────────────────────────── */
+.card{
+  position:absolute;z-index:5;
+  background:rgba(9,9,28,.78);
+  border:1px solid rgba(99,102,241,.22);
+  border-radius:16px;
+  padding:15px 19px;
+  backdrop-filter:blur(20px);
+  box-shadow:0 8px 40px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);
+}
+.card-lbl{font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--t3);margin-bottom:7px}
+.card-val{font-size:24px;font-weight:900;letter-spacing:-.5px;line-height:1}
+.card-sub{font-size:10.5px;margin-top:5px;display:flex;align-items:center;gap:4px}
+.up{color:var(--g)}.dn{color:var(--r)}
+.arr{font-size:12px}
+
+/* mini sparkline inside cards */
+.spark{height:28px;margin-top:8px}
+
+/* animated float */
+@keyframes flt0{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+@keyframes flt1{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@keyframes flt2{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+
+/* entry animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+
+/* ── brand ──────────────────────────────────────────────────────── */
+.brand{
+  position:absolute;bottom:28px;left:28px;z-index:5;
+  display:flex;align-items:center;gap:11px;
+  animation:fadeUp .8s 1.5s ease both;
+}
+.brand-logo{
+  width:42px;height:42px;border-radius:12px;overflow:hidden;
+  box-shadow:0 0 0 1px rgba(99,102,241,.3),0 6px 24px rgba(99,102,241,.3);
+  flex-shrink:0;
+}
+.brand-logo img{width:100%;height:100%;object-fit:cover}
+.brand-logo-fb{
+  width:100%;height:100%;
+  background:linear-gradient(135deg,var(--p),#a855f7);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:900;color:#fff;
+}
+.brand-text{line-height:1.3}
+.brand-text b{display:block;font-size:14px;font-weight:800;color:var(--t1)}
+.brand-text span{font-size:10.5px;color:var(--t3)}
+
+/* ═══════════════ RIGHT PANEL ══════════════════════════════════════ */
+.rp{
+  width:420px;flex-shrink:0;position:relative;
+  background:var(--sf);
+  border-right:1px solid rgba(99,102,241,.12);
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:44px 42px;overflow:hidden;
+}
+
+/* subtle top glow */
+.rp::before{
+  content:'';position:absolute;
+  width:320px;height:320px;border-radius:50%;
+  background:radial-gradient(circle,rgba(99,102,241,.1) 0%,transparent 70%);
+  top:-60px;left:50%;transform:translateX(-50%);
+  pointer-events:none;
+}
+/* bottom glow */
+.rp::after{
+  content:'';position:absolute;
+  width:280px;height:280px;border-radius:50%;
+  background:radial-gradient(circle,rgba(16,185,129,.07) 0%,transparent 70%);
+  bottom:-60px;left:50%;transform:translateX(-50%);
+  pointer-events:none;
+}
+
+/* logo row */
+.logo-row{
+  display:flex;align-items:center;gap:13px;
+  margin-bottom:34px;
+  animation:fadeUp .6s .1s ease both;
+}
+.logo-box{
+  width:50px;height:50px;border-radius:14px;overflow:hidden;
+  box-shadow:0 0 0 1.5px rgba(99,102,241,.35),0 8px 28px rgba(99,102,241,.25);
+}
+.logo-box img{width:100%;height:100%;object-fit:cover}
+.logo-box-fb{
+  width:100%;height:100%;
+  background:linear-gradient(135deg,var(--p),#a855f7);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:900;color:#fff;
+}
+.logo-txt b{display:block;font-size:18px;font-weight:800;letter-spacing:-.3px}
+.logo-txt span{display:block;font-size:10.5px;color:var(--t3);margin-top:2px;letter-spacing:.3px}
+
+/* heading */
+.hdg{
+  text-align:center;margin-bottom:30px;
+  animation:fadeUp .6s .2s ease both;
+}
+.hdg h1{font-size:25px;font-weight:800;letter-spacing:-.5px;margin-bottom:5px}
+.hdg p{font-size:12.5px;color:var(--t2);line-height:1.65}
+
+/* form */
+form{width:100%;animation:fadeUp .6s .3s ease both}
+
+.fg{margin-bottom:15px}
+.fg label{
+  display:block;font-size:11.5px;font-weight:600;
+  color:var(--t3);margin-bottom:7px;letter-spacing:.3px;
+}
+.fi-wrap{position:relative}
+.fi-icon{
+  position:absolute;right:14px;top:50%;transform:translateY(-50%);
+  color:var(--t3);display:flex;pointer-events:none;
+  transition:color .2s;
+}
+.fi-icon svg{width:15px;height:15px}
+.fi{
+  width:100%;
+  background:rgba(255,255,255,.03);
+  border:1.5px solid rgba(99,102,241,.15);
+  border-radius:11px;
+  color:var(--t1);font-family:inherit;font-size:13.5px;
+  padding:12.5px 43px 12.5px 43px;
+  outline:none;
+  transition:border-color .2s,box-shadow .2s,background .2s;
+  direction:ltr;text-align:right;
+}
+.fi::placeholder{color:var(--t3);direction:rtl}
+.fi:focus{
+  border-color:var(--p);
+  background:rgba(99,102,241,.06);
+  box-shadow:0 0 0 3.5px rgba(99,102,241,.14);
+}
+.fi:focus + .fi-icon{color:var(--p2)}
+.fi-wrap:focus-within .fi-icon{color:var(--p2)}
+
+.eye-btn{
+  position:absolute;left:13px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;
+  color:var(--t3);display:flex;padding:3px;border-radius:5px;
+  transition:color .2s;
+}
+.eye-btn:hover{color:var(--t1)}
+.eye-btn svg{width:15px;height:15px}
+
+/* error */
+.err{
+  padding:10px 14px;border-radius:10px;
+  background:rgba(239,68,68,.09);
+  border:1px solid rgba(239,68,68,.22);
+  font-size:12px;color:var(--r);text-align:center;
+  margin-bottom:14px;display:none;
+  animation:shake .4s ease;
+}
+.err.on{display:block}
+@keyframes shake{
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-7px)}40%{transform:translateX(7px)}
+  60%{transform:translateX(-4px)}80%{transform:translateX(4px)}
+}
+
+/* submit */
+.sub-btn{
+  width:100%;padding:13.5px;margin-top:22px;
+  background:linear-gradient(135deg,var(--p) 0%,#7c3aed 100%);
+  color:#fff;font-family:inherit;font-size:14px;font-weight:700;
+  border:none;border-radius:11px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  position:relative;overflow:hidden;
+  transition:transform .2s,box-shadow .2s;
+  box-shadow:0 4px 24px rgba(99,102,241,.35);
+  letter-spacing:.2px;
+}
+.sub-btn::after{
+  content:'';position:absolute;
+  top:0;left:-100%;width:60%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);
+  animation:shimmer 3s infinite;
+}
+@keyframes shimmer{0%{left:-100%}100%{left:180%}}
+.sub-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 32px rgba(99,102,241,.5)}
+.sub-btn:active:not(:disabled){transform:translateY(0)}
+.sub-btn:disabled{opacity:.65;cursor:not-allowed;transform:none}
+.sub-btn .spin{
+  width:18px;height:18px;
+  border:2.5px solid rgba(255,255,255,.25);
+  border-top-color:#fff;border-radius:50%;
+  animation:rot .65s linear infinite;display:none;
+}
+.sub-btn.ld .btn-lbl{display:none}
+.sub-btn.ld .spin{display:block}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* form footer */
+.form-ft{
+  margin-top:26px;text-align:center;
+  font-size:11px;color:var(--t3);
+  animation:fadeUp .6s .45s ease both;
+}
+.form-ft strong{color:var(--p2)}
+
+/* responsive */
+@media(max-width:860px){.lp{display:none}.rp{width:100%;border:none}}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ LEFT PANEL ══════════════════════════════════════ -->
+<div class="lp">
+
+  <!-- Ticker tape -->
+  <div class="ticker">
+    <div class="ticker-track" id="ticker-track"></div>
+  </div>
+
+  <!-- Main canvas -->
+  <canvas id="cv"></canvas>
+
+  <!-- Floating cards -->
+  <div class="card" id="c0"
+    style="top:13%;right:6%;animation:flt0 5s ease-in-out infinite;animation-delay:.3s;
+           opacity:0;animation-fill-mode:both">
+    <div class="card-lbl">إجمالي التحصيل</div>
+    <div class="card-val up" id="kv0">$0</div>
+    <div class="card-sub up"><span class="arr">▲</span>+12.4% هذا الشهر</div>
+    <svg class="spark" id="sp0" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>
+  </div>
+
+  <div class="card" id="c1"
+    style="top:41%;right:10%;animation:flt1 6s ease-in-out infinite;animation-delay:1s;
+           opacity:0;animation-fill-mode:both">
+    <div class="card-lbl">عملاء نشطون</div>
+    <div class="card-val" style="color:var(--p2)" id="kv1">0</div>
+    <div class="card-sub up"><span class="arr">▲</span>+27 هذا الشهر</div>
+    <svg class="spark" id="sp1" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>
+  </div>
+
+  <div class="card" id="c2"
+    style="top:66%;right:5%;animation:flt2 4.5s ease-in-out infinite;animation-delay:1.8s;
+           opacity:0;animation-fill-mode:both">
+    <div class="card-lbl">معدل التحويل</div>
+    <div class="card-val" style="color:var(--y)" id="kv2">0%</div>
+    <div class="card-sub up"><span class="arr">▲</span>+3.8% مقارنة بالسابق</div>
+    <svg class="spark" id="sp2" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>
+  </div>
+
+  <!-- Brand -->
+  <div class="brand">
+    <div class="brand-logo">
+      <img src="تصميم بدون عنوان.png" alt="AH97"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+      <div class="brand-logo-fb" style="display:none">97</div>
+    </div>
+    <div class="brand-text">
+      <b>علي حامد 97</b>
+      <span>منصة الاستثمار الذكي · Investment Platform</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ RIGHT PANEL ══════════════════════════════════════ -->
+<div class="rp">
+
+  <div class="logo-row">
+    <div class="logo-box">
+      <img src="تصميم بدون عنوان.png" alt="AH97"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+      <div class="logo-box-fb" style="display:none">97</div>
+    </div>
+    <div class="logo-txt">
+      <b>علي حامد 97</b>
+      <span>منصة الاستثمار الذكي</span>
+    </div>
+  </div>
+
+  <div class="hdg">
+    <h1>مرحباً بعودتك 👋</h1>
+    <p>سجّل دخولك للوصول إلى لوحة<br/>تحليلات الاستثمار والعملاء</p>
+  </div>
+
+  <form id="lf" onsubmit="doLogin(event)" autocomplete="on" style="width:100%">
+
+    <div class="fg">
+      <label>اسم المستخدم</label>
+      <div class="fi-wrap">
+        <input class="fi" id="un" type="text" placeholder="أدخل اسم المستخدم"
+               autocomplete="username" required/>
+        <span class="fi-icon">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+        </span>
+      </div>
+    </div>
+
+    <div class="fg">
+      <label>كلمة المرور</label>
+      <div class="fi-wrap">
+        <input class="fi" id="pw" type="password" placeholder="أدخل كلمة المرور"
+               autocomplete="current-password" required/>
+        <span class="fi-icon">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+        </span>
+        <button type="button" class="eye-btn" id="eyeBtn" onclick="toggleEye()" tabindex="-1">
+          <svg id="eyeOpen" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+          <svg id="eyeClosed" style="display:none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="err" id="errMsg">اسم المستخدم أو كلمة المرور غير صحيحة</div>
+
+    <button type="submit" class="sub-btn" id="subBtn">
+      <span class="btn-lbl">دخول إلى النظام</span>
+      <div class="spin"></div>
+    </button>
+  </form>
+
+  <div class="form-ft">نظام <strong>AH97</strong> — منصة الاستثمار الذكي · v2.0</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CANVAS ENGINE
+// ═══════════════════════════════════════════════════════════════════
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resize() {
+  cv.width  = cv.offsetWidth  || cv.clientWidth;
+  cv.height = cv.offsetHeight || cv.clientHeight;
+}
+window.addEventListener('resize', () => { resize(); buildScene(); });
+resize();
+
+// ── Candle data (upward biased) ──────────────────────────────────
+let candles = [], NCANDLES = 0;
+function buildScene() {
+  NCANDLES = Math.max(30, Math.floor(cv.width / 18));
+  candles = [];
+  let p = 60 + Math.random() * 25;
+  for (let i = 0; i < NCANDLES; i++) {
+    const o = p;
+    const d = (Math.random() - 0.39) * 10;
+    const c = o + d;
+    const h = Math.max(o, c) + Math.random() * 5 + 1;
+    const l = Math.min(o, c) - Math.random() * 5 - 1;
+    candles.push({ o, c, h, l, bull: c >= o });
+    p = c;
+  }
+}
+buildScene();
+
+// ── Particles ───────────────────────────────────────────────────
+const PARTS = [];
+function initParts() {
+  PARTS.length = 0;
+  const N = 70;
+  for (let i = 0; i < N; i++) PARTS.push(mkPart());
+}
+function mkPart() {
+  return {
+    x: Math.random() * cv.width,
+    y: Math.random() * cv.height,
+    vx: (Math.random() - .5) * .35,
+    vy: -(Math.random() * .5 + .15),
+    r:  Math.random() * 1.6 + .4,
+    a:  Math.random() * .4 + .08,
+    c:  Math.random() > .55 ? '#10b981' : (Math.random() > .5 ? '#6366f1' : '#f59e0b'),
+  };
+}
+initParts();
+
+// ── Price → Y ────────────────────────────────────────────────────
+function pY(price, mn, mx) {
+  const pad = cv.height * .14;
+  const bot = cv.height * .72; // chart occupies top 72%
+  return bot - pad - ((price - mn) / (mx - mn + .01)) * (bot - 2 * pad);
+}
+
+// ── Draw grid ───────────────────────────────────────────────────
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(99,102,241,.055)';
+  ctx.lineWidth = 1;
+  const rows = 7, cols = 10;
+  for (let i = 0; i <= rows; i++) {
+    const y = (cv.height / rows) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cv.width, y); ctx.stroke();
+  }
+  for (let i = 0; i <= cols; i++) {
+    const x = (cv.width / cols) * i;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cv.height); ctx.stroke();
+  }
+}
+
+// ── Draw volume bars ────────────────────────────────────────────
+function drawVolume(visible, mn, mx) {
+  const cw  = cv.width / (NCANDLES + 1);
+  const bot = cv.height * .94;
+  const top = cv.height * .75;
+  for (let i = 0; i < visible; i++) {
+    const c  = candles[i];
+    const x  = (i + .5) * cw + cw * .2;
+    const vol = (.3 + Math.random() * .7) * (top - bot) * .7;
+    const alpha = i === visible - 1 ? .4 : .22;
+    ctx.fillStyle = c.bull
+      ? `rgba(16,185,129,${alpha})`
+      : `rgba(239,68,68,${alpha})`;
+    const bw = cw * .55;
+    ctx.fillRect(x - bw / 2, bot + vol, bw, -vol);
+  }
+}
+
+// ── Draw candles ────────────────────────────────────────────────
+function drawCandles(visible, mn, mx) {
+  const cw = cv.width / (NCANDLES + 1);
+  const bw = cw * .52;
+
+  // smooth MA line
+  if (visible > 3) {
+    const win = 6;
+    ctx.save();
+    const grad = ctx.createLinearGradient(0, 0, cv.width, 0);
+    grad.addColorStop(0, 'rgba(99,102,241,.1)');
+    grad.addColorStop(.7, 'rgba(99,102,241,.7)');
+    grad.addColorStop(1, 'rgba(129,140,248,.9)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash([]);
+    ctx.lineJoin = 'round';
+    ctx.lineCap  = 'round';
+    ctx.beginPath();
+    for (let i = 0; i < visible; i++) {
+      const sl  = candles.slice(Math.max(0, i - win + 1), i + 1);
+      const avg = sl.reduce((s, c) => s + c.c, 0) / sl.length;
+      const x   = (i + .5) * cw + cw * .2;
+      const y   = pY(avg, mn, mx);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // glow
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(99,102,241,.08)';
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // candles
+  for (let i = 0; i < visible; i++) {
+    const c   = candles[i];
+    const x   = (i + .5) * cw + cw * .2;
+    const isG = c.bull;
+    const clr = isG ? '#10b981' : '#ef4444';
+    const oY  = pY(c.o, mn, mx);
+    const cY  = pY(c.c, mn, mx);
+    const hY  = pY(c.h, mn, mx);
+    const lY  = pY(c.l, mn, mx);
+
+    const alpha = i === visible - 1 ? Math.min(1, (elapsed * NCANDLES / 3) - i + 1) : 1;
+    ctx.globalAlpha = Math.max(0, alpha);
+
+    ctx.strokeStyle = clr; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(x, hY); ctx.lineTo(x, lY); ctx.stroke();
+
+    const bt = Math.min(oY, cY);
+    const bh = Math.max(Math.abs(oY - cY), 1.5);
+    ctx.fillStyle = isG ? clr : `${clr}cc`;
+    ctx.fillRect(x - bw / 2, bt, bw, bh);
+    ctx.globalAlpha = 1;
+  }
+
+  // glowing dot at latest price
+  if (visible > 0) {
+    const last = candles[visible - 1];
+    const lx   = (visible - .5) * cw + cw * .2;
+    const ly   = pY(last.c, mn, mx);
+    const pulse = (Math.sin(Date.now() / 280) + 1) / 2;
+
+    // outer glow
+    const g1 = ctx.createRadialGradient(lx, ly, 0, lx, ly, 18);
+    g1.addColorStop(0, `rgba(16,185,129,${.45 * pulse})`);
+    g1.addColorStop(1, 'transparent');
+    ctx.fillStyle = g1; ctx.beginPath(); ctx.arc(lx, ly, 18, 0, Math.PI * 2); ctx.fill();
+
+    // dot
+    ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(lx, ly, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(lx, ly, 4.5, 0, Math.PI * 2); ctx.stroke();
+
+    // price label
+    ctx.fillStyle = 'rgba(16,185,129,.15)';
+    ctx.beginPath(); roundRect(ctx, lx + 8, ly - 10, 52, 20, 5); ctx.fill();
+    ctx.fillStyle = '#10b981';
+    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`$${(100 + last.c).toFixed(2)}`, lx + 14, ly + 4);
+    ctx.textAlign = 'right';
+  }
+}
+
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.lineTo(x + w - r, y); c.arcTo(x + w, y, x + w, y + r, r);
+  c.lineTo(x + w, y + h - r); c.arcTo(x + w, y + h, x + w - r, y + h, r);
+  c.lineTo(x + r, y + h); c.arcTo(x, y + h, x, y + h - r, r);
+  c.lineTo(x, y + r); c.arcTo(x, y, x + r, y, r);
+  c.closePath();
+}
+
+// ── Draw mini donut (bottom-left) ─────────────────────────────
+function drawDonut(t) {
+  const cx = cv.width * .14, cy = cv.height * .82;
+  const R  = Math.min(cv.width * .06, 40);
+  const slices = [
+    { pct: .44, clr: '#6366f1' },
+    { pct: .28, clr: '#10b981' },
+    { pct: .16, clr: '#f59e0b' },
+    { pct: .12, clr: '#ef4444' },
+  ];
+  let angle = -Math.PI / 2;
+  const prog = Math.min(t / 2, 1);
+  ctx.save();
+  slices.forEach(s => {
+    const sweep = s.pct * Math.PI * 2 * prog;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, angle, angle + sweep);
+    ctx.arc(cx, cy, R * .58, angle + sweep, angle, true);
+    ctx.closePath();
+    ctx.fillStyle = s.clr;
+    ctx.globalAlpha = .82;
+    ctx.fill();
+    angle += sweep;
+  });
+  ctx.globalAlpha = 1;
+  // center text
+  ctx.fillStyle = 'rgba(228,228,248,.7)';
+  ctx.font = `bold ${Math.round(R * .38)}px Inter`;
+  ctx.textAlign = 'center';
+  ctx.fillText('المحافظ', cx, cy - 3);
+  ctx.fillText('الاستثمارية', cx, cy + R * .3);
+  ctx.restore();
+}
+
+// ── Draw mini bar chart (growth bars) ─────────────────────────
+function drawMiniBar(t) {
+  const barCount = 7;
+  const bW = cv.width * .015;
+  const bGap = bW * 1.6;
+  const baseX = cv.width * .4;
+  const baseY = cv.height * .93;
+  const maxH  = cv.height * .14;
+  const prog  = Math.min(t / 2, 1);
+
+  const heights = [.45, .6, .55, .72, .65, .88, .95];
+  const colors  = ['#6366f180','#6366f1aa','#818cf8aa','#818cf8cc','#10b981aa','#10b981cc','#10b981'];
+
+  for (let i = 0; i < barCount; i++) {
+    const x  = baseX + i * (bW + bGap);
+    const h  = heights[i] * maxH * prog;
+    ctx.fillStyle = colors[i];
+    ctx.beginPath(); roundRect(ctx, x, baseY - h, bW, h, 3); ctx.fill();
+
+    if (i === barCount - 1) {
+      ctx.fillStyle = 'rgba(16,185,129,.8)';
+      ctx.font = '9px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('▲', x + bW / 2, baseY - h - 4);
+    }
+  }
+  // label
+  ctx.fillStyle = 'rgba(140,140,180,.5)';
+  ctx.font = '9px Inter';
+  ctx.textAlign = 'center';
+  ctx.fillText('الأداء الشهري', baseX + (barCount / 2) * (bW + bGap), baseY + 11);
+}
+
+// ── Particles ──────────────────────────────────────────────────
+function drawParticles() {
+  PARTS.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.y < -10) { Object.assign(p, mkPart()); p.y = cv.height + 5; }
+    if (p.x < 0) p.x = cv.width;
+    if (p.x > cv.width) p.x = 0;
+    ctx.globalAlpha = p.a;
+    ctx.fillStyle   = p.c;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+}
+
+// ── Connection lines between close particles ──────────────────
+function drawConnections() {
+  const maxDist = 90;
+  for (let i = 0; i < PARTS.length; i++) {
+    for (let j = i + 1; j < PARTS.length; j++) {
+      const dx = PARTS[i].x - PARTS[j].x;
+      const dy = PARTS[i].y - PARTS[j].y;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d < maxDist) {
+        ctx.strokeStyle = `rgba(99,102,241,${.12 * (1 - d / maxDist)})`;
+        ctx.lineWidth   = .6;
+        ctx.beginPath();
+        ctx.moveTo(PARTS[i].x, PARTS[i].y);
+        ctx.lineTo(PARTS[j].x, PARTS[j].y);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+// ── Main loop ──────────────────────────────────────────────────
+let t0 = null, elapsed = 0;
+function loop(ts) {
+  if (!t0) t0 = ts;
+  elapsed = (ts - t0) / 1000;
+
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  drawGrid();
+  drawConnections();
+  drawParticles();
+
+  const visible = Math.min(candles.length, Math.ceil(elapsed / 3 * candles.length));
+  if (visible >= 2) {
+    const prices = candles.slice(0, visible).flatMap(c => [c.h, c.l]);
+    const mn = Math.min(...prices);
+    const mx = Math.max(...prices);
+    drawVolume(visible, mn, mx);
+    drawCandles(visible, mn, mx);
+  }
+
+  drawDonut(elapsed);
+  drawMiniBar(elapsed);
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ═══════════════════════════════════════════════════════════════════
+// TICKER TAPE
+// ═══════════════════════════════════════════════════════════════════
+const TK_DATA = [
+  {s:'AH97',v:'4,827',c:'+2.4%',u:true},{s:'CORE+',v:'3,000',c:'+1.8%',u:true},
+  {s:'IC',v:'7,000',c:'+3.2%',u:true},{s:'PREM',v:'5,000',c:'+0.9%',u:true},
+  {s:'CONV',v:'84%',c:'+3.8%',u:true},{s:'ROI',v:'89%',c:'+2.1%',u:true},
+  {s:'CLOSERS',v:'9',c:'+1',u:true},{s:'SETTERS',v:'12',c:'+2',u:true},
+  {s:'AH97',v:'4,827',c:'+2.4%',u:true},{s:'CORE+',v:'3,000',c:'+1.8%',u:true},
+  {s:'IC',v:'7,000',c:'+3.2%',u:true},{s:'PREM',v:'5,000',c:'+0.9%',u:true},
+  {s:'CONV',v:'84%',c:'+3.8%',u:true},{s:'ROI',v:'89%',c:'+2.1%',u:true},
+  {s:'CLOSERS',v:'9',c:'+1',u:true},{s:'SETTERS',v:'12',c:'+2',u:true},
+];
+document.getElementById('ticker-track').innerHTML = TK_DATA.map((t,i) => `
+  <span class="tk">
+    <span class="tk-s">${t.s}</span>
+    <span class="tk-v">${t.v}</span>
+    <span class="${t.u?'tk-u':'tk-d'}">${t.c}</span>
+    ${i < TK_DATA.length-1 ? '<span class="tk-sep">│</span>' : ''}
+  </span>`).join('');
+
+// ═══════════════════════════════════════════════════════════════════
+// SPARKLINES inside floating cards
+// ═══════════════════════════════════════════════════════════════════
+function buildSparkline(id, data, color) {
+  const svg = document.getElementById(id);
+  if (!svg) return;
+  const mn  = Math.min(...data);
+  const mx  = Math.max(...data);
+  const W   = 120, H = 28;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - ((v - mn) / (mx - mn + .01)) * H * .85 - 2;
+    return `${x},${y}`;
+  });
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="sg${id}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity=".35"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <polygon points="${pts.join(' ')} ${W},${H} 0,${H}" fill="url(#sg${id})"/>
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.8"
+      stroke-linecap="round" stroke-linejoin="round"
+      stroke-dasharray="200" stroke-dashoffset="200">
+      <animate attributeName="stroke-dashoffset" from="200" to="0" dur="1.8s" fill="freeze"/>
+    </polyline>`;
+}
+
+const spark0 = [42,55,48,67,60,78,72,89,85,97,91,100];
+const spark1 = [110,125,118,140,135,155,148,170,165,183,178,197];
+const spark2 = [60,65,63,70,68,74,72,78,76,81,80,84];
+setTimeout(() => {
+  buildSparkline('sp0', spark0, '#10b981');
+  buildSparkline('sp1', spark1, '#818cf8');
+  buildSparkline('sp2', spark2, '#f59e0b');
+}, 400);
+
+// ═══════════════════════════════════════════════════════════════════
+// KPI COUNTER ANIMATION
+// ═══════════════════════════════════════════════════════════════════
+function countTo(el, target, prefix, suffix, dur) {
+  const t0 = performance.now();
+  (function step(ts) {
+    const p = Math.min((ts - t0) / dur, 1);
+    const e = 1 - Math.pow(1 - p, 4);
+    el.textContent = prefix + Math.round(e * target).toLocaleString('en-US') + suffix;
+    if (p < 1) requestAnimationFrame(step);
+  })(performance.now());
+}
+
+// reveal cards then animate numbers
+[
+  { id:'c0', delay:600 },
+  { id:'c1', delay:900 },
+  { id:'c2', delay:1200 },
+].forEach(({ id, delay }) => {
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(16px)';
+      el.style.transition = 'opacity .5s ease, transform .5s ease';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        el.style.opacity = '1';
+        el.style.transform = '';
+      }));
+    }
+  }, delay);
+});
+setTimeout(() => countTo(document.getElementById('kv0'), 487320, '$', '', 2000), 800);
+setTimeout(() => countTo(document.getElementById('kv1'), 197, '', '', 1600),    1100);
+setTimeout(() => countTo(document.getElementById('kv2'), 84, '', '%', 1400),    1400);
+
+// ═══════════════════════════════════════════════════════════════════
+// FORM LOGIC
+// ═══════════════════════════════════════════════════════════════════
+function toggleEye() {
+  const inp = document.getElementById('pw');
+  const o   = document.getElementById('eyeOpen');
+  const c   = document.getElementById('eyeClosed');
+  if (inp.type === 'password') { inp.type='text'; o.style.display='none'; c.style.display=''; }
+  else { inp.type='password'; o.style.display=''; c.style.display='none'; }
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  const btn  = document.getElementById('subBtn');
+  const err  = document.getElementById('errMsg');
+  const user = document.getElementById('un').value.trim();
+  const pass = document.getElementById('pw').value;
+
+  err.classList.remove('on');
+  btn.classList.add('ld');
+  btn.disabled = true;
+
+  try {
+    const res  = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass }),
+    });
+    const data = await res.json();
+    if (res.ok && data.token) {
+      sessionStorage.setItem('auth_token', data.token);
+      window.location.href = '/';
+    } else {
+      throw new Error(data.error || 'فشل تسجيل الدخول');
+    }
+  } catch (ex) {
+    err.textContent = ex.message || 'تعذر الاتصال بالخادم';
+    err.classList.add('on');
+    err.style.animation = 'none';
+    void err.offsetHeight;
+    err.style.animation = '';
+  } finally {
+    btn.classList.remove('ld');
+    btn.disabled = false;
+  }
+}
+
+// redirect if already logged in
+(async () => {
+  const t = sessionStorage.getItem('auth_token');
+  if (!t) return;
+  const r = await fetch('/api/clients', { headers:{'x-auth-token':t} }).catch(()=>null);
+  if (r && r.ok) window.location.href = '/';
+})();
+</script>
+</body>
+</html>

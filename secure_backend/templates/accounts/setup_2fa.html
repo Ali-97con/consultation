@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Setup 2FA{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card p-4">
+      <h3>Setup Two-Factor Authentication</h3>
+      <p class="text-muted">Scan this QR code with Google Authenticator or Authy, then enter the 6-digit code to confirm.</p>
+      <div class="text-center my-3">
+        <img src="data:image/png;base64,{{ qr_b64 }}" alt="QR Code" class="img-fluid" style="max-width:200px"/>
+      </div>
+      <p class="small text-muted text-center">Manual key: <code>{{ secret }}</code></p>
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label">Verification Code</label>
+          <input type="text" name="token" maxlength="6" class="form-control bg-dark text-light border-secondary" placeholder="123456" autocomplete="off"/>
+        </div>
+        <button type="submit" class="btn btn-success w-100">Enable 2FA</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

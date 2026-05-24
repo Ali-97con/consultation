@@ -1,0 +1,11 @@
+"""
+Injects unread notification count into every template context.
+Used to show the red badge on the notification bell icon.
+"""
+
+
+def unread_notifications(request):
+    if request.user.is_authenticated:
+        count = request.user.notifications.filter(is_read=False).count()
+        return {'unread_notifications_count': count}
+    return {'unread_notifications_count': 0}

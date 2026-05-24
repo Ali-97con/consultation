@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Submit Report{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card p-4">
+      <h4>Submit a Report</h4>
+      <p class="text-muted small">Reports are reviewed by the Owner and Co-Owners.</p>
+      <form method="post">
+        {% csrf_token %}
+        {% for field in form %}
+        <div class="mb-3">
+          <label class="form-label">{{ field.label }}</label>
+          {{ field }}
+          {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors|join:", " }}</div>{% endif %}
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-warning w-100">Submit Report</button>
+      </form>
+      <div class="mt-2"><a href="/reports/" class="text-muted small">&larr; Back</a></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

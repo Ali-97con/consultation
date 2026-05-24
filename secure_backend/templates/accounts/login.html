@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Login — SecureCRM{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-4">
+    <div class="card p-4 mt-5">
+      <h3 class="mb-4 text-center">Login</h3>
+      {% if blocked %}
+        <div class="alert alert-danger">Your IP has been temporarily blocked due to too many failed attempts. Try again in 15 minutes.</div>
+      {% endif %}
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control bg-dark text-light border-secondary" required autofocus/>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control bg-dark text-light border-secondary" required autocomplete="current-password"/>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Login</button>
+      </form>
+      <div class="text-center mt-3">
+        <a href="/accounts/register/" class="text-muted small">Request access</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

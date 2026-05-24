@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Request Access — SecureCRM{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="card p-4 mt-5">
+      <h3 class="mb-4">Request Access</h3>
+      <p class="text-muted small">Your request will be reviewed by the owner before access is granted.</p>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {% for field in form %}
+          <div class="mb-3">
+            <label class="form-label">{{ field.label }}</label>
+            {{ field }}
+            {% if field.errors %}
+              <div class="text-danger small mt-1">{{ field.errors|join:", " }}</div>
+            {% endif %}
+          </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-success w-100">Submit Request</button>
+      </form>
+      <div class="text-center mt-3">
+        <a href="/accounts/login/" class="text-muted small">Back to Login</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

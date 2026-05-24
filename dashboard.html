@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة التحكم - الدورات التعليمية</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-main:    #0f172a;
+      --bg-card:    #1e293b;
+      --bg-sidebar: #0f172a;
+      --bg-hover:   #334155;
+      --border:     #334155;
+      --text-main:  #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent:     #6366f1;
+      --accent-2:   #8b5cf6;
+      --green:      #10b981;
+      --red:        #ef4444;
+      --yellow:     #f59e0b;
+      --blue:       #3b82f6;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ===== SIDEBAR ===== */
+    .sidebar {
+      width: 240px;
+      background: var(--bg-sidebar);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 24px 0;
+      position: fixed;
+      right: 0;
+      top: 0;
+      height: 100vh;
+      z-index: 100;
+    }
+
+    .sidebar-logo {
+      padding: 0 24px 28px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-logo h2 {
+      font-size: 18px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .sidebar-logo p { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+
+    .nav { margin-top: 20px; flex: 1; }
+
+    .nav-section-title {
+      padding: 8px 24px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 24px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 14px;
+      transition: all .2s;
+      border-right: 3px solid transparent;
+      text-decoration: none;
+    }
+
+    .nav-item:hover { background: var(--bg-hover); color: var(--text-main); }
+
+    .nav-item.active {
+      color: var(--accent);
+      background: rgba(99,102,241,.1);
+      border-right-color: var(--accent);
+    }
+
+    .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+    .sidebar-bottom {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .user-info { display: flex; align-items: center; gap: 10px; }
+
+    .avatar {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px;
+    }
+
+    .user-info .name { font-size: 13px; font-weight: 600; }
+    .user-info .role { font-size: 11px; color: var(--text-muted); }
+
+    /* ===== MAIN ===== */
+    .main {
+      margin-right: 240px;
+      flex: 1;
+      padding: 28px 32px;
+      overflow-y: auto;
+    }
+
+    /* ===== TOPBAR ===== */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .topbar h1 { font-size: 22px; font-weight: 700; }
+    .topbar .date { font-size: 13px; color: var(--text-muted); margin-top: 3px; }
+
+    .topbar-actions { display: flex; gap: 10px; }
+
+    .btn {
+      padding: 9px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      transition: all .2s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #4f46e5; }
+
+    .btn-ghost {
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--bg-hover); }
+
+    /* ===== STATS CARDS ===== */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      transition: transform .2s, border-color .2s;
+    }
+
+    .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+
+    .stat-card .label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .stat-card .label svg { width: 15px; height: 15px; }
+
+    .stat-card .value { font-size: 26px; font-weight: 700; }
+
+    .stat-card .change {
+      font-size: 12px;
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .change.up { color: var(--green); }
+    .change.down { color: var(--red); }
+
+    .stat-icon {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      float: left;
+    }
+
+    .stat-icon svg { width: 20px; height: 20px; }
+
+    /* ===== CHARTS ROW ===== */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .card-header h3 { font-size: 15px; font-weight: 600; }
+
+    .card-header .period-select {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* ===== BOTTOM ROW ===== */
+    .bottom-row {
+      display: grid;
+      grid-template-columns: 3fr 2fr;
+      gap: 16px;
+    }
+
+    /* ===== TABLE ===== */
+    .table-wrap { overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead th {
+      text-align: right;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody td {
+      padding: 12px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(51,65,85,.5);
+    }
+
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: rgba(255,255,255,.03); }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge-green  { background: rgba(16,185,129,.15); color: var(--green); }
+    .badge-yellow { background: rgba(245,158,11,.15);  color: var(--yellow); }
+    .badge-red    { background: rgba(239,68,68,.15);   color: var(--red); }
+    .badge-blue   { background: rgba(59,130,246,.15);  color: var(--blue); }
+
+    /* ===== TODO ===== */
+    .todo-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .todo-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-main);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: border-color .2s;
+    }
+
+    .todo-item:hover { border-color: var(--accent); }
+
+    .todo-item.done .todo-text {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .todo-check {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s;
+    }
+
+    .todo-item.done .todo-check {
+      background: var(--green);
+      border-color: var(--green);
+    }
+
+    .todo-text { font-size: 13px; flex: 1; }
+
+    .todo-priority {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .priority-high   { background: rgba(239,68,68,.15);   color: var(--red); }
+    .priority-medium { background: rgba(245,158,11,.15);  color: var(--yellow); }
+    .priority-low    { background: rgba(16,185,129,.15);  color: var(--green); }
+
+    .todo-add {
+      display: flex; gap: 8px; margin-top: 12px;
+    }
+
+    .todo-add input {
+      flex: 1;
+      background: var(--bg-main);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .todo-add input:focus { border-color: var(--accent); }
+    .todo-add input::placeholder { color: var(--text-muted); }
+
+    /* ===== TOP COURSES ===== */
+    .course-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(51,65,85,.5);
+    }
+
+    .course-item:last-child { border-bottom: none; }
+
+    .course-rank {
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      background: rgba(99,102,241,.2);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .course-info { flex: 1; }
+    .course-info .name { font-size: 13px; font-weight: 500; }
+    .course-info .sales { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+    .course-revenue { font-size: 13px; font-weight: 600; color: var(--green); }
+
+    /* ===== PROGRESS BAR ===== */
+    .progress-bar-wrap { margin-top: 5px; }
+
+    .progress-bar-bg {
+      height: 4px;
+      background: var(--bg-hover);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 1s ease;
+    }
+
+    /* ===== SCROLLBAR ===== */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg-main); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h2>📚 EduPro</h2>
+    <p>منصة الدورات التعليمية</p>
+  </div>
+
+  <div class="nav">
+    <div class="nav-section-title">القائمة الرئيسية</div>
+
+    <a class="nav-item active" href="#">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+      الرئيسية
+    </a>
+
+    <a class="nav-item" href="#">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+      الدورات
+    </a>
+
+    <a class="nav-item" href="#">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      الطلاب
+    </a>
+
+    <a class="nav-item" href="#">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      الطلبات
+    </a>
+
+    <a class="nav-item" href="#">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      الإيرادات
+    </a>
+
+    <div class="nav-section-title" style="margin-top:16px">الإعدادات</div>
+
+    <a class="nav-item" href="#">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      الإعدادات
+    </a>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="user-info">
+      <div class="avatar">م</div>
+      <div>
+        <div class="name">مدير النظام</div>
+        <div class="role">Admin</div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div>
+      <h1>لوحة التحكم 👋</h1>
+      <div class="date" id="currentDate"></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost">📤 تصدير تقرير</button>
+      <button class="btn btn-primary">+ إضافة دورة</button>
+    </div>
+  </div>
+
+  <!-- STATS CARDS -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div class="label">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            إجمالي الإيرادات
+          </div>
+          <div class="value">54,230 ر.س</div>
+          <div class="change up">▲ 12.5% من الشهر الماضي</div>
+        </div>
+        <div class="stat-icon" style="background:rgba(99,102,241,.15)">
+          <svg fill="none" stroke="#6366f1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div class="label">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
+            عدد المبيعات
+          </div>
+          <div class="value">1,847</div>
+          <div class="change up">▲ 8.2% من الشهر الماضي</div>
+        </div>
+        <div class="stat-icon" style="background:rgba(59,130,246,.15)">
+          <svg fill="none" stroke="#3b82f6" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div class="label">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857"/></svg>
+            الطلاب المسجلون
+          </div>
+          <div class="value">3,492</div>
+          <div class="change up">▲ 5.1% من الشهر الماضي</div>
+        </div>
+        <div class="stat-icon" style="background:rgba(16,185,129,.15)">
+          <svg fill="none" stroke="#10b981" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div class="label">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253"/></svg>
+            الدورات النشطة
+          </div>
+          <div class="value">24</div>
+          <div class="change down">▼ 2.0% من الشهر الماضي</div>
+        </div>
+        <div class="stat-icon" style="background:rgba(245,158,11,.15)">
+          <svg fill="none" stroke="#f59e0b" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHARTS ROW -->
+  <div class="charts-row">
+    <div class="card">
+      <div class="card-header">
+        <h3>📈 المبيعات الشهرية</h3>
+        <select class="period-select" onchange="updateChart(this.value)">
+          <option value="6">آخر 6 أشهر</option>
+          <option value="12">آخر 12 شهر</option>
+          <option value="3">آخر 3 أشهر</option>
+        </select>
+      </div>
+      <canvas id="salesChart" height="100"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>🎯 توزيع الدورات</h3>
+      </div>
+      <canvas id="donutChart" height="180"></canvas>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;">
+        <div style="font-size:12px; color:var(--text-muted)"><span style="color:#6366f1">●</span> برمجة</div>
+        <div style="font-size:12px; color:var(--text-muted)"><span style="color:#10b981">●</span> تسويق</div>
+        <div style="font-size:12px; color:var(--text-muted)"><span style="color:#f59e0b">●</span> تصميم</div>
+        <div style="font-size:12px; color:var(--text-muted)"><span style="color:#3b82f6">●</span> أعمال</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM ROW -->
+  <div class="bottom-row">
+
+    <!-- RECENT ORDERS -->
+    <div class="card">
+      <div class="card-header">
+        <h3>🧾 آخر الطلبات</h3>
+        <button class="btn btn-ghost" style="padding:5px 12px; font-size:12px;">عرض الكل</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>الطالب</th>
+              <th>الدورة</th>
+              <th>المبلغ</th>
+              <th>الحالة</th>
+              <th>التاريخ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color:var(--text-muted)">#1042</td>
+              <td>أحمد محمد</td>
+              <td>تطوير الويب</td>
+              <td style="color:var(--green)">299 ر.س</td>
+              <td><span class="badge badge-green">مكتمل</span></td>
+              <td style="color:var(--text-muted)">22 مايو</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted)">#1041</td>
+              <td>سارة خالد</td>
+              <td>التسويق الرقمي</td>
+              <td style="color:var(--green)">199 ر.س</td>
+              <td><span class="badge badge-yellow">معلق</span></td>
+              <td style="color:var(--text-muted)">21 مايو</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted)">#1040</td>
+              <td>عمر علي</td>
+              <td>تصميم UI/UX</td>
+              <td style="color:var(--green)">349 ر.س</td>
+              <td><span class="badge badge-green">مكتمل</span></td>
+              <td style="color:var(--text-muted)">21 مايو</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted)">#1039</td>
+              <td>فاطمة أحمد</td>
+              <td>Python للمبتدئين</td>
+              <td style="color:var(--green)">149 ر.س</td>
+              <td><span class="badge badge-red">ملغي</span></td>
+              <td style="color:var(--text-muted)">20 مايو</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted)">#1038</td>
+              <td>يوسف ناصر</td>
+              <td>Excel المتقدم</td>
+              <td style="color:var(--green)">99 ر.س</td>
+              <td><span class="badge badge-blue">قيد المعالجة</span></td>
+              <td style="color:var(--text-muted)">20 مايو</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TODO -->
+    <div class="card">
+      <div class="card-header">
+        <h3>✅ المهام</h3>
+        <span style="font-size:12px; color:var(--text-muted)" id="taskCount"></span>
+      </div>
+
+      <div class="todo-list" id="todoList">
+        <div class="todo-item" onclick="toggleTodo(this)">
+          <div class="todo-check">✓</div>
+          <div class="todo-text">مراجعة محتوى دورة Python</div>
+          <span class="todo-priority priority-high">عاجل</span>
+        </div>
+        <div class="todo-item done" onclick="toggleTodo(this)">
+          <div class="todo-check">✓</div>
+          <div class="todo-text">نشر إعلان دورة التسويق</div>
+          <span class="todo-priority priority-medium">متوسط</span>
+        </div>
+        <div class="todo-item" onclick="toggleTodo(this)">
+          <div class="todo-check"></div>
+          <div class="todo-text">الرد على استفسارات الطلاب</div>
+          <span class="todo-priority priority-high">عاجل</span>
+        </div>
+        <div class="todo-item" onclick="toggleTodo(this)">
+          <div class="todo-check"></div>
+          <div class="todo-text">تحديث صفحة الدورات</div>
+          <span class="todo-priority priority-low">عادي</span>
+        </div>
+        <div class="todo-item done" onclick="toggleTodo(this)">
+          <div class="todo-check">✓</div>
+          <div class="todo-text">مراجعة تقرير الشهر الماضي</div>
+          <span class="todo-priority priority-low">عادي</span>
+        </div>
+      </div>
+
+      <div class="todo-add">
+        <input type="text" id="newTask" placeholder="أضف مهمة جديدة..." onkeypress="if(event.key==='Enter') addTodo()" />
+        <button class="btn btn-primary" onclick="addTodo()">+</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP COURSES -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-header">
+      <h3>🏆 أفضل الدورات مبيعاً</h3>
+    </div>
+    <div id="topCourses">
+      <div class="course-item">
+        <div class="course-rank">1</div>
+        <div class="course-info">
+          <div class="name">تطوير تطبيقات الويب الكاملة</div>
+          <div class="sales">423 مبيعة</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:90%"></div></div>
+          </div>
+        </div>
+        <div class="course-revenue">12,690 ر.س</div>
+      </div>
+      <div class="course-item">
+        <div class="course-rank">2</div>
+        <div class="course-info">
+          <div class="name">التسويق الرقمي الشامل</div>
+          <div class="sales">318 مبيعة</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:68%"></div></div>
+          </div>
+        </div>
+        <div class="course-revenue">9,540 ر.س</div>
+      </div>
+      <div class="course-item">
+        <div class="course-rank">3</div>
+        <div class="course-info">
+          <div class="name">Python من الصفر إلى الاحتراف</div>
+          <div class="sales">267 مبيعة</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:57%"></div></div>
+          </div>
+        </div>
+        <div class="course-revenue">7,983 ر.س</div>
+      </div>
+      <div class="course-item">
+        <div class="course-rank">4</div>
+        <div class="course-info">
+          <div class="name">تصميم UI/UX الاحترافي</div>
+          <div class="sales">201 مبيعة</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:43%"></div></div>
+          </div>
+        </div>
+        <div class="course-revenue">7,034 ر.س</div>
+      </div>
+      <div class="course-item">
+        <div class="course-rank">5</div>
+        <div class="course-info">
+          <div class="name">Excel والتحليل المالي</div>
+          <div class="sales">189 مبيعة</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:40%"></div></div>
+          </div>
+        </div>
+        <div class="course-revenue">5,670 ر.س</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // ===== DATE =====
+  const dateEl = document.getElementById('currentDate');
+  const now = new Date();
+  dateEl.textContent = now.toLocaleDateString('ar-SA', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  // ===== SALES CHART =====
+  const salesCtx = document.getElementById('salesChart').getContext('2d');
+  let salesChart;
+
+  const salesData = {
+    12: {
+      labels: ['يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر','يناير','فبراير','مارس','أبريل','مايو'],
+      data:   [18000,22000,19500,25000,28000,24000,32000,29000,35000,38000,42000,54000]
+    },
+    6: {
+      labels: ['ديسمبر','يناير','فبراير','مارس','أبريل','مايو'],
+      data:   [32000,29000,35000,38000,42000,54000]
+    },
+    3: {
+      labels: ['مارس','أبريل','مايو'],
+      data:   [38000,42000,54000]
+    }
+  };
+
+  function buildSalesChart(months) {
+    if (salesChart) salesChart.destroy();
+    const d = salesData[months];
+    salesChart = new Chart(salesCtx, {
+      type: 'line',
+      data: {
+        labels: d.labels,
+        datasets: [{
+          label: 'الإيرادات (ر.س)',
+          data: d.data,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,.12)',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#6366f1',
+          pointRadius: 4,
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            borderColor: '#334155',
+            borderWidth: 1,
+            titleColor: '#f1f5f9',
+            bodyColor: '#94a3b8',
+            callbacks: {
+              label: ctx => ' ' + ctx.parsed.y.toLocaleString('ar') + ' ر.س'
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#94a3b8', font: { size: 11 } }, grid: { color: 'rgba(51,65,85,.5)' } },
+          y: { ticks: { color: '#94a3b8', font: { size: 11 }, callback: v => v.toLocaleString('ar') }, grid: { color: 'rgba(51,65,85,.5)' } }
+        }
+      }
+    });
+  }
+
+  buildSalesChart(6);
+  function updateChart(v) { buildSalesChart(parseInt(v)); }
+
+  // ===== DONUT CHART =====
+  const donutCtx = document.getElementById('donutChart').getContext('2d');
+  new Chart(donutCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['برمجة','تسويق','تصميم','أعمال'],
+      datasets: [{
+        data: [42, 28, 18, 12],
+        backgroundColor: ['#6366f1','#10b981','#f59e0b','#3b82f6'],
+        borderWidth: 0,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '70%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1e293b',
+          borderColor: '#334155',
+          borderWidth: 1,
+          titleColor: '#f1f5f9',
+          bodyColor: '#94a3b8',
+          callbacks: { label: ctx => ' ' + ctx.parsed + '%' }
+        }
+      }
+    }
+  });
+
+  // ===== TODO =====
+  function updateTaskCount() {
+    const items = document.querySelectorAll('.todo-item');
+    const done  = document.querySelectorAll('.todo-item.done');
+    document.getElementById('taskCount').textContent = done.length + '/' + items.length + ' مكتملة';
+  }
+
+  function toggleTodo(el) {
+    el.classList.toggle('done');
+    updateTaskCount();
+  }
+
+  function addTodo() {
+    const input = document.getElementById('newTask');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const item = document.createElement('div');
+    item.className = 'todo-item';
+    item.onclick = function() { toggleTodo(this); };
+    item.innerHTML = `
+      <div class="todo-check"></div>
+      <div class="todo-text">${text}</div>
+      <span class="todo-priority priority-medium">جديد</span>
+    `;
+    document.getElementById('todoList').appendChild(item);
+    input.value = '';
+    updateTaskCount();
+  }
+
+  updateTaskCount();
+
+  // ===== SIDEBAR NAV =====
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>
