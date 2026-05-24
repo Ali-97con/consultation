@@ -25,10 +25,16 @@ let initPromise = null;
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 async function save() {
-  await Store.findByIdAndUpdate(docId, {
+  const data = {
     clients: store.clients, closers: store.closers, setters: store.setters,
     custom_plans: store.custom_plans, team_trash: store.team_trash, _nextId: store._nextId,
-  });
+  };
+  if (docId) {
+    await Store.replaceOne({ _id: docId }, data);
+  } else {
+    const doc = await Store.create(data);
+    docId = doc._id;
+  }
 }
 
 async function init() {
