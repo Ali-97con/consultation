@@ -450,8 +450,22 @@ const SEED_CLIENTS = [
 [223,'عيسى عبيد الكندي','971 50 363 6565','','PREMIUM',4299,'تحويل بنكي',4299,0,0,0,'عبدالإله','عبدرحمن','2026-05','enrolled'],
 ];
 
+async function importData(data) {
+  await connectDB();
+  await Store.deleteMany({});
+  await Store.create({
+    clients:      data.clients      || [],
+    closers:      data.closers      || [],
+    setters:      data.setters      || [],
+    custom_plans: data.custom_plans || [],
+    team_trash:   data.team_trash   || [],
+    _nextId:      data._nextId      || 1000,
+  });
+  initPromise = null; // reset so next request reloads fresh
+}
+
 module.exports = {
-  getClients, getTrash,
+  getClients, getTrash, importData,
   createClient, updateClient, updateNotes,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,

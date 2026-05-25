@@ -177,6 +177,15 @@ app.post('/api/plans', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Migration endpoint (one-time use) ───────────────────────────────────────
+const { importData } = require('./db');
+app.post('/api/migrate-import', async (req, res) => {
+  const { secret, data } = req.body || {};
+  if (secret !== process.env.MIGRATE_SECRET) return res.status(403).json({ error: 'forbidden' });
+  try { await importData(data); res.json({ ok: true, clients: data.clients.length }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n✅ AH97 CRM Server running at: http://localhost:${PORT}\n`);
