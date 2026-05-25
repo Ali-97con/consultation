@@ -5,7 +5,7 @@
       "src": "server.js",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["crm.html", "splash.html", "login.html", "dashboard.html", "splash.jsx", "assets/**"]
+        "includeFiles": ["crm.html", "splash.html", "login.html", "dashboard.html", "splash.jsx", "assets/**", "*.png", "*.jpg", "*.ico"]
       }
     }
   ],
