@@ -1,13 +1,14 @@
 'use strict';
 const mongoose = require('mongoose');
 
-// ─── MongoDB connection (cached for serverless) ───────────────────────────────
+// ─── Connection (cached for serverless) ───────────────────────────────────────
+let cachedConn = null;
 async function connectDB() {
-  if (mongoose.connection.readyState >= 1) return;
-  await mongoose.connect(process.env.MONGODB_URI);
+  if (cachedConn && mongoose.connection.readyState === 1) return;
+  cachedConn = await mongoose.connect(process.env.MONGODB_URI);
 }
 
-// ─── Single-document store schema ─────────────────────────────────────────────
+// ─── Schema ────────────────────────────────────────────────────────────────────
 const StoreSchema = new mongoose.Schema({
   clients:      [mongoose.Schema.Types.Mixed],
   closers:      [String],
@@ -18,197 +19,189 @@ const StoreSchema = new mongoose.Schema({
 });
 const Store = mongoose.models.Store || mongoose.model('Store', StoreSchema);
 
-// ─── In-memory store ──────────────────────────────────────────────────────────
-let store = { clients: [], closers: [], setters: [], custom_plans: [], team_trash: [], _nextId: 1000 };
-let docId  = null;
-let initPromise = null;
-
-// ─── Persistence ──────────────────────────────────────────────────────────────
-async function save() {
-  const data = {
-    clients: store.clients, closers: store.closers, setters: store.setters,
-    custom_plans: store.custom_plans, team_trash: store.team_trash, _nextId: store._nextId,
-  };
-  if (docId) {
-    await Store.replaceOne({ _id: docId }, data);
-  } else {
-    const doc = await Store.create(data);
-    docId = doc._id;
-  }
-}
-
-async function init() {
+// ─── Read helper ──────────────────────────────────────────────────────────────
+async function getDoc() {
   await connectDB();
-  const doc = await Store.findOne({});
-  if (doc) {
-    store = {
-      clients:      doc.clients      || [],
-      closers:      doc.closers      || [],
-      setters:      doc.setters      || [],
-      custom_plans: doc.custom_plans || [],
-      team_trash:   doc.team_trash   || [],
-      _nextId:      doc._nextId      || 1000,
-    };
-    docId = doc._id;
-    if (store.clients.length > 0) {
-      console.log(`📂 Loaded ${store.clients.length} clients from MongoDB`);
-      return;
-    }
-  }
-  // Seed initial data
-  store.closers      = [...SEED_CLOSERS];
-  store.setters      = [...SEED_SETTERS];
-  store.clients      = SEED_CLIENTS.map(mkC);
-  store.custom_plans = [];
-  store.team_trash   = [];
-  store._nextId      = 1000;
-  if (doc) {
-    await save();
-  } else {
-    const newDoc = await Store.create({
-      clients: store.clients, closers: store.closers, setters: store.setters,
-      custom_plans: store.custom_plans, team_trash: store.team_trash, _nextId: store._nextId,
-    });
-    docId = newDoc._id;
-  }
-  console.log(`✅ Seeded ${store.clients.length} clients`);
+  return Store.findOne({}).lean();
 }
 
-const ensureReady = () => { if (!initPromise) initPromise = init(); return initPromise; };
+// ─── Init / Seed (runs once if no document exists) ────────────────────────────
+let initPromise = null;
+async function ensureInit() {
+  await connectDB();
+  const doc = await Store.findOne({}).lean();
+  if (!doc) {
+    await Store.create({
+      clients: SEED_CLIENTS.map(mkC), closers: [...SEED_CLOSERS],
+      setters: [...SEED_SETTERS], custom_plans: [], team_trash: [], _nextId: 1000,
+    });
+    console.log('✅ Seeded initial data');
+  } else if (!doc.clients || doc.clients.length === 0) {
+    await Store.updateOne({}, { $set: {
+      clients: SEED_CLIENTS.map(mkC), closers: [...SEED_CLOSERS],
+      setters: [...SEED_SETTERS], _nextId: 1000,
+    }});
+  }
+}
+const ready = () => { if (!initPromise) initPromise = ensureInit(); return initPromise; };
 
 // ─── Client helpers ───────────────────────────────────────────────────────────
-const getClients = async () => { await ensureReady(); return store.clients.filter(c => !c.deleted); };
-const getTrash   = async () => { await ensureReady(); return store.clients.filter(c => c.deleted).sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || '')); };
+const getClients = async () => {
+  await ready();
+  const doc = await getDoc();
+  return (doc?.clients || []).filter(c => !c.deleted);
+};
+
+const getTrash = async () => {
+  await ready();
+  const doc = await getDoc();
+  return (doc?.clients || []).filter(c => c.deleted)
+    .sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+};
 
 async function createClient(c) {
-  await ensureReady();
-  const id     = store._nextId++;
+  await ready();
+  const before = await Store.findOneAndUpdate({}, { $inc: { _nextId: 1 } }, { new: false, lean: true });
+  const id = before._nextId;
   const client = { ...c, id, deleted: false, deletedAt: null };
-  store.clients.unshift(client);
-  await save();
+  await Store.updateOne({}, { $push: { clients: { $each: [client], $position: 0 } } });
   return client;
 }
 
 async function updateClient(id, patch) {
-  await ensureReady();
-  const idx = store.clients.findIndex(x => x.id === id);
+  await ready();
+  const doc = await getDoc();
+  const idx = (doc?.clients || []).findIndex(x => x.id === id);
   if (idx === -1) return null;
-  store.clients[idx] = { ...store.clients[idx], ...patch, id };
-  await save();
-  return store.clients[idx];
+  const updated = { ...doc.clients[idx], ...patch, id };
+  await Store.updateOne({}, { $set: { [`clients.${idx}`]: updated } });
+  return updated;
 }
 
 async function updateNotes(id, notes) {
-  await ensureReady();
-  const c = store.clients.find(x => x.id === id);
-  if (!c) return false;
-  c.notes = notes;
-  await save();
+  await ready();
+  const doc = await getDoc();
+  const idx = (doc?.clients || []).findIndex(x => x.id === id);
+  if (idx === -1) return false;
+  await Store.updateOne({}, { $set: { [`clients.${idx}.notes`]: notes } });
   return true;
 }
 
 async function softDelete(id) {
-  await ensureReady();
-  const c = store.clients.find(x => x.id === id);
-  if (!c) return false;
-  c.deleted   = true;
-  c.deletedAt = new Date().toISOString();
-  await save();
+  await ready();
+  const doc = await getDoc();
+  const idx = (doc?.clients || []).findIndex(x => x.id === id);
+  if (idx === -1) return false;
+  await Store.updateOne({}, { $set: {
+    [`clients.${idx}.deleted`]: true,
+    [`clients.${idx}.deletedAt`]: new Date().toISOString(),
+  }});
   return true;
 }
 
 async function restoreClient(id) {
-  await ensureReady();
-  const c = store.clients.find(x => x.id === id);
-  if (!c) return false;
-  c.deleted   = false;
-  c.deletedAt = null;
-  await save();
+  await ready();
+  const doc = await getDoc();
+  const idx = (doc?.clients || []).findIndex(x => x.id === id);
+  if (idx === -1) return false;
+  await Store.updateOne({}, { $set: {
+    [`clients.${idx}.deleted`]: false,
+    [`clients.${idx}.deletedAt`]: null,
+  }});
   return true;
 }
 
 async function restoreAll() {
-  await ensureReady();
-  store.clients.forEach(c => { if (c.deleted) { c.deleted = false; c.deletedAt = null; } });
-  await save();
+  await ready();
+  const doc = await getDoc();
+  const updates = {};
+  (doc?.clients || []).forEach((c, i) => {
+    if (c.deleted) { updates[`clients.${i}.deleted`] = false; updates[`clients.${i}.deletedAt`] = null; }
+  });
+  if (Object.keys(updates).length) await Store.updateOne({}, { $set: updates });
 }
 
 async function permDelete(id) {
-  await ensureReady();
-  const before = store.clients.length;
-  store.clients = store.clients.filter(x => !(x.id === id && x.deleted));
-  if (store.clients.length < before) { await save(); return true; }
-  return false;
+  await ready();
+  await Store.updateOne({}, { $pull: { clients: { id, deleted: true } } });
+  return true;
 }
 
 async function emptyTrash() {
-  await ensureReady();
-  store.clients = store.clients.filter(x => !x.deleted);
-  await save();
+  await ready();
+  await Store.updateOne({}, { $pull: { clients: { deleted: true } } });
 }
 
 // ─── Team helpers ─────────────────────────────────────────────────────────────
-const getTeam = async () => { await ensureReady(); return { closers: [...store.closers], setters: [...store.setters] }; };
+const getTeam = async () => {
+  await ready();
+  const doc = await getDoc();
+  return { closers: doc?.closers || [], setters: doc?.setters || [] };
+};
 
 async function addMember(type, name) {
-  await ensureReady();
-  const arr = store[type];
-  if (arr.includes(name)) return false;
-  arr.push(name);
-  await save();
+  await ready();
+  const doc = await getDoc();
+  if ((doc?.[type] || []).includes(name)) return false;
+  await Store.updateOne({}, { $push: { [type]: name } });
   return true;
 }
 
 async function editMember(type, oldName, newName) {
-  await ensureReady();
-  const arr = store[type];
-  const idx = arr.indexOf(oldName);
+  await ready();
+  const doc = await getDoc();
+  const idx = (doc?.[type] || []).indexOf(oldName);
   if (idx === -1) return false;
-  arr[idx] = newName;
-  await save();
+  await Store.updateOne({}, { $set: { [`${type}.${idx}`]: newName } });
   return true;
 }
 
 async function removeMember(type, name) {
-  await ensureReady();
-  const before = store[type].length;
-  store[type] = store[type].filter(n => n !== name);
-  if (store[type].length < before) {
-    store.team_trash.unshift({ type, name, deletedAt: new Date().toISOString() });
-    await save(); return true;
-  }
-  return false;
+  await ready();
+  const doc = await getDoc();
+  if (!(doc?.[type] || []).includes(name)) return false;
+  await Store.updateOne({}, {
+    $pull: { [type]: name },
+    $push: { team_trash: { type, name, deletedAt: new Date().toISOString() } },
+  });
+  return true;
 }
 
-const getTeamTrash = async () => { await ensureReady(); return [...(store.team_trash || [])]; };
+const getTeamTrash = async () => {
+  await ready();
+  const doc = await getDoc();
+  return doc?.team_trash || [];
+};
 
 async function restoreTeamMember(type, name) {
-  await ensureReady();
-  store.team_trash = store.team_trash.filter(m => !(m.type === type && m.name === name));
-  if (!store[type].includes(name)) store[type].push(name);
-  await save(); return true;
+  await ready();
+  await Store.updateOne({}, { $pull: { team_trash: { type, name } }, $addToSet: { [type]: name } });
+  return true;
 }
 
 async function permDeleteTeamMember(type, name) {
-  await ensureReady();
-  store.team_trash = store.team_trash.filter(m => !(m.type === type && m.name === name));
-  await save(); return true;
+  await ready();
+  await Store.updateOne({}, { $pull: { team_trash: { type, name } } });
+  return true;
 }
 
 async function emptyTeamTrash() {
-  await ensureReady();
-  store.team_trash = [];
-  await save();
+  await ready();
+  await Store.updateOne({}, { $set: { team_trash: [] } });
 }
 
 // ─── Plan helpers ─────────────────────────────────────────────────────────────
-const getCustomPlans = async () => { await ensureReady(); return [...store.custom_plans]; };
+const getCustomPlans = async () => {
+  await ready();
+  const doc = await getDoc();
+  return doc?.custom_plans || [];
+};
 
 async function addCustomPlan(name, price) {
-  await ensureReady();
-  if (store.custom_plans.find(p => p.name === name)) return false;
-  store.custom_plans.push({ name, price });
-  await save();
+  await ready();
+  const doc = await getDoc();
+  if ((doc?.custom_plans || []).find(p => p.name === name)) return false;
+  await Store.updateOne({}, { $push: { custom_plans: { name, price } } });
   return true;
 }
 
