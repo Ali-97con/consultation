@@ -3218,6 +3218,21 @@ async function saveClient() {
   try {
     if (S.editId) {
       await api('PUT', `/api/clients/${S.editId}`, data);
+      // حفظ الملاحظات إذا تغيرت
+      const existingClient = clients.find(x => x.id === S.editId);
+      const notesTxt = ($('m-notes').value || '').trim();
+      const existingTxt = existingClient ? existingClient.notes.map(n=>n.txt).join('\n') : '';
+      if (notesTxt !== existingTxt) {
+        const updatedNotes = notesTxt.split('\n').filter(t=>t.trim()).map((txt,i)=>({
+          id: existingClient?.notes[i]?.id || Date.now()+i,
+          txt: txt.trim(),
+          date: existingClient?.notes[i]?.date || new Date().toLocaleString('ar-SA-u-nu-latn'),
+          author: existingClient?.notes[i]?.author || 'مدير النظام',
+          pin: existingClient?.notes[i]?.pin || false
+        }));
+        await api('PUT', `/api/clients/${S.editId}/notes`, { notes: updatedNotes });
+        if (existingClient) existingClient.notes = updatedNotes;
+      }
       const idx=clients.findIndex(x=>x.id===S.editId);
       if(idx>-1) clients[idx]={...clients[idx],...data};
       toast(`${LANG==='ar'?'تم تعديل بيانات':'Updated'} ${name}`,'✏️');
