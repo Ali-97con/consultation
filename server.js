@@ -13,7 +13,7 @@ const {
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
 
 // ─── Serve HTML ───────────────────────────────────────────────────────────────
