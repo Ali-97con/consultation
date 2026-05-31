@@ -1978,7 +1978,7 @@ function renderIncomeDetail(month) {
   const table = document.getElementById('income-detail-table');
   if (!badge || !table) return;
   const rate = parseFloat(document.getElementById('aed-rate')?.value || localStorage.getItem('aed_rate') || '3.67');
-  const toAED = usd => Math.round(usd * rate).toLocaleString('en-US') + ' د.إ';
+  const toAED = usd => (usd * rate).toFixed(4) + ' د.إ';
   const installLabel = n => LANG==='ar' ? ['الأولى','الثانية','الثالثة','الرابعة'][n-1]||n : ['1st','2nd','3rd','4th'][n-1]||n;
   badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) + '  ·  ' + toAED(total) : '';
   if (!payments.length) {
@@ -2132,7 +2132,7 @@ function renderAnalytics() {
         </select>
         <div style="display:flex;align-items:center;gap:6px;background:var(--b1);padding:4px 10px;border-radius:8px;border:1px solid var(--b1)">
           <span style="font-size:11px;color:var(--t3);white-space:nowrap">1 $ =</span>
-          <input id="aed-rate" type="number" min="1" step="0.01"
+          <input id="aed-rate" type="number" min="0.0001" step="0.0001"
             value="${localStorage.getItem('aed_rate')||'3.67'}"
             style="width:64px;background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;font-weight:700;text-align:center"
             oninput="localStorage.setItem('aed_rate',this.value);renderIncomeDetail(document.getElementById('income-month-sel').value)">
