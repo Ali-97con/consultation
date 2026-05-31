@@ -2067,6 +2067,56 @@ function renderIncomeDetail(month, sortKey, sortDir) {
     </table>`;
 }
 
+function renderTeamIncomeDetail(month) {
+  const sel = document.getElementById('team-income-month-sel');
+  if (sel && sel.value !== month) sel.value = month;
+  const wrap = document.getElementById('team-income-detail');
+  if (!wrap) return;
+
+  const closerTotals = {}, setterTotals = {};
+  clients.filter(c => !c.deleted).forEach(c => {
+    [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([amt,date]) => {
+      if (amt > 0 && date && date.startsWith(month)) {
+        if (c.closer) closerTotals[c.closer] = (closerTotals[c.closer]||0) + amt;
+        if (c.setter) setterTotals[c.setter] = (setterTotals[c.setter]||0) + amt;
+      }
+    });
+  });
+
+  const makeTable = (title, data, color) => {
+    const entries = Object.entries(data).sort((a,b) => b[1]-a[1]);
+    const maxVal  = Math.max(...entries.map(([,v])=>v), 1);
+    const total   = entries.reduce((s,[,v])=>s+v, 0);
+    if (!entries.length) return `
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:10px">${title}</div>
+        <div style="text-align:center;padding:20px;color:var(--t3);font-size:12px">${LANG==='ar'?'لا توجد مداخيل':'No income'}</div>
+      </div>`;
+    return `
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:12px;font-weight:700;color:var(--t2)">${title}</span>
+          <span style="font-size:12px;font-weight:800;color:${color}">${fmtMoney(total)}</span>
+        </div>
+        ${entries.map(([name,val])=>`
+          <div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+              <span style="font-size:12.5px;font-weight:600">${name}</span>
+              <span style="font-size:12.5px;font-weight:800;color:${color}">${fmtMoney(val)}</span>
+            </div>
+            <div style="height:7px;background:var(--b1);border-radius:6px;overflow:hidden">
+              <div style="height:100%;width:${Math.round(val/maxVal*100)}%;background:${color};border-radius:6px;opacity:.85"></div>
+            </div>
+            <div style="font-size:10px;color:var(--t3);margin-top:2px">${Math.round(val/total*100)}% ${LANG==='ar'?'من إجمالي الشهر':'of month total'}</div>
+          </div>`).join('')}
+      </div>`;
+  };
+
+  wrap.innerHTML =
+    makeTable(LANG==='ar'?'مندوبو الإغلاق (Closer)':'Closers', closerTotals, '#818cf8') +
+    makeTable(LANG==='ar'?'مندوبو الإعداد (Setter)':'Setters', setterTotals, '#10b981');
+}
+
 function renderAnalytics() {
   const mo = S.analyticsMonth;
   const aClients = mo ? clients.filter(c=>(c.regDate||'').startsWith(mo)) : clients;
@@ -2219,6 +2269,28 @@ function renderAnalytics() {
       <div class="cb" id="closer-perf"></div></div>
   </div>
 
+  <!-- Team Monthly Income -->
+  <div class="card mb" style="margin-top:16px">
+    <div class="ch" style="flex-wrap:wrap;gap:10px">
+      <h3 style="display:flex;align-items:center;gap:8px">
+        <span style="width:28px;height:28px;border-radius:8px;background:#6366f118;border:1px solid #6366f130;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg fill="none" stroke="#6366f1" viewBox="0 0 24 24" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        </span>
+        ${LANG==='ar'?'مداخيل الفريق بالشهر':'Team Monthly Income'}
+      </h3>
+      <select class="fsl" style="min-width:180px;margin-right:auto" id="team-income-month-sel" onchange="renderTeamIncomeDetail(this.value)">
+        ${Array.from({length:12},(_,i)=>{
+          const d=new Date(now.getFullYear(),now.getMonth()-11+i,1);
+          const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          const loc=LANG==='ar'?'ar-SA-u-nu-latn':'en-US';
+          const lbl=d.toLocaleDateString(loc,{month:'long',year:'numeric'});
+          return `<option value="${ym}"${i===11?' selected':''}>${lbl}</option>`;
+        }).join('')}
+      </select>
+    </div>
+    <div id="team-income-detail" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 4px 8px"></div>
+  </div>
+
   <!-- Row 4: Setter Performance + Revenue Trend Line -->
   <div class="g22">
     <div class="card"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:8px;background:#10b98118;border:1px solid #10b98130;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg fill="none" stroke="#10b981" viewBox="0 0 24 24" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg></span>${t('anal_setter_perf')}</h3></div>
@@ -2230,6 +2302,7 @@ function renderAnalytics() {
   // init income detail with current month
   const initMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   renderIncomeDetail(initMonth);
+  renderTeamIncomeDetail(initMonth);
 
   setTimeout(()=>{
     const mnLbls = months12.map(m=>m.label);
