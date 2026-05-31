@@ -1961,7 +1961,9 @@ const STAGES=[
 // ═══════════════ ANALYTICS ═══════════════
 function setAnalyticsMonth(val) { S.analyticsMonth = val; renderAnalytics(); }
 
-function renderIncomeDetail(month) {
+function renderIncomeDetail(month, sortDir) {
+  if (sortDir !== undefined) localStorage.setItem('income_sort', sortDir);
+  const dir = localStorage.getItem('income_sort') || 'asc';
   const sel = document.getElementById('income-month-sel');
   if (sel && sel.value !== month) sel.value = month;
   const payments = [];
@@ -1972,20 +1974,49 @@ function renderIncomeDetail(month) {
         payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates });
     });
   });
-  payments.sort((a,b) => a.date.localeCompare(b.date));
+  payments.sort((a,b) => dir==='asc' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date));
   const total = payments.reduce((s,p) => s+p.amt, 0);
   const badge = document.getElementById('income-total-badge');
   const table = document.getElementById('income-detail-table');
   if (!badge || !table) return;
-  const rate = parseFloat(document.getElementById('aed-rate')?.value || localStorage.getItem('aed_rate') || '3.67');
-  const toAED = usd => (usd * rate / 1000).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' د.إ';
+  const defaultRate = parseFloat(document.getElementById('aed-rate')?.value || localStorage.getItem('aed_rate') || '3672.55');
+  const savedRates  = JSON.parse(localStorage.getItem('aed_month_rates') || '{}');
+  const getRate     = ym => parseFloat(savedRates[ym] != null ? savedRates[ym] : defaultRate);
+  const saveRate    = (ym, v) => { savedRates[ym] = v; localStorage.setItem('aed_month_rates', JSON.stringify(savedRates)); };
+  const toAED       = (usd, ym) => (usd * getRate(ym) / 1000).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' د.إ';
   const installLabel = n => LANG==='ar' ? ['الأولى','الثانية','الثالثة','الرابعة'][n-1]||n : ['1st','2nd','3rd','4th'][n-1]||n;
-  badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) + '  ·  ' + toAED(total) : '';
+
+  // unique payment months for per-date rates
+  const uniqueMonths = [...new Set(payments.map(p => p.date.slice(0,7)))].sort();
+  const sortBtn = document.getElementById('income-sort-btn');
+  if (sortBtn) sortBtn.innerHTML = `📅 ${dir==='asc'?(LANG==='ar'?'الأقدم أولاً':'Oldest first'):(LANG==='ar'?'الأحدث أولاً':'Newest first')}`;
+
+  badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) : '';
   if (!payments.length) {
     table.innerHTML = `<div style="text-align:center;padding:24px;color:var(--t3);font-size:13px">${LANG==='ar'?'لا توجد مداخيل في هذا الشهر':'No payments received this month'}</div>`;
     return;
   }
-  table.innerHTML = `
+  // per-month rates row
+  const ratesHtml = uniqueMonths.length > 1 ? `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 4px;border-bottom:1px solid var(--b1)">
+      <span style="font-size:11px;color:var(--t3);align-self:center">${LANG==='ar'?'سعر الصرف بالشهر (1000$):':'Rate per month (1000$):'}</span>
+      ${uniqueMonths.map(ym => {
+        const loc = LANG==='ar'?'ar-SA-u-nu-latn':'en-US';
+        const lbl = new Date(ym+'-01').toLocaleDateString(loc,{month:'short',year:'numeric'});
+        return `<div style="display:flex;align-items:center;gap:4px;background:var(--b1);padding:3px 8px;border-radius:7px">
+          <span style="font-size:11px;color:var(--t3)">${lbl}:</span>
+          <input type="number" min="0.01" step="0.01" value="${getRate(ym)}"
+            style="width:80px;background:transparent;border:none;outline:none;color:var(--t1);font-size:12px;font-weight:700;text-align:center"
+            oninput="(function(v){var r=JSON.parse(localStorage.getItem('aed_month_rates')||'{}');r['${ym}']=v;localStorage.setItem('aed_month_rates',JSON.stringify(r));renderIncomeDetail(document.getElementById('income-month-sel').value)})(this.value)">
+          <span style="font-size:11px;color:var(--t3)">د.إ</span>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
+  const totalAED = payments.reduce((s,p) => s + (p.amt * getRate(p.date.slice(0,7)) / 1000), 0);
+  badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) + '  ·  ' + totalAED.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' د.إ' : '';
+
+  table.innerHTML = ratesHtml + `
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead><tr style="border-bottom:1px solid var(--b1);color:var(--t3);font-size:11px">
         <th style="padding:8px 14px;text-align:right;font-weight:600">${LANG==='ar'?'العميل':'Client'}</th>
@@ -2015,12 +2046,12 @@ function renderIncomeDetail(month) {
               </div>
             </td>
             <td style="padding:10px;text-align:left;font-weight:800;color:#10b981">${fmtMoney(p.amt)}</td>
-            <td style="padding:10px 14px;text-align:left;font-weight:800;color:#f59e0b">${toAED(p.amt)}</td>
+            <td style="padding:10px 14px;text-align:left;font-weight:800;color:#f59e0b">${toAED(p.amt, p.date.slice(0,7))}</td>
           </tr>`).join('')}
         <tr style="border-top:2px solid var(--b1);font-weight:800;font-size:13px">
           <td colspan="5" style="padding:10px 14px;color:var(--t1)">${LANG==='ar'?'الإجمالي':'Total'} (${payments.length} ${LANG==='ar'?'دفعة':'payments'})</td>
           <td style="padding:10px;text-align:left;color:#10b981">${fmtMoney(total)}</td>
-          <td style="padding:10px 14px;text-align:left;color:#f59e0b">${toAED(total)}</td>
+          <td style="padding:10px 14px;text-align:left;color:#f59e0b">${totalAED.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} د.إ</td>
         </tr>
       </tbody>
     </table>`;
@@ -2130,14 +2161,18 @@ function renderAnalytics() {
             return `<option value="${ym}"${sel}>${lbl}</option>`;
           }).join('')}
         </select>
-        <div style="display:flex;align-items:center;gap:6px;background:var(--b1);padding:4px 10px;border-radius:8px;border:1px solid var(--b1)">
-          <span style="font-size:11px;color:var(--t3);white-space:nowrap">1000 $ =</span>
+        <div style="display:flex;align-items:center;gap:6px;background:var(--b1);padding:4px 10px;border-radius:8px">
+          <span style="font-size:11px;color:var(--t3);white-space:nowrap">${LANG==='ar'?'سعر افتراضي (1000$):':'Default rate (1000$):'}</span>
           <input id="aed-rate" type="number" min="0.0001" step="0.01"
             value="${localStorage.getItem('aed_rate')||'3672.55'}"
             style="width:90px;background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;font-weight:700;text-align:center"
             oninput="localStorage.setItem('aed_rate',this.value);renderIncomeDetail(document.getElementById('income-month-sel').value)">
           <span style="font-size:11px;color:var(--t3)">د.إ</span>
         </div>
+        <button onclick="renderIncomeDetail(document.getElementById('income-month-sel').value, localStorage.getItem('income_sort')==='asc'?'desc':'asc')"
+          style="background:var(--b1);border:1px solid var(--b1);border-radius:7px;padding:4px 10px;cursor:pointer;color:var(--t1);font-size:12px;display:flex;align-items:center;gap:4px" id="income-sort-btn">
+          📅 ${LANG==='ar'?'ترتيب':'Sort'}
+        </button>
         <span id="income-total-badge" style="font-weight:800;color:#10b981;font-size:13px;white-space:nowrap"></span>
       </div>
     </div>
