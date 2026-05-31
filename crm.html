@@ -1977,8 +1977,10 @@ function renderIncomeDetail(month) {
   const badge = document.getElementById('income-total-badge');
   const table = document.getElementById('income-detail-table');
   if (!badge || !table) return;
+  const rate = parseFloat(document.getElementById('aed-rate')?.value || localStorage.getItem('aed_rate') || '3.67');
+  const toAED = usd => Math.round(usd * rate).toLocaleString('en-US') + ' د.إ';
   const installLabel = n => LANG==='ar' ? ['الأولى','الثانية','الثالثة','الرابعة'][n-1]||n : ['1st','2nd','3rd','4th'][n-1]||n;
-  badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) : '';
+  badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) + '  ·  ' + toAED(total) : '';
   if (!payments.length) {
     table.innerHTML = `<div style="text-align:center;padding:24px;color:var(--t3);font-size:13px">${LANG==='ar'?'لا توجد مداخيل في هذا الشهر':'No payments received this month'}</div>`;
     return;
@@ -1991,7 +1993,8 @@ function renderIncomeDetail(month) {
         <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'الدفعة':'Install.'}</th>
         <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'طريقة الدفع':'Method'}</th>
         <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'تواريخ الدفع':'Payment Dates'}</th>
-        <th style="padding:8px 14px;text-align:left;font-weight:600">${LANG==='ar'?'المبلغ':'Amount'}</th>
+        <th style="padding:8px 10px;text-align:left;font-weight:600">${LANG==='ar'?'المبلغ $':'Amount $'}</th>
+        <th style="padding:8px 14px;text-align:left;font-weight:600;color:#f59e0b">${LANG==='ar'?'بالدرهم':'In AED'}</th>
       </tr></thead>
       <tbody>
         ${payments.map(p=>`
@@ -2011,11 +2014,13 @@ function renderIncomeDetail(month) {
                   </span>` : '').join('')}
               </div>
             </td>
-            <td style="padding:10px 14px;text-align:left;font-weight:800;color:#10b981">${fmtMoney(p.amt)}</td>
+            <td style="padding:10px;text-align:left;font-weight:800;color:#10b981">${fmtMoney(p.amt)}</td>
+            <td style="padding:10px 14px;text-align:left;font-weight:800;color:#f59e0b">${toAED(p.amt)}</td>
           </tr>`).join('')}
         <tr style="border-top:2px solid var(--b1);font-weight:800;font-size:13px">
           <td colspan="5" style="padding:10px 14px;color:var(--t1)">${LANG==='ar'?'الإجمالي':'Total'} (${payments.length} ${LANG==='ar'?'دفعة':'payments'})</td>
-          <td style="padding:10px 14px;text-align:left;color:#10b981">${fmtMoney(total)}</td>
+          <td style="padding:10px;text-align:left;color:#10b981">${fmtMoney(total)}</td>
+          <td style="padding:10px 14px;text-align:left;color:#f59e0b">${toAED(total)}</td>
         </tr>
       </tbody>
     </table>`;
@@ -2114,7 +2119,7 @@ function renderAnalytics() {
         </span>
         ${LANG==='ar'?'المداخيل الواصلة بالشهر':'Monthly Income Received'}
       </h3>
-      <div style="display:flex;align-items:center;gap:10px;margin-right:auto">
+      <div style="display:flex;align-items:center;gap:10px;margin-right:auto;flex-wrap:wrap">
         <select class="fsl" style="min-width:180px" id="income-month-sel" onchange="renderIncomeDetail(this.value)">
           ${Array.from({length:12},(_,i)=>{
             const d=new Date(now.getFullYear(),now.getMonth()-11+i,1);
@@ -2125,6 +2130,14 @@ function renderAnalytics() {
             return `<option value="${ym}"${sel}>${lbl}</option>`;
           }).join('')}
         </select>
+        <div style="display:flex;align-items:center;gap:6px;background:var(--b1);padding:4px 10px;border-radius:8px;border:1px solid var(--b1)">
+          <span style="font-size:11px;color:var(--t3);white-space:nowrap">1 $ =</span>
+          <input id="aed-rate" type="number" min="1" step="0.01"
+            value="${localStorage.getItem('aed_rate')||'3.67'}"
+            style="width:64px;background:transparent;border:none;outline:none;color:var(--t1);font-size:13px;font-weight:700;text-align:center"
+            oninput="localStorage.setItem('aed_rate',this.value);renderIncomeDetail(document.getElementById('income-month-sel').value)">
+          <span style="font-size:11px;color:var(--t3)">د.إ</span>
+        </div>
         <span id="income-total-badge" style="font-weight:800;color:#10b981;font-size:13px;white-space:nowrap"></span>
       </div>
     </div>
