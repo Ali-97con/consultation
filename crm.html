@@ -1961,9 +1961,11 @@ const STAGES=[
 // ═══════════════ ANALYTICS ═══════════════
 function setAnalyticsMonth(val) { S.analyticsMonth = val; renderAnalytics(); }
 
-function renderIncomeDetail(month, sortDir) {
-  if (sortDir !== undefined) localStorage.setItem('income_sort', sortDir);
-  const dir = localStorage.getItem('income_sort') || 'asc';
+function renderIncomeDetail(month, sortKey, sortDir) {
+  if (sortKey !== undefined) localStorage.setItem('income_sort_key', sortKey);
+  if (sortDir !== undefined) localStorage.setItem('income_sort_dir', sortDir);
+  const key = localStorage.getItem('income_sort_key') || 'date';
+  const dir = localStorage.getItem('income_sort_dir') || 'asc';
   const sel = document.getElementById('income-month-sel');
   if (sel && sel.value !== month) sel.value = month;
   const payments = [];
@@ -1974,7 +1976,10 @@ function renderIncomeDetail(month, sortDir) {
         payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates });
     });
   });
-  payments.sort((a,b) => dir==='asc' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date));
+  payments.sort((a,b) => {
+    const mul = dir==='asc' ? 1 : -1;
+    return key==='amt' ? mul*(a.amt-b.amt) : mul*a.date.localeCompare(b.date);
+  });
   const total = payments.reduce((s,p) => s+p.amt, 0);
   const badge = document.getElementById('income-total-badge');
   const table = document.getElementById('income-detail-table');
@@ -1988,8 +1993,13 @@ function renderIncomeDetail(month, sortDir) {
 
   // unique payment months for per-date rates
   const uniqueMonths = [...new Set(payments.map(p => p.date.slice(0,7)))].sort();
-  const sortBtn = document.getElementById('income-sort-btn');
-  if (sortBtn) sortBtn.innerHTML = `📅 ${dir==='asc'?(LANG==='ar'?'الأقدم أولاً':'Oldest first'):(LANG==='ar'?'الأحدث أولاً':'Newest first')}`;
+  const arrow = dir==='asc' ? ' ↑' : ' ↓';
+  const dateBtn = document.getElementById('income-sort-date-btn');
+  const amtBtn  = document.getElementById('income-sort-amt-btn');
+  if (dateBtn) dateBtn.innerHTML = `📅 ${LANG==='ar'?'التاريخ':'Date'}${key==='date'?arrow:''}`;
+  if (amtBtn)  amtBtn.innerHTML  = `💰 ${LANG==='ar'?'المبلغ':'Amount'}${key==='amt'?arrow:''}`;
+  if (dateBtn) dateBtn.style.color = key==='date' ? 'var(--p2)' : 'var(--t1)';
+  if (amtBtn)  amtBtn.style.color  = key==='amt'  ? 'var(--p2)' : 'var(--t1)';
 
   badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) : '';
   if (!payments.length) {
@@ -2151,7 +2161,7 @@ function renderAnalytics() {
         ${LANG==='ar'?'المداخيل الواصلة بالشهر':'Monthly Income Received'}
       </h3>
       <div style="display:flex;align-items:center;gap:10px;margin-right:auto;flex-wrap:wrap">
-        <select class="fsl" style="min-width:180px" id="income-month-sel" onchange="renderIncomeDetail(this.value)">
+        <select class="fsl" style="min-width:180px" id="income-month-sel" onchange="renderIncomeDetail(this.value,undefined,undefined)">
           ${Array.from({length:12},(_,i)=>{
             const d=new Date(now.getFullYear(),now.getMonth()-11+i,1);
             const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -2169,9 +2179,13 @@ function renderAnalytics() {
             oninput="localStorage.setItem('aed_rate',this.value);renderIncomeDetail(document.getElementById('income-month-sel').value)">
           <span style="font-size:11px;color:var(--t3)">د.إ</span>
         </div>
-        <button onclick="renderIncomeDetail(document.getElementById('income-month-sel').value, localStorage.getItem('income_sort')==='asc'?'desc':'asc')"
-          style="background:var(--b1);border:1px solid var(--b1);border-radius:7px;padding:4px 10px;cursor:pointer;color:var(--t1);font-size:12px;display:flex;align-items:center;gap:4px" id="income-sort-btn">
-          📅 ${LANG==='ar'?'ترتيب':'Sort'}
+        <button id="income-sort-date-btn" onclick="(function(){const m=document.getElementById('income-month-sel').value,k='date',d=localStorage.getItem('income_sort_key')==='date'?(localStorage.getItem('income_sort_dir')==='asc'?'desc':'asc'):'asc';renderIncomeDetail(m,k,d)})()"
+          style="background:var(--b1);border:1px solid var(--b1);border-radius:7px;padding:4px 10px;cursor:pointer;color:var(--t1);font-size:12px">
+          📅 ${LANG==='ar'?'التاريخ':'Date'}
+        </button>
+        <button id="income-sort-amt-btn" onclick="(function(){const m=document.getElementById('income-month-sel').value,k='amt',d=localStorage.getItem('income_sort_key')==='amt'?(localStorage.getItem('income_sort_dir')==='asc'?'desc':'asc'):'desc';renderIncomeDetail(m,k,d)})()"
+          style="background:var(--b1);border:1px solid var(--b1);border-radius:7px;padding:4px 10px;cursor:pointer;color:var(--t1);font-size:12px">
+          💰 ${LANG==='ar'?'المبلغ':'Amount'}
         </button>
         <span id="income-total-badge" style="font-weight:800;color:#10b981;font-size:13px;white-space:nowrap"></span>
       </div>
