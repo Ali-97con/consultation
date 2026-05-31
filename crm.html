@@ -1966,9 +1966,10 @@ function renderIncomeDetail(month) {
   if (sel && sel.value !== month) sel.value = month;
   const payments = [];
   clients.filter(c => !c.deleted).forEach(c => {
-    [[c.p1,c.p1d,1],[c.p2,c.p2d,2],[c.p3,c.p3d,3],[c.p4,c.p4d,4]].forEach(([amt,date,num]) => {
+    const allDates = [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]];
+    allDates.forEach(([amt,date],i) => {
       if (amt > 0 && date && date.startsWith(month))
-        payments.push({ name:c.name, plan:c.plan, num, amt, payMethod:c.payMethod||'-', date });
+        payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates });
     });
   });
   payments.sort((a,b) => a.date.localeCompare(b.date));
@@ -1989,7 +1990,7 @@ function renderIncomeDetail(month) {
         <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'الباقة':'Plan'}</th>
         <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'الدفعة':'Install.'}</th>
         <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'طريقة الدفع':'Method'}</th>
-        <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'التاريخ':'Date'}</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'تواريخ الدفع':'Payment Dates'}</th>
         <th style="padding:8px 14px;text-align:left;font-weight:600">${LANG==='ar'?'المبلغ':'Amount'}</th>
       </tr></thead>
       <tbody>
@@ -1999,7 +2000,17 @@ function renderIncomeDetail(month) {
             <td style="padding:10px;text-align:center"><span style="background:var(--pbg);color:var(--p2);padding:2px 8px;border-radius:6px;font-size:11px">${p.plan}</span></td>
             <td style="padding:10px;text-align:center;color:var(--t3)">${installLabel(p.num)}</td>
             <td style="padding:10px;text-align:center;color:var(--t3)">${p.payMethod}</td>
-            <td style="padding:10px;text-align:center;color:var(--t3)">${p.date}</td>
+            <td style="padding:10px;text-align:center">
+              <div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center">
+                ${p.allDates.map(([a,d],i)=> a>0&&d ? `
+                  <span style="font-size:10px;padding:2px 7px;border-radius:5px;white-space:nowrap;
+                    ${d.startsWith(month)
+                      ? 'background:#10b98122;color:#10b981;font-weight:700;border:1px solid #10b98140'
+                      : 'background:var(--b1);color:var(--t3)'}">
+                    ${i+1}. ${d}
+                  </span>` : '').join('')}
+              </div>
+            </td>
             <td style="padding:10px 14px;text-align:left;font-weight:800;color:#10b981">${fmtMoney(p.amt)}</td>
           </tr>`).join('')}
         <tr style="border-top:2px solid var(--b1);font-weight:800;font-size:13px">
