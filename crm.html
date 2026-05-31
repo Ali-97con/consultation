@@ -1961,6 +1961,55 @@ const STAGES=[
 // ═══════════════ ANALYTICS ═══════════════
 function setAnalyticsMonth(val) { S.analyticsMonth = val; renderAnalytics(); }
 
+function renderIncomeDetail(month) {
+  const sel = document.getElementById('income-month-sel');
+  if (sel && sel.value !== month) sel.value = month;
+  const payments = [];
+  clients.filter(c => !c.deleted).forEach(c => {
+    [[c.p1,c.p1d,1],[c.p2,c.p2d,2],[c.p3,c.p3d,3],[c.p4,c.p4d,4]].forEach(([amt,date,num]) => {
+      if (amt > 0 && date && date.startsWith(month))
+        payments.push({ name:c.name, plan:c.plan, num, amt, payMethod:c.payMethod||'-', date });
+    });
+  });
+  payments.sort((a,b) => a.date.localeCompare(b.date));
+  const total = payments.reduce((s,p) => s+p.amt, 0);
+  const badge = document.getElementById('income-total-badge');
+  const table = document.getElementById('income-detail-table');
+  if (!badge || !table) return;
+  const installLabel = n => LANG==='ar' ? ['الأولى','الثانية','الثالثة','الرابعة'][n-1]||n : ['1st','2nd','3rd','4th'][n-1]||n;
+  badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) : '';
+  if (!payments.length) {
+    table.innerHTML = `<div style="text-align:center;padding:24px;color:var(--t3);font-size:13px">${LANG==='ar'?'لا توجد مداخيل في هذا الشهر':'No payments received this month'}</div>`;
+    return;
+  }
+  table.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+      <thead><tr style="border-bottom:1px solid var(--b1);color:var(--t3);font-size:11px">
+        <th style="padding:8px 14px;text-align:right;font-weight:600">${LANG==='ar'?'العميل':'Client'}</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'الباقة':'Plan'}</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'الدفعة':'Install.'}</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'طريقة الدفع':'Method'}</th>
+        <th style="padding:8px 10px;text-align:center;font-weight:600">${LANG==='ar'?'التاريخ':'Date'}</th>
+        <th style="padding:8px 14px;text-align:left;font-weight:600">${LANG==='ar'?'المبلغ':'Amount'}</th>
+      </tr></thead>
+      <tbody>
+        ${payments.map(p=>`
+          <tr style="border-bottom:1px solid var(--b1)">
+            <td style="padding:10px 14px;font-weight:600">${p.name}</td>
+            <td style="padding:10px;text-align:center"><span style="background:var(--pbg);color:var(--p2);padding:2px 8px;border-radius:6px;font-size:11px">${p.plan}</span></td>
+            <td style="padding:10px;text-align:center;color:var(--t3)">${installLabel(p.num)}</td>
+            <td style="padding:10px;text-align:center;color:var(--t3)">${p.payMethod}</td>
+            <td style="padding:10px;text-align:center;color:var(--t3)">${p.date}</td>
+            <td style="padding:10px 14px;text-align:left;font-weight:800;color:#10b981">${fmtMoney(p.amt)}</td>
+          </tr>`).join('')}
+        <tr style="border-top:2px solid var(--b1);font-weight:800;font-size:13px">
+          <td colspan="5" style="padding:10px 14px;color:var(--t1)">${LANG==='ar'?'الإجمالي':'Total'} (${payments.length} ${LANG==='ar'?'دفعة':'payments'})</td>
+          <td style="padding:10px 14px;text-align:left;color:#10b981">${fmtMoney(total)}</td>
+        </tr>
+      </tbody>
+    </table>`;
+}
+
 function renderAnalytics() {
   const mo = S.analyticsMonth;
   const aClients = mo ? clients.filter(c=>(c.regDate||'').startsWith(mo)) : clients;
@@ -2045,6 +2094,32 @@ function renderAnalytics() {
     ].map(k=>`<div class="kpi"><div class="kpi-v" style="color:${k.c};font-size:22px">${k.v}</div><div class="kpi-l">${k.l}</div></div>`).join('')}
   </div>
 
+  <!-- Monthly Income Detail -->
+  <div class="card mb" id="income-detail-card">
+    <div class="ch" style="flex-wrap:wrap;gap:10px">
+      <h3 style="display:flex;align-items:center;gap:8px">
+        <span style="width:28px;height:28px;border-radius:8px;background:#10b98118;border:1px solid #10b98130;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg fill="none" stroke="#10b981" viewBox="0 0 24 24" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 2v1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </span>
+        ${LANG==='ar'?'المداخيل الواصلة بالشهر':'Monthly Income Received'}
+      </h3>
+      <div style="display:flex;align-items:center;gap:10px;margin-right:auto">
+        <select class="fsl" style="min-width:180px" id="income-month-sel" onchange="renderIncomeDetail(this.value)">
+          ${Array.from({length:12},(_,i)=>{
+            const d=new Date(now.getFullYear(),now.getMonth()-11+i,1);
+            const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            const loc=LANG==='ar'?'ar-SA-u-nu-latn':'en-US';
+            const lbl=d.toLocaleDateString(loc,{month:'long',year:'numeric'});
+            const sel=i===11?' selected':'';
+            return `<option value="${ym}"${sel}>${lbl}</option>`;
+          }).join('')}
+        </select>
+        <span id="income-total-badge" style="font-weight:800;color:#10b981;font-size:13px;white-space:nowrap"></span>
+      </div>
+    </div>
+    <div id="income-detail-table" style="overflow-x:auto"></div>
+  </div>
+
   <!-- Row 1: Revenue Bar + Acquisition Line -->
   <div class="g22">
     <div class="card"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:8px;background:#6366f118;border:1px solid #6366f130;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg fill="none" stroke="#6366f1" viewBox="0 0 24 24" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg></span>${t('anal_monthly_rev')}</h3></div>
@@ -2078,6 +2153,10 @@ function renderAnalytics() {
     <div class="card"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:8px;background:#8b5cf618;border:1px solid #8b5cf630;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg fill="none" stroke="#8b5cf6" viewBox="0 0 24 24" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 16l4-4 4 4 4-8"/></svg></span>${t('anal_cumulative')}</h3></div>
       <div class="cb"><canvas id="revLineC" height="150"></canvas></div></div>
   </div>`;
+
+  // init income detail with current month
+  const initMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  renderIncomeDetail(initMonth);
 
   setTimeout(()=>{
     const mnLbls = months12.map(m=>m.label);
