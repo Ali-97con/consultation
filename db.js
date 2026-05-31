@@ -71,44 +71,40 @@ async function createClient(c) {
 async function updateClient(id, patch) {
   await ready();
   const doc = await getDoc();
-  const idx = (doc?.clients || []).findIndex(x => x.id === id);
-  if (idx === -1) return null;
-  const updated = { ...doc.clients[idx], ...patch, id };
-  await Store.updateOne({}, { $set: { [`clients.${idx}`]: updated } });
+  const client = (doc?.clients || []).find(x => x.id === id);
+  if (!client) return null;
+  // never overwrite notes via this path
+  const { notes, ...safePatch } = patch;
+  const updated = { ...client, ...safePatch, id };
+  await Store.updateOne({ 'clients.id': id }, { $set: { 'clients.$': updated } });
   return updated;
 }
 
 async function updateNotes(id, notes) {
   await ready();
-  const doc = await getDoc();
-  const idx = (doc?.clients || []).findIndex(x => x.id === id);
-  if (idx === -1) return false;
-  await Store.updateOne({}, { $set: { [`clients.${idx}.notes`]: notes } });
-  return true;
+  const result = await Store.updateOne(
+    { 'clients.id': id },
+    { $set: { 'clients.$.notes': notes } }
+  );
+  return result.modifiedCount > 0;
 }
 
 async function softDelete(id) {
   await ready();
-  const doc = await getDoc();
-  const idx = (doc?.clients || []).findIndex(x => x.id === id);
-  if (idx === -1) return false;
-  await Store.updateOne({}, { $set: {
-    [`clients.${idx}.deleted`]: true,
-    [`clients.${idx}.deletedAt`]: new Date().toISOString(),
-  }});
-  return true;
+  const result = await Store.updateOne(
+    { 'clients.id': id },
+    { $set: { 'clients.$.deleted': true, 'clients.$.deletedAt': new Date().toISOString() } }
+  );
+  return result.modifiedCount > 0;
 }
 
 async function restoreClient(id) {
   await ready();
-  const doc = await getDoc();
-  const idx = (doc?.clients || []).findIndex(x => x.id === id);
-  if (idx === -1) return false;
-  await Store.updateOne({}, { $set: {
-    [`clients.${idx}.deleted`]: false,
-    [`clients.${idx}.deletedAt`]: null,
-  }});
-  return true;
+  const result = await Store.updateOne(
+    { 'clients.id': id },
+    { $set: { 'clients.$.deleted': false, 'clients.$.deletedAt': null } }
+  );
+  return result.modifiedCount > 0;
 }
 
 async function restoreAll() {

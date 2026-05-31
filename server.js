@@ -7,7 +7,7 @@ const {
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
-  getCustomPlans, addCustomPlan
+  getCustomPlans, addCustomPlan, importData
 } = require('./db');
 
 const app  = express();
@@ -178,7 +178,6 @@ app.post('/api/plans', async (req, res) => {
 });
 
 // ─── Migration endpoint (one-time use) ───────────────────────────────────────
-const { importData } = require('./db');
 app.post('/api/migrate-import', async (req, res) => {
   const { secret, data } = req.body || {};
   if (secret !== process.env.MIGRATE_SECRET) return res.status(403).json({ error: 'forbidden' });
