@@ -230,6 +230,17 @@ tbody tr.overdue-row td{border-right:2px solid var(--r)}
 .note-acts{display:flex;gap:5px;margin-top:7px}
 .note-btn{background:none;border:none;cursor:pointer;font-size:10.5px;color:var(--t3);padding:2px 6px;border-radius:5px;transition:all .15s;font-family:inherit}
 .note-btn:hover{background:var(--hv);color:var(--t1)}
+.note-item{position:relative}
+.note-txt{font-size:13px;color:var(--t1);line-height:1.65;white-space:pre-wrap;word-break:break-word;padding:6px 0 2px}
+.note-edit-mo{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:600;display:none;align-items:center;justify-content:center;padding:16px}
+.note-edit-mo.on{display:flex}
+.note-edit-box{background:var(--sf);border:1px solid var(--b2);border-radius:14px;width:480px;max-width:100%;box-shadow:0 24px 64px rgba(0,0,0,.7);animation:mIn .2s ease;overflow:hidden}
+.note-edit-hd{padding:16px 18px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px}
+.note-edit-hd h3{font-size:14px;font-weight:700;flex:1;margin:0}
+.note-edit-body{padding:20px}
+.note-edit-ta{width:100%;background:var(--hv);border:1.5px solid var(--b2);color:var(--t1);padding:12px 14px;border-radius:10px;font-size:13.5px;font-family:inherit;outline:none;resize:vertical;transition:border-color .15s;line-height:1.65;min-height:120px;box-sizing:border-box}
+.note-edit-ta:focus{border-color:var(--p)}
+.note-edit-ft{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 /* MODAL */
 .mo{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(5px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px}
 .mo.on{display:flex}
@@ -643,6 +654,23 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div class="mft">
       <button class="btn btn-g" onclick="closeModal()">إلغاء</button>
       <button class="btn btn-p" onclick="saveClient()">💾 حفظ العميل</button>
+    </div>
+  </div>
+</div>
+<!-- NOTE EDIT MODAL -->
+<div class="note-edit-mo" id="note-edit-mo" onclick="if(event.target===this)closeNoteEdit()">
+  <div class="note-edit-box">
+    <div class="note-edit-hd">
+      <div style="width:32px;height:32px;border-radius:9px;background:rgba(99,102,241,.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">✏️</div>
+      <h3>تعديل الملاحظة</h3>
+      <button class="mcls" onclick="closeNoteEdit()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div class="note-edit-body">
+      <textarea class="note-edit-ta" id="note-edit-ta" placeholder="اكتب ملاحظتك هنا..."></textarea>
+      <div class="note-edit-ft">
+        <button class="btn btn-g" onclick="closeNoteEdit()">إلغاء</button>
+        <button class="btn btn-p" onclick="saveEditNote()">💾 حفظ التعديل</button>
+      </div>
     </div>
   </div>
 </div>
@@ -3147,11 +3175,13 @@ function renderNotes(id) {
       <div class="note-hd">
         ${n.pin?'<span class="note-pin-ic">📌</span>':''}
         <span class="note-author">${n.author}</span>
+        ${n.edited?'<span style="font-size:9.5px;color:var(--p2);background:var(--pbg);padding:1px 6px;border-radius:4px">'+(LANG==='ar'?'مُعدَّل':'edited')+'</span>':''}
         <span class="note-time">${n.date}</span>
       </div>
       <div class="note-txt">${n.txt}</div>
       <div class="note-acts">
         <button class="note-btn" onclick="pinNote(${id},${n.id})">${n.pin?'📌 '+t('note_pin').replace('📍 ',''):t('note_pin')}</button>
+        <button class="note-btn" style="color:var(--p2)" onclick="editNote(${id},${n.id})">✏️ ${LANG==='ar'?'تعديل':'Edit'}</button>
         <button class="note-btn" style="color:var(--r)" onclick="delNote(${id},${n.id})">🗑️ ${LANG==='ar'?'حذف':'Delete'}</button>
       </div>
     </div>`).join('');
@@ -3186,6 +3216,36 @@ function delNote(cid, nid) {
   api('PUT', `/api/clients/${cid}/notes`, {notes:c.notes}).catch(e=>console.error(e));
   const nl=$(`notes-list-${cid}`); if(nl) nl.innerHTML=renderNotes(cid);
   toast(t('note_deleted'),'🗑️');
+}
+
+function editNote(cid, nid) {
+  const c=clients.find(x=>x.id===cid); if(!c) return;
+  const n=c.notes.find(x=>x.id===nid); if(!n) return;
+  S._editNote={cid,nid};
+  const ta=$('note-edit-ta'); if(ta) ta.value=n.txt;
+  $('note-edit-mo').classList.add('on');
+  setTimeout(()=>{ const ta=$('note-edit-ta'); if(ta){ta.focus();ta.selectionStart=ta.selectionEnd=ta.value.length;} },80);
+}
+
+function closeNoteEdit() {
+  $('note-edit-mo').classList.remove('on');
+  S._editNote=null;
+}
+
+function saveEditNote() {
+  if(!S._editNote) return;
+  const {cid,nid}=S._editNote;
+  const c=clients.find(x=>x.id===cid); if(!c) return;
+  const n=c.notes.find(x=>x.id===nid); if(!n) return;
+  const ta=$('note-edit-ta'); if(!ta) return;
+  const newTxt=ta.value.trim();
+  if(!newTxt) return;
+  n.txt=newTxt;
+  n.edited=true;
+  api('PUT', `/api/clients/${cid}/notes`, {notes:c.notes}).catch(e=>console.error(e));
+  const nl=$(`notes-list-${cid}`); if(nl) nl.innerHTML=renderNotes(cid);
+  closeNoteEdit();
+  toast(LANG==='ar'?'تم تعديل الملاحظة':'Note updated','✏️');
 }
 
 function closeDetail() { $('dp').classList.remove('on'); $('dov').classList.remove('on'); }
