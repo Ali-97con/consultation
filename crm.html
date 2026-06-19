@@ -186,24 +186,33 @@ tbody tr.overdue-row td{border-right:2px solid var(--r)}
 .ab:hover{background:var(--ac);color:var(--t1);border-color:var(--b3)}
 .ab svg{width:12px;height:12px}
 .ab.del:hover{background:var(--rbg);color:var(--r);border-color:rgba(239,68,68,.3)}
-/* DETAIL PANEL */
-.dov{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;display:none;cursor:pointer}
+/* DETAIL PANEL — centered modal */
+.dov{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(5px);z-index:300;display:none;cursor:pointer}
 .dov.on{display:block}
-.dp{position:fixed;left:0;top:0;bottom:0;width:400px;background:var(--sf);border-right:1px solid var(--b2);z-index:301;overflow-y:auto;transform:translateX(-100%);transition:transform .25s cubic-bezier(.4,0,.2,1)}
-.dp.on{transform:translateX(0)}
-.dp-hd{padding:18px;border-bottom:1px solid var(--b1);display:flex;align-items:flex-start;gap:12px}
-.dp-av{width:50px;height:50px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:#fff;flex-shrink:0}
-.dp-nm{font-size:16px;font-weight:700;margin-bottom:3px}
-.dp-ph{font-size:12px;color:var(--t3)}
-.dp-cls{margin-right:auto;width:28px;height:28px;border-radius:7px;background:var(--hv);border:1px solid var(--b2);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.dp-cls:hover{background:var(--ac);color:var(--t1)}
-.dp-cls svg{width:13px;height:13px}
-.dp-sc{padding:14px 18px;border-bottom:1px solid var(--b1)}
+.dp{position:fixed;inset:0;z-index:301;display:none;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto}
+.dp.on{display:flex}
+#dp-body{background:var(--sf);border:1px solid var(--b2);border-radius:20px;width:700px;max-width:100%;margin:auto;box-shadow:0 32px 80px rgba(0,0,0,.8);animation:dpIn .24s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden}
+@keyframes dpIn{from{opacity:0;transform:scale(.95) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.dp-hd{padding:22px 22px 18px;border-bottom:1px solid var(--b1);display:flex;align-items:flex-start;gap:14px;background:linear-gradient(135deg,rgba(99,102,241,.07) 0%,transparent 55%)}
+.dp-av{width:62px;height:62px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;flex-shrink:0;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.dp-nm{font-size:18px;font-weight:700;margin-bottom:4px}
+.dp-ph{font-size:12.5px;color:var(--t3);margin-bottom:7px;letter-spacing:.2px}
+.dp-cls{margin-right:auto;width:30px;height:30px;border-radius:8px;background:var(--hv);border:1px solid var(--b2);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.dp-cls:hover{background:var(--rbg);color:var(--r);border-color:rgba(239,68,68,.3)}
+.dp-cls svg{width:14px;height:14px}
+.dp-sc{padding:16px 22px;border-bottom:1px solid var(--b1)}
 .dp-sc:last-child{border-bottom:none}
-.dp-st{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
-.dp-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
-.dp-row:last-child{margin-bottom:0}
-.dp-k{font-size:12px;color:var(--t3)}.dp-v{font-size:12.5px;font-weight:500}
+.dp-st{font-size:10.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.9px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.dp-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.dp-row:last-child{border-bottom:none}
+.dp-k{font-size:12px;color:var(--t3)}.dp-v{font-size:13px;font-weight:500;color:var(--t1)}
+.dp2-grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--b1)}
+.dp2-col{padding:16px 22px}
+.dp2-col+.dp2-col{border-right:1px solid var(--b1)}
+.dp2-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 4px}
+.dp2-stat{background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:12px 8px;text-align:center}
+.dp2-stat-val{font-size:15px;font-weight:700;margin-bottom:3px}
+.dp2-stat-lbl{font-size:10.5px;color:var(--t3)}
 /* PAYMENT ROW */
 .pay-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--b1)}
 .pay-row:last-child{border-bottom:none}
@@ -3154,12 +3163,13 @@ function openDetail(id) {
   const instAmt = Math.round((c.customTotal||PLANS[c.plan]||0)/n);
 
   $('dp-body').innerHTML = `
+  <!-- ── HEADER ── -->
   <div class="dp-hd">
     <div class="dp-av" style="background:${col(c.ci)}">${ini(c.name)}</div>
-    <div>
+    <div style="flex:1;min-width:0">
       <div class="dp-nm">${c.name}</div>
       <div class="dp-ph">${c.phone}</div>
-      <div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
         <span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span>
         ${planBadge(c.plan)}
         ${isOverdue(c)?`<span style="font-size:11px;background:var(--rbg);color:var(--r);padding:2px 8px;border-radius:10px;font-weight:600">${t('dp_overdue')}</span>`:''}
@@ -3167,55 +3177,82 @@ function openDetail(id) {
     </div>
     <button class="dp-cls" onclick="closeDetail()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
   </div>
-  <div style="padding:12px 18px;border-bottom:1px solid var(--b1);display:flex;gap:7px">
-    <button class="btn btn-p" style="flex:1;justify-content:center;font-size:11.5px" onclick="toast(t('dp_email_sent')+' ${c.name}','📧')">${t('dp_send_email')}</button>
-    ${!isCoach()?`<button class="btn btn-g" style="flex:1;justify-content:center;font-size:11.5px" onclick="openModal(${c.id})">${t('dp_edit')}</button>`:''}
-    <button class="btn btn-r" style="flex:1;justify-content:center;font-size:11.5px" onclick="toast(t('dp_called')+' ${c.name}','📞')">${t('dp_call')}</button>
+
+  <!-- ── ACTIONS ── -->
+  <div style="padding:12px 22px;border-bottom:1px solid var(--b1);display:flex;gap:8px">
+    <button class="btn btn-p" style="flex:1;justify-content:center" onclick="toast(t('dp_email_sent')+' ${c.name}','📧')">${t('dp_send_email')}</button>
+    ${!isCoach()?`<button class="btn btn-g" style="flex:1;justify-content:center" onclick="openModal(${c.id})">${t('dp_edit')}</button>`:''}
+    <button class="btn btn-r" style="flex:1;justify-content:center" onclick="toast(t('dp_called')+' ${c.name}','📞')">${t('dp_call')}</button>
   </div>
+
+  <!-- ── INFO GRID (contact + team) ── -->
+  ${!isCoach() ? `
+  <div class="dp2-grid">
+    <div class="dp2-col">
+      <div class="dp-st">📞 ${t('dp_contact')}</div>
+      <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${c.email||'—'}</span></div>
+      <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
+    </div>
+    <div class="dp2-col">
+      <div class="dp-st">👥 ${t('dp_team')}</div>
+      <div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${c.closer||'—'}</span></div>
+      <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${c.setter||'—'}</span></div>
+    </div>
+  </div>` : `
   <div class="dp-sc">
-    <div class="dp-st">${t('dp_contact')}</div>
-    <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v">${c.email||'—'}</span></div>
+    <div class="dp-st">📞 ${t('dp_contact')}</div>
+    <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px">${c.email||'—'}</span></div>
     <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
-  </div>
-  ${!isCoach()?`<div class="dp-sc">
-    <div class="dp-st">${t('dp_team')}</div>
-    <div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${c.closer}</span></div>
-    <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${c.setter}</span></div>
-  </div>`:''}
-  ${!isCoach()?`<div class="dp-sc">
-    <div class="dp-st">${t('dp_pay_details')} — ${c.paymentType}</div>
-    <div class="dp-row"><span class="dp-k">${t('dp_pay_method')}</span><span class="dp-v">${pmBadge(c.payMethod||'—')}</span></div>
-    ${c.status === 'refunded' ? `<div style="margin:8px 0;padding:10px 14px;background:var(--rbg);border:1px dashed rgba(239,68,68,.4);border-radius:8px;color:var(--r);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="font-size:16px">💸</span><div><div>تم ارجاع المبلغ</div><div style="font-weight:400;font-size:11px;color:var(--t2);margin-top:2px">المبلغ المُسترجع: ${fmtMoney(fx(c))} — مقطوع من الإجمالي</div></div></div>` : ''}
-    ${c.discountType && c.discountType !== 'none' ? `<div class="dp-row"><span class="dp-k">السعر الأصلي</span><span class="dp-v" style="text-decoration:line-through;color:var(--t3)">${fmtMoney(PLANS[c.plan]||0)}</span></div>` : ''}
-    ${c.discountType && c.discountType !== 'none' ? `<div class="dp-row"><span class="dp-k">التخفيض</span><span class="dp-v" style="color:var(--y)">−${c.discountType === 'pct' ? c.discountValue + '%' : fmtMoney(c.discountValue)} (${fmtMoney(c.discountAmount||0)})</span></div>` : ''}
-    <div class="dp-row"><span class="dp-k">${t('dp_plan_total')}</span><span class="dp-v" style="font-weight:700;${c.discountType && c.discountType !== 'none' ? 'color:var(--g)' : ''}">${fmtMoney(c.customTotal||PLANS[c.plan]||0)}</span></div>
-    <div class="dp-row"><span class="dp-k">${t('dp_collected')}</span><span class="dp-v ${c.status==='refunded'?'rem-hi':'rem-ok'}">${c.status==='refunded'?'💸 ':''}${fmtMoney(fx(c))}</span></div>
-    <div class="dp-row"><span class="dp-k">${t('dp_remaining')}</span><span class="dp-v ${c.status==='refunded'?'':fr(c)===0?'rem-ok':isOverdue(c)?'rem-hi':'rem-mid'}">${c.status==='refunded'?'—':fr(c)===0?t('dp_fully_paid'):fmtMoney(fr(c))}</span></div>
-    <div style="margin-top:12px">
-      <div style="display:flex;gap:0;margin-bottom:14px">
+  </div>`}
+
+  <!-- ── PAYMENT (admin only) ── -->
+  ${!isCoach() ? `
+  <div class="dp-sc">
+    <div class="dp-st">💳 ${t('dp_pay_details')} — <span style="color:var(--p2);font-size:11px">${c.paymentType}</span></div>
+    ${c.status === 'refunded' ? `<div style="margin-bottom:12px;padding:10px 14px;background:var(--rbg);border:1px dashed rgba(239,68,68,.4);border-radius:9px;color:var(--r);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="font-size:18px">💸</span><div><div>تم ارجاع المبلغ</div><div style="font-weight:400;color:var(--t2);font-size:11px;margin-top:2px">المبلغ المُسترجع: ${fmtMoney(fx(c))}</div></div></div>` : ''}
+    <div class="dp2-stats">
+      <div class="dp2-stat">
+        <div class="dp2-stat-val">${fmtMoney(c.customTotal||PLANS[c.plan]||0)}</div>
+        <div class="dp2-stat-lbl">${t('dp_plan_total')}</div>
+      </div>
+      <div class="dp2-stat">
+        <div class="dp2-stat-val" style="color:${c.status==='refunded'?'var(--r)':'var(--g)'}">${fmtMoney(fx(c))}</div>
+        <div class="dp2-stat-lbl">${t('dp_collected')}</div>
+      </div>
+      <div class="dp2-stat">
+        <div class="dp2-stat-val" style="color:${c.status==='refunded'?'var(--t3)':fr(c)===0?'var(--g)':isOverdue(c)?'var(--r)':'var(--y)'}">${c.status==='refunded'?'—':fr(c)===0?'✓':fmtMoney(fr(c))}</div>
+        <div class="dp2-stat-lbl">${fr(c)===0&&c.status!=='refunded'?t('dp_fully_paid'):t('dp_remaining')}</div>
+      </div>
+    </div>
+    <div class="dp-row" style="margin-top:4px"><span class="dp-k">${t('dp_pay_method')}</span><span class="dp-v">${pmBadge(c.payMethod||'—')}</span></div>
+    ${c.discountType && c.discountType !== 'none' ? `<div class="dp-row"><span class="dp-k">السعر الأصلي</span><span class="dp-v" style="text-decoration:line-through;color:var(--t3)">${fmtMoney(PLANS[c.plan]||0)}</span></div><div class="dp-row"><span class="dp-k">التخفيض</span><span class="dp-v" style="color:var(--y)">−${c.discountType==='pct'?c.discountValue+'%':fmtMoney(c.discountValue)} (${fmtMoney(c.discountAmount||0)})</span></div>` : ''}
+    <div style="margin-top:18px">
+      <div style="display:flex">
         ${Array.from({length:n},(_,i)=>{
           const paid=!!pDates[i];
           const isNext=!paid&&pAmts.slice(0,i).every((_,j)=>!!pDates[j]);
           const clr=paid?'var(--g)':isNext&&isOverdue(c)?'var(--r)':isNext?'var(--y)':'var(--b3)';
           return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative">
-            ${i>0?`<div style="position:absolute;top:12px;right:50%;left:-50%;height:2px;background:${paid?'var(--g)':'var(--b2)'}"></div>`:''}
-            <div style="width:26px;height:26px;border-radius:50%;background:${clr};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;position:relative;z-index:1;border:2px solid var(--cd)">${paid?'✓':(i+1)}</div>
-            <div style="font-size:10px;font-weight:600;margin-top:5px;color:${clr}">${fmtMoney(pAmts[i]||instAmt)}</div>
-            <div style="font-size:9.5px;color:var(--t3);margin-top:1px">${pDates[i]?fmtDate(pDates[i]):(isNext?'⏳ التالي':'—')}</div>
+            ${i>0?`<div style="position:absolute;top:15px;right:50%;left:-50%;height:2px;background:${paid?'var(--g)':'var(--b2)'}"></div>`:''}
+            <div style="width:30px;height:30px;border-radius:50%;background:${clr};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;position:relative;z-index:1;border:2px solid var(--sf);box-shadow:0 2px 8px rgba(0,0,0,.3)">${paid?'✓':(i+1)}</div>
+            <div style="font-size:11px;font-weight:600;margin-top:7px;color:${clr}">${fmtMoney(pAmts[i]||instAmt)}</div>
+            <div style="font-size:10px;color:var(--t3);margin-top:2px">${pDates[i]?fmtDate(pDates[i]):(isNext?'⏳ التالي':'—')}</div>
           </div>`;
         }).join('')}
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;padding:8px 12px;background:var(--hv);border-radius:8px;border:1px solid var(--b1)">
-        <span style="color:var(--t2)">مدفوع: <strong style="color:var(--g)">${fmtMoney(fx(c))}</strong></span>
-        <span style="color:var(--t2)">المتبقي: <strong style="color:${fr(c)>0?'var(--r)':'var(--g)'}">${fr(c)>0?fmtMoney(fr(c)):t('dp_fully_paid')}</strong></span>
-        <span style="color:var(--t2)">التقدم: <strong style="color:var(--p2)">${(c.customTotal||PLANS[c.plan]||0)?Math.round(fx(c)/(c.customTotal||PLANS[c.plan])*100):0}%</strong></span>
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;padding:10px 14px;background:var(--hv);border-radius:10px;border:1px solid var(--b1);margin-top:16px">
+        <span>مدفوع: <strong style="color:var(--g)">${fmtMoney(fx(c))}</strong></span>
+        <span>المتبقي: <strong style="color:${fr(c)>0?'var(--r)':'var(--g)'}">${fr(c)>0?fmtMoney(fr(c)):t('dp_fully_paid')}</strong></span>
+        <span>التقدم: <strong style="color:var(--p2)">${(c.customTotal||PLANS[c.plan]||0)?Math.round(fx(c)/(c.customTotal||PLANS[c.plan])*100):0}%</strong></span>
       </div>
     </div>
-  </div>`:''}
+  </div>` : ''}
+
+  <!-- ── NOTES ── -->
   <div class="dp-sc">
-    <div class="dp-st">${t('dp_notes')} <span style="color:var(--t3);font-weight:400;font-size:10px">(${c.notes.length} ${t('dp_note_count')})</span></div>
+    <div class="dp-st">📝 ${t('dp_notes')} <span style="font-size:10px;color:var(--t3);font-weight:400;text-transform:none;letter-spacing:0">(${c.notes.length})</span></div>
     <div class="note-add">
-      <textarea id="note-inp-${id}" rows="2" placeholder="${t('dp_note_placeholder')}"></textarea>
+      <textarea id="note-inp-${id}" rows="3" placeholder="${t('dp_note_placeholder')}"></textarea>
       <button class="btn btn-p" onclick="addNote(${id})" style="align-self:flex-end">${t('dp_note_add')}</button>
     </div>
     <div id="notes-list-${id}">${renderNotes(id)}</div>
