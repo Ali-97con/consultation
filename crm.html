@@ -1259,8 +1259,8 @@ function isCoach() {
 
 function applyCoachRestrictions() {
   if (!isCoach()) return;
-  // Hide nav: analytics, team, trash + orphaned section headers
-  ['analytics','team','trash'].forEach(v => {
+  // Hide nav: overview, analytics, team, trash + orphaned section headers
+  ['overview','analytics','team','trash'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1323,7 +1323,7 @@ async function initApp() {
     const ldr = $('app-loader');
     if (ldr) { ldr.classList.add('hide'); setTimeout(()=>ldr.remove(), 500); }
     applyCoachRestrictions();
-    renderOverview();
+    if (isCoach()) nav('clients'); else renderOverview();
   } catch(e) {
     console.error(e);
     const msg = 'فشل الاتصال بالخادم — تأكد من تشغيل: <b>node server.js</b>';
@@ -1476,6 +1476,7 @@ function updateStaticText() {
 // ═══════════════ NAVIGATION ═══════════════
 
 function nav(v) {
+  if (isCoach() && v === 'overview') v = 'clients';
   destroyCharts(); S.view = v;
   document.querySelectorAll('.nl').forEach(n => n.classList.toggle('on', n.dataset.v === v));
   document.querySelectorAll('.pg').forEach(p => p.classList.remove('on'));
@@ -3256,7 +3257,8 @@ function addNote(cid) {
   if (!c) return;
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  c.notes.push({ id:Date.now(), txt:inp.value.trim(), date:dateStr, author:'مدير النظام', pin:false });
+  const noteAuthor = (()=>{ try { return sessionStorage.getItem('ah97_user')||'مدير النظام'; } catch(_){return 'مدير النظام';} })();
+  c.notes.push({ id:Date.now(), txt:inp.value.trim(), date:dateStr, author:noteAuthor, pin:false });
   api('PUT', `/api/clients/${cid}/notes`, {notes:c.notes}).catch(e=>console.error(e));
   inp.value = '';
   const nl=$(`notes-list-${cid}`); if(nl) nl.innerHTML=renderNotes(cid);
