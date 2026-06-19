@@ -1253,6 +1253,45 @@ function renderActivityFeed() {
 // ═══════════════ STATE ═══════════════
 const S = { view:'overview', sortK:'name', sortD:1, sel:new Set(), page:1, pp:10, charts:{}, editId:null, activeTab:0, analyticsMonth:'', hiddenCols:new Set() };
 
+function isCoach() {
+  try { return sessionStorage.getItem('ah97_role') === 'coach'; } catch(_) { return false; }
+}
+
+function applyCoachRestrictions() {
+  if (!isCoach()) return;
+  // Hide nav: analytics, team, trash + orphaned section headers
+  ['analytics','team','trash'].forEach(v => {
+    const el = document.querySelector(`.nl[data-v="${v}"]`);
+    if (el) el.style.display = 'none';
+  });
+  ['ns-team','ns-sys'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  // Hide topbar action buttons (add client, print, export)
+  document.querySelectorAll('button').forEach(btn => {
+    const oc = btn.getAttribute('onclick') || '';
+    if (oc === 'openModal()' || oc === 'window.print()' || oc === 'exportCSV()') btn.style.display = 'none';
+  });
+  // Hide bulk delete
+  const bulkDel = document.querySelector('.btn-r[onclick="bulkDelete()"]');
+  if (bulkDel) bulkDel.style.display = 'none';
+  // Pre-hide restricted table columns
+  ['paytype','collected','remaining','closer','setter'].forEach(k => S.hiddenCols.add(k));
+  // Hide filter dropdowns
+  ['f-closer','f-setter','f-pay'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+  // Hide column toggle panel items for restricted columns
+  ['paytype','collected','remaining','closer','setter'].forEach(k => {
+    const el = document.querySelector(`[onclick="toggleCol('${k}')"]`);
+    if (el) el.style.display = 'none';
+  });
+  // Update sidebar user info
+  const username = sessionStorage.getItem('ah97_user') || 'Coach';
+  const uNm = document.querySelector('.u-nm');
+  const uRl = document.querySelector('.u-rl');
+  const uAv = document.querySelector('.u-av');
+  if (uNm) uNm.textContent = username;
+  if (uRl) uRl.textContent = 'Coach · AH97';
+  if (uAv) uAv.textContent = (username[0] || 'C').toUpperCase();
+}
+
 // ═══════════════ API CLIENT ═══════════════
 async function api(method, url, body) {
   const res = await fetch(url, {
@@ -1283,6 +1322,7 @@ async function initApp() {
     $('cnt-badge').textContent = clients.length;
     const ldr = $('app-loader');
     if (ldr) { ldr.classList.add('hide'); setTimeout(()=>ldr.remove(), 500); }
+    applyCoachRestrictions();
     renderOverview();
   } catch(e) {
     console.error(e);
@@ -1893,8 +1933,8 @@ function renderTable() {
       <td style="font-size:11.5px;color:var(--t2);${S.hiddenCols.has('regDate')?'display:none':''}">${fmtDate(c.regDate)}</td>
       <td><div class="tda">
         <button class="ab" onclick="openDetail(${c.id})" title="تفاصيل"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
-        <button class="ab" onclick="openModal(${c.id})" title="تعديل"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
-        <button class="ab del" onclick="delClient(${c.id})" title="حذف"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+        ${!isCoach()?`<button class="ab" onclick="openModal(${c.id})" title="تعديل"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
+        <button class="ab del" onclick="delClient(${c.id})" title="حذف"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>`:''}
       </div></td>
     </tr>`;
   }).join('');
@@ -3128,7 +3168,7 @@ function openDetail(id) {
   </div>
   <div style="padding:12px 18px;border-bottom:1px solid var(--b1);display:flex;gap:7px">
     <button class="btn btn-p" style="flex:1;justify-content:center;font-size:11.5px" onclick="toast(t('dp_email_sent')+' ${c.name}','📧')">${t('dp_send_email')}</button>
-    <button class="btn btn-g" style="flex:1;justify-content:center;font-size:11.5px" onclick="openModal(${c.id})">${t('dp_edit')}</button>
+    ${!isCoach()?`<button class="btn btn-g" style="flex:1;justify-content:center;font-size:11.5px" onclick="openModal(${c.id})">${t('dp_edit')}</button>`:''}
     <button class="btn btn-r" style="flex:1;justify-content:center;font-size:11.5px" onclick="toast(t('dp_called')+' ${c.name}','📞')">${t('dp_call')}</button>
   </div>
   <div class="dp-sc">
@@ -3136,12 +3176,12 @@ function openDetail(id) {
     <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v">${c.email||'—'}</span></div>
     <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
   </div>
-  <div class="dp-sc">
+  ${!isCoach()?`<div class="dp-sc">
     <div class="dp-st">${t('dp_team')}</div>
     <div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${c.closer}</span></div>
     <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${c.setter}</span></div>
-  </div>
-  <div class="dp-sc">
+  </div>`:''}
+  ${!isCoach()?`<div class="dp-sc">
     <div class="dp-st">${t('dp_pay_details')} — ${c.paymentType}</div>
     <div class="dp-row"><span class="dp-k">${t('dp_pay_method')}</span><span class="dp-v">${pmBadge(c.payMethod||'—')}</span></div>
     ${c.status === 'refunded' ? `<div style="margin:8px 0;padding:10px 14px;background:var(--rbg);border:1px dashed rgba(239,68,68,.4);border-radius:8px;color:var(--r);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="font-size:16px">💸</span><div><div>تم ارجاع المبلغ</div><div style="font-weight:400;font-size:11px;color:var(--t2);margin-top:2px">المبلغ المُسترجع: ${fmtMoney(fx(c))} — مقطوع من الإجمالي</div></div></div>` : ''}
@@ -3170,7 +3210,7 @@ function openDetail(id) {
         <span style="color:var(--t2)">التقدم: <strong style="color:var(--p2)">${(c.customTotal||PLANS[c.plan]||0)?Math.round(fx(c)/(c.customTotal||PLANS[c.plan])*100):0}%</strong></span>
       </div>
     </div>
-  </div>
+  </div>`:''}
   <div class="dp-sc">
     <div class="dp-st">${t('dp_notes')} <span style="color:var(--t3);font-weight:400;font-size:10px">(${c.notes.length} ${t('dp_note_count')})</span></div>
     <div class="note-add">

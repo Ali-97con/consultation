@@ -20,8 +20,11 @@ app.use(express.static(__dirname));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'crm.html')));
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
-const AUTH_USER = process.env.LOGIN_USER || 'admin';
-const AUTH_PASS = process.env.LOGIN_PASS || 'password';
+const ACCOUNTS = [
+  { username: process.env.LOGIN_USER  || 'admin',  password: process.env.LOGIN_PASS  || 'password', role: 'admin'  },
+  { username: process.env.COACH1_USER || 'coach1', password: process.env.COACH1_PASS || 'abusharbi', role: 'coach' },
+  { username: process.env.COACH2_USER || 'coach2', password: process.env.COACH2_PASS || 'taha',      role: 'coach' },
+];
 
 function safeEq(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
@@ -33,9 +36,11 @@ function safeEq(a, b) {
 
 app.post('/api/auth/login', (req, res) => {
   const { username = '', password = '' } = req.body || {};
-  const ok = safeEq(String(username).trim(), AUTH_USER) && safeEq(String(password), AUTH_PASS);
-  if (!ok) return res.status(401).json({ ok: false, error: 'بيانات الدخول غير صحيحة' });
-  res.json({ ok: true });
+  const u = String(username).trim();
+  const p = String(password);
+  const account = ACCOUNTS.find(a => safeEq(u, a.username) && safeEq(p, a.password));
+  if (!account) return res.status(401).json({ ok: false, error: 'بيانات الدخول غير صحيحة' });
+  res.json({ ok: true, role: account.role, username: account.username });
 });
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
