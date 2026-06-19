@@ -3156,31 +3156,71 @@ function renderTrash() {
 }
 
 // ═══════════════ CALLS WIDGET ═══════════════
-function callsWidget(id, val) {
-  return `<span style="display:flex;align-items:center;gap:5px">
-    <button onclick="adjustCalls(${id},-1)" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--b2);background:var(--hv);color:var(--t2);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--rbg)';this.style.color='var(--r)'" onmouseout="this.style.background='var(--hv)';this.style.color='var(--t2)'">−</button>
-    <input type="number" id="calls-inp-${id}" value="${val}" min="0" onchange="saveCalls(${id})" style="width:52px;text-align:center;background:var(--hv);border:1px solid var(--b2);color:var(--t1);border-radius:6px;padding:3px 4px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--p)'" onblur="this.style.borderColor='var(--b2)';saveCalls(${id})"/>
-    <button onclick="adjustCalls(${id},+1)" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--b2);background:var(--hv);color:var(--t2);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--gbg)';this.style.color='var(--g)'" onmouseout="this.style.background='var(--hv)';this.style.color='var(--t2)'">+</button>
+function _cBtn(onclick, lbl, hoverBg, hoverClr) {
+  return `<button onclick="${onclick}" style="width:20px;height:20px;border-radius:4px;border:1px solid var(--b2);background:var(--hv);color:var(--t2);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;padding:0" onmouseover="this.style.background='${hoverBg}';this.style.color='${hoverClr}'" onmouseout="this.style.background='var(--hv)';this.style.color='var(--t2)'">${lbl}</button>`;
+}
+function _cInp(id, key, val) {
+  return `<input type="number" id="calls-${key}-${id}" value="${val}" min="0" onchange="saveCalls(${id})" onblur="saveCalls(${id})" style="width:40px;text-align:center;background:var(--hv);border:1px solid var(--b2);color:var(--t1);border-radius:5px;padding:2px 3px;font-size:12.5px;font-family:inherit;outline:none" onfocus="this.style.borderColor='var(--p)'" />`;
+}
+
+function callsWidget(id, done, total) {
+  const rem = Math.max(0, total - done);
+  const badge = total === 0 ? '' :
+    rem === 0
+      ? `<span id="calls-badge-${id}" style="font-size:11px;background:var(--gbg);color:var(--g);padding:2px 8px;border-radius:5px;font-weight:600">✓ مكتمل</span>`
+      : `<span id="calls-badge-${id}" style="font-size:11px;background:rgba(245,158,11,.12);color:var(--y);padding:2px 8px;border-radius:5px;font-weight:600">متبقي ${rem}</span>`;
+  return `<span style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+    <span style="font-size:10.5px;color:var(--t3)">منجزة</span>
+    ${_cBtn(`adjustCalls(${id},'done',-1)`,'−','var(--rbg)','var(--r)')}
+    ${_cInp(id,'done',done)}
+    ${_cBtn(`adjustCalls(${id},'done',+1)`,'+',' var(--gbg)','var(--g)')}
+    <span style="color:var(--b3);margin:0 2px">/</span>
+    <span style="font-size:10.5px;color:var(--t3)">المجموع</span>
+    ${_cBtn(`adjustCalls(${id},'total',-1)`,'−','var(--rbg)','var(--r)')}
+    ${_cInp(id,'total',total)}
+    ${_cBtn(`adjustCalls(${id},'total',+1)`,'+',' var(--gbg)','var(--g)')}
+    ${badge}
   </span>`;
 }
 
-function adjustCalls(id, delta) {
+function _refreshCallsBadge(id) {
   const c = clients.find(x=>x.id===id); if(!c) return;
-  const inp = $(`calls-inp-${id}`); if(!inp) return;
-  const newVal = Math.max(0, (c.calls||0) + delta);
-  c.calls = newVal;
-  inp.value = newVal;
-  api('PUT', `/api/clients/${id}`, {calls: newVal}).catch(e=>console.error(e));
+  const done = c.callsDone||0, total = c.callsTotal||0, rem = Math.max(0, total-done);
+  const badge = $(`calls-badge-${id}`);
+  if (!badge && total === 0) return;
+  const html = total === 0 ? '' :
+    rem === 0
+      ? `<span id="calls-badge-${id}" style="font-size:11px;background:var(--gbg);color:var(--g);padding:2px 8px;border-radius:5px;font-weight:600">✓ مكتمل</span>`
+      : `<span id="calls-badge-${id}" style="font-size:11px;background:rgba(245,158,11,.12);color:var(--y);padding:2px 8px;border-radius:5px;font-weight:600">متبقي ${rem}</span>`;
+  if (badge) badge.outerHTML = html || '';
+  else {
+    const wrap = document.getElementById(`calls-done-${id}`)?.closest('span');
+    if (wrap && html) wrap.insertAdjacentHTML('beforeend', html);
+  }
+}
+
+function adjustCalls(id, key, delta) {
+  const c = clients.find(x=>x.id===id); if(!c) return;
+  const field = key === 'done' ? 'callsDone' : 'callsTotal';
+  const newVal = Math.max(0, (c[field]||0) + delta);
+  c[field] = newVal;
+  const inp = $(`calls-${key}-${id}`); if(inp) inp.value = newVal;
+  _refreshCallsBadge(id);
+  api('PUT', `/api/clients/${id}`, {[field]: newVal}).catch(e=>console.error(e));
 }
 
 function saveCalls(id) {
   const c = clients.find(x=>x.id===id); if(!c) return;
-  const inp = $(`calls-inp-${id}`); if(!inp) return;
-  const newVal = Math.max(0, parseInt(inp.value)||0);
-  if (newVal === (c.calls||0)) return;
-  c.calls = newVal;
-  inp.value = newVal;
-  api('PUT', `/api/clients/${id}`, {calls: newVal}).catch(e=>console.error(e));
+  let changed = false;
+  ['done','total'].forEach(key => {
+    const field = key === 'done' ? 'callsDone' : 'callsTotal';
+    const inp = $(`calls-${key}-${id}`); if(!inp) return;
+    const newVal = Math.max(0, parseInt(inp.value)||0);
+    if (newVal !== (c[field]||0)) { c[field] = newVal; inp.value = newVal; changed = true; }
+  });
+  if (!changed) return;
+  _refreshCallsBadge(id);
+  api('PUT', `/api/clients/${id}`, {callsDone: c.callsDone||0, callsTotal: c.callsTotal||0}).catch(e=>console.error(e));
 }
 
 // ═══════════════ DETAIL PANEL ═══════════════
@@ -3220,7 +3260,7 @@ function openDetail(id) {
       <div class="dp-st">📞 ${t('dp_contact')}</div>
       <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${c.email||'—'}</span></div>
       <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
-      <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.calls||0)}</span></div>
+      <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.callsDone||0, c.callsTotal||0)}</span></div>
     </div>
     <div class="dp2-col">
       <div class="dp-st">👥 ${t('dp_team')}</div>
@@ -3232,7 +3272,7 @@ function openDetail(id) {
     <div class="dp-st">📞 ${t('dp_contact')}</div>
     <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px">${c.email||'—'}</span></div>
     <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
-    <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.calls||0)}</span></div>
+    <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.callsDone||0, c.callsTotal||0)}</span></div>
   </div>`}
 
   <!-- ── PAYMENT (admin only) ── -->
