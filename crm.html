@@ -3155,6 +3155,34 @@ function renderTrash() {
   </div>` : ''}`;
 }
 
+// ═══════════════ CALLS WIDGET ═══════════════
+function callsWidget(id, val) {
+  return `<span style="display:flex;align-items:center;gap:5px">
+    <button onclick="adjustCalls(${id},-1)" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--b2);background:var(--hv);color:var(--t2);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--rbg)';this.style.color='var(--r)'" onmouseout="this.style.background='var(--hv)';this.style.color='var(--t2)'">−</button>
+    <input type="number" id="calls-inp-${id}" value="${val}" min="0" onchange="saveCalls(${id})" style="width:52px;text-align:center;background:var(--hv);border:1px solid var(--b2);color:var(--t1);border-radius:6px;padding:3px 4px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s" onfocus="this.style.borderColor='var(--p)'" onblur="this.style.borderColor='var(--b2)';saveCalls(${id})"/>
+    <button onclick="adjustCalls(${id},+1)" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--b2);background:var(--hv);color:var(--t2);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--gbg)';this.style.color='var(--g)'" onmouseout="this.style.background='var(--hv)';this.style.color='var(--t2)'">+</button>
+  </span>`;
+}
+
+function adjustCalls(id, delta) {
+  const c = clients.find(x=>x.id===id); if(!c) return;
+  const inp = $(`calls-inp-${id}`); if(!inp) return;
+  const newVal = Math.max(0, (c.calls||0) + delta);
+  c.calls = newVal;
+  inp.value = newVal;
+  api('PUT', `/api/clients/${id}`, {calls: newVal}).catch(e=>console.error(e));
+}
+
+function saveCalls(id) {
+  const c = clients.find(x=>x.id===id); if(!c) return;
+  const inp = $(`calls-inp-${id}`); if(!inp) return;
+  const newVal = Math.max(0, parseInt(inp.value)||0);
+  if (newVal === (c.calls||0)) return;
+  c.calls = newVal;
+  inp.value = newVal;
+  api('PUT', `/api/clients/${id}`, {calls: newVal}).catch(e=>console.error(e));
+}
+
 // ═══════════════ DETAIL PANEL ═══════════════
 function openDetail(id) {
   const c = clients.find(x=>x.id===id);
@@ -3192,6 +3220,7 @@ function openDetail(id) {
       <div class="dp-st">📞 ${t('dp_contact')}</div>
       <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${c.email||'—'}</span></div>
       <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
+      <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.calls||0)}</span></div>
     </div>
     <div class="dp2-col">
       <div class="dp-st">👥 ${t('dp_team')}</div>
@@ -3203,6 +3232,7 @@ function openDetail(id) {
     <div class="dp-st">📞 ${t('dp_contact')}</div>
     <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px">${c.email||'—'}</span></div>
     <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
+    <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.calls||0)}</span></div>
   </div>`}
 
   <!-- ── PAYMENT (admin only) ── -->
