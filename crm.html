@@ -410,6 +410,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       أداء الفريق
     </div>
     <div class="ns" id="ns-sys">النظام</div>
+    <div class="nl" data-v="users" id="nl-users">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+      المستخدمون
+    </div>
     <div class="nl" data-v="trash">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color:var(--r)"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
       سلة المهملات
@@ -553,6 +557,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   </div>
   <div class="pg" id="pg-analytics"></div>
   <div class="pg" id="pg-team"></div>
+  <div class="pg" id="pg-users"></div>
   <div class="pg" id="pg-trash"></div>
 </main>
 <!-- TEAM MEMBER MODAL -->
@@ -995,8 +1000,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171' };
@@ -1293,8 +1298,8 @@ function closeMobMenu() {
 
 function applyCoachRestrictions() {
   if (!isCoach()) return;
-  // Hide nav: overview, analytics, team, trash + orphaned section headers
-  ['overview','analytics','team','trash'].forEach(v => {
+  // Hide nav: overview, analytics, team, users, trash + orphaned section headers
+  ['overview','analytics','team','users','trash'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1327,12 +1332,17 @@ function applyCoachRestrictions() {
 }
 
 // ═══════════════ API CLIENT ═══════════════
+function getToken() {
+  try { return sessionStorage.getItem('ah97_token') || ''; } catch(_) { return ''; }
+}
+
 async function api(method, url, body) {
   const res = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
     body: body !== undefined ? JSON.stringify(body) : undefined
   });
+  if (res.status === 401) { doLogout(); return; }
   if (!res.ok) { const t = await res.text(); throw new Error(t); }
   return res.json();
 }
@@ -1518,7 +1528,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -3760,9 +3770,144 @@ async function saveClient() {
   $('cnt-badge').textContent=clients.length;
 }
 
+// ═══════════════ USERS ═══════════════
+async function renderUsers() {
+  const pg = $('pg-users');
+  pg.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;padding:60px"><div class="skel" style="width:60px;height:60px;border-radius:50%"></div></div>`;
+  let users;
+  try { users = await api('GET', '/api/users'); } catch(e) { pg.innerHTML = `<div style="padding:40px;color:var(--r)">${esc(e.message)}</div>`; return; }
+  if (!users) return;
+
+  const roleLabel = r => r === 'admin' ? `<span style="background:var(--pbg);color:var(--p2);padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">مشرف</span>` : `<span style="background:var(--gbg);color:var(--g);padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">Coach</span>`;
+  const currentUser = (()=>{ try{return sessionStorage.getItem('ah97_user');}catch(_){return '';} })();
+
+  const rows = users.map(u => `
+    <tr>
+      <td style="padding:13px 16px;font-weight:600">${esc(u.username)}</td>
+      <td style="padding:13px 16px">${roleLabel(u.role)}</td>
+      <td style="padding:13px 16px;font-size:11px;color:var(--t3)">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('ar-SA-u-nu-latn') : '—'}</td>
+      <td style="padding:13px 16px;text-align:left">
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          <button class="btn" style="padding:5px 12px;font-size:11px" onclick="openEditUser('${esc(u.username)}','${u.role}')">تعديل</button>
+          ${u.username !== currentUser ? `<button class="btn btn-r" style="padding:5px 12px;font-size:11px" onclick="deleteUserUI('${esc(u.username)}')">حذف</button>` : `<span style="font-size:11px;color:var(--t3);padding:5px 8px">(أنت)</span>`}
+        </div>
+      </td>
+    </tr>`).join('');
+
+  pg.innerHTML = `
+    <div style="padding:22px 26px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div>
+          <div style="font-size:16px;font-weight:700">إدارة المستخدمين</div>
+          <div style="font-size:12px;color:var(--t3);margin-top:2px">${users.length} مستخدم — مخزّنون في MongoDB</div>
+        </div>
+        <button class="btn btn-p" onclick="openAddUser()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          مستخدم جديد
+        </button>
+      </div>
+      <div class="card" style="overflow:hidden;padding:0">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+              <th style="padding:11px 16px;font-size:11px;font-weight:600;color:var(--t3);text-align:right">اسم المستخدم</th>
+              <th style="padding:11px 16px;font-size:11px;font-weight:600;color:var(--t3);text-align:right">الدور</th>
+              <th style="padding:11px 16px;font-size:11px;font-weight:600;color:var(--t3);text-align:right">تاريخ الإنشاء</th>
+              <th style="padding:11px 16px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <!-- Add/Edit User Modal -->
+    <div id="user-mo" style="position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:600;display:none;align-items:center;justify-content:center;padding:16px">
+      <div style="background:var(--sf);border:1px solid var(--b2);border-radius:16px;width:420px;max-width:100%;padding:24px">
+        <div style="font-size:15px;font-weight:700;margin-bottom:18px" id="user-mo-title">مستخدم جديد</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <label style="font-size:11px;color:var(--t3);display:block;margin-bottom:5px">اسم المستخدم</label>
+            <input id="u-name" type="text" placeholder="username" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--b2);border-radius:8px;padding:9px 12px;color:var(--t1);font-size:13px;direction:ltr"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--t3);display:block;margin-bottom:5px">كلمة المرور <span id="u-pass-hint" style="color:var(--t3);font-weight:400">(اتركها فارغة للإبقاء على الحالية)</span></label>
+            <input id="u-pass" type="password" placeholder="••••••••" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--b2);border-radius:8px;padding:9px 12px;color:var(--t1);font-size:13px;direction:ltr"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--t3);display:block;margin-bottom:5px">الدور</label>
+            <select id="u-role" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--b2);border-radius:8px;padding:9px 12px;color:var(--t1);font-size:13px">
+              <option value="coach">Coach — يرى العملاء والملاحظات فقط</option>
+              <option value="admin">مشرف — صلاحيات كاملة</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:20px">
+          <button class="btn btn-p" style="flex:1;justify-content:center" id="u-save-btn" onclick="saveUserUI()">حفظ</button>
+          <button class="btn" style="flex:1;justify-content:center" onclick="closeUserMo()">إلغاء</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+let _editingUsername = null;
+function openAddUser() {
+  _editingUsername = null;
+  $('user-mo-title').textContent = 'مستخدم جديد';
+  $('u-name').value = ''; $('u-name').disabled = false;
+  $('u-pass').value = ''; $('u-pass-hint').style.display = 'none';
+  $('u-role').value = 'coach';
+  $('user-mo').style.display = 'flex';
+}
+function openEditUser(username, role) {
+  _editingUsername = username;
+  $('user-mo-title').textContent = 'تعديل المستخدم';
+  $('u-name').value = username; $('u-name').disabled = true;
+  $('u-pass').value = ''; $('u-pass-hint').style.display = '';
+  $('u-role').value = role;
+  $('user-mo').style.display = 'flex';
+}
+function closeUserMo() { $('user-mo').style.display = 'none'; }
+
+async function saveUserUI() {
+  const username = $('u-name').value.trim();
+  const password = $('u-pass').value;
+  const role     = $('u-role').value;
+  if (!username) { toast('أدخل اسم المستخدم','❌'); return; }
+  if (!_editingUsername && !password) { toast('كلمة المرور مطلوبة للمستخدم الجديد','❌'); return; }
+  const btn = $('u-save-btn'); btn.disabled = true; btn.textContent = '...';
+  try {
+    if (_editingUsername) {
+      await api('PUT', `/api/users/${encodeURIComponent(_editingUsername)}`, { password: password||undefined, role });
+      toast('تم تحديث المستخدم ✓', '✅');
+    } else {
+      await api('POST', '/api/users', { username, password, role });
+      toast('تم إنشاء المستخدم ✓', '✅');
+    }
+    closeUserMo();
+    renderUsers();
+  } catch(e) { toast('خطأ: ' + e.message, '❌'); }
+  btn.disabled = false; btn.textContent = 'حفظ';
+}
+
+async function deleteUserUI(username) {
+  if (!confirm(`حذف المستخدم "${username}"؟ لا يمكن التراجع.`)) return;
+  try {
+    await api('DELETE', `/api/users/${encodeURIComponent(username)}`);
+    toast('تم حذف المستخدم', '🗑️');
+    renderUsers();
+  } catch(e) { toast('خطأ: ' + e.message, '❌'); }
+}
+
 // ═══════════════ LOGOUT ═══════════════
 function doLogout() {
-  try { sessionStorage.removeItem('ah97_authed'); } catch(_) {}
+  try {
+    const token = getToken();
+    if (token) fetch('/api/auth/logout', { method:'POST', headers:{ 'Authorization':'Bearer '+token } }).catch(()=>{});
+    sessionStorage.removeItem('ah97_authed');
+    sessionStorage.removeItem('ah97_token');
+    sessionStorage.removeItem('ah97_role');
+    sessionStorage.removeItem('ah97_user');
+  } catch(_) {}
   window.location.replace('/splash.html');
 }
 

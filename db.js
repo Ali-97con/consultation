@@ -1,5 +1,6 @@
 'use strict';
 const mongoose = require('mongoose');
+const crypto   = require('crypto');
 
 // ─── Connection (cached for serverless) ───────────────────────────────────────
 let cachedConn = null;
@@ -8,7 +9,88 @@ async function connectDB() {
   cachedConn = await mongoose.connect(process.env.MONGODB_URI);
 }
 
-// ─── Schema ────────────────────────────────────────────────────────────────────
+// ─── User schema (separate collection) ───────────────────────────────────────
+const UserSchema = new mongoose.Schema({
+  username:     { type: String, unique: true, required: true, trim: true, lowercase: true },
+  passwordHash: { type: String, required: true },
+  role:         { type: String, enum: ['admin', 'coach'], default: 'coach' },
+  createdAt:    { type: String, default: () => new Date().toISOString() },
+});
+const User = mongoose.models.User || mongoose.model('User', UserSchema);
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  const parts = (stored || '').split(':');
+  if (parts.length !== 2) return false;
+  const [salt, hash] = parts;
+  try {
+    const derived = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
+    if (derived.length !== hash.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(derived, 'hex'), Buffer.from(hash, 'hex'));
+  } catch { return false; }
+}
+
+// Seeds initial accounts from env vars on first boot
+let userSeedPromise = null;
+async function ensureUsers() {
+  await connectDB();
+  const count = await User.countDocuments();
+  if (count === 0) {
+    const defaults = [
+      { username: (process.env.LOGIN_USER  || 'admin').toLowerCase().trim(),  password: process.env.LOGIN_PASS  || 'password', role: 'admin' },
+      { username: (process.env.COACH1_USER || 'coach1').toLowerCase().trim(), password: process.env.COACH1_PASS || 'abusharbi', role: 'coach' },
+      { username: (process.env.COACH2_USER || 'coach2').toLowerCase().trim(), password: process.env.COACH2_PASS || 'taha',      role: 'coach' },
+    ];
+    for (const u of defaults) {
+      await User.create({ username: u.username, passwordHash: hashPassword(u.password), role: u.role });
+    }
+    console.log('✅ Seeded initial users');
+  }
+}
+const usersReady = () => { if (!userSeedPromise) userSeedPromise = ensureUsers(); return userSeedPromise; };
+
+// User CRUD
+const findUserByUsername = async (username) => {
+  await usersReady();
+  return User.findOne({ username: String(username).toLowerCase().trim() }).lean();
+};
+
+const getUsers = async () => {
+  await usersReady();
+  return User.find({}, { passwordHash: 0, __v: 0 }).lean();
+};
+
+const createUser = async (username, password, role) => {
+  await usersReady();
+  const u = String(username).toLowerCase().trim();
+  const exists = await User.findOne({ username: u });
+  if (exists) return false;
+  await User.create({ username: u, passwordHash: hashPassword(password), role });
+  return true;
+};
+
+const updateUser = async (username, { password, role }) => {
+  await usersReady();
+  const update = {};
+  if (password) update.passwordHash = hashPassword(password);
+  if (role)     update.role = role;
+  if (!Object.keys(update).length) return false;
+  const r = await User.updateOne({ username: String(username).toLowerCase().trim() }, { $set: update });
+  return r.modifiedCount > 0;
+};
+
+const deleteUser = async (username) => {
+  await usersReady();
+  const r = await User.deleteOne({ username: String(username).toLowerCase().trim() });
+  return r.deletedCount > 0;
+};
+
+// ─── Store schema ─────────────────────────────────────────────────────────────
 const StoreSchema = new mongoose.Schema({
   clients:      [mongoose.Schema.Types.Mixed],
   closers:      [String],
@@ -461,10 +543,15 @@ async function importData(data) {
 }
 
 module.exports = {
+  // Clients
   getClients, getTrash, importData,
   createClient, updateClient, updateNotes,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
+  // Team
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
-  getCustomPlans, addCustomPlan
+  // Plans
+  getCustomPlans, addCustomPlan,
+  // Users (auth)
+  findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 };

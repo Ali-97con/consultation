@@ -369,6 +369,7 @@ function LoginCard({ onSuccess }) {
         sessionStorage.setItem('ah97_authed', '1');
         sessionStorage.setItem('ah97_role', data.role || 'admin');
         sessionStorage.setItem('ah97_user', data.username || user);
+        sessionStorage.setItem('ah97_token', data.token || '');
         if (remember) localStorage.setItem('ah97_last_user', user);
         else localStorage.removeItem('ah97_last_user');
       } catch (_) {}

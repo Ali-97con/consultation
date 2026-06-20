@@ -1,23 +1,24 @@
 'use strict';
 const express = require('express');
 const path    = require('path');
+const crypto  = require('crypto');
 const {
   getClients, getTrash,
   createClient, updateClient, updateNotes,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
-  getCustomPlans, addCustomPlan, importData
+  getCustomPlans, addCustomPlan, importData,
+  findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── Body limit (reduced from 10mb to 512kb for normal use) ──────────────────
 app.use(express.json({ limit: '512kb' }));
 app.use(express.static(__dirname));
 
-// ─── CORS — restrict to own origin only ──────────────────────────────────────
+// ─── CORS ────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
   'https://consultation-lake.vercel.app',
   'http://localhost:3000',
@@ -30,15 +31,49 @@ app.use((req, res, next) => {
     res.setHeader('Vary', 'Origin');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
 
-// ─── Simple in-process rate limiter for login ─────────────────────────────────
+// ─── Sessions (in-memory, warm-instance reuse on Vercel) ──────────────────────
+const sessions = new Map();
+const SESSION_TTL = 8 * 60 * 60 * 1000; // 8h
+
+function createSession(username, role) {
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, { username, role, expires: Date.now() + SESSION_TTL });
+  return token;
+}
+
+function getSession(token) {
+  if (!token) return null;
+  const s = sessions.get(token);
+  if (!s) return null;
+  if (s.expires < Date.now()) { sessions.delete(token); return null; }
+  return s;
+}
+
+// ─── Auth middleware ──────────────────────────────────────────────────────────
+function requireAuth(req, res, next) {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  const session = getSession(token);
+  if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
+  req.user = session;
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'هذه الميزة للمشرف فقط' });
+    next();
+  });
+}
+
+// ─── Login rate limiter ───────────────────────────────────────────────────────
 const loginAttempts = new Map();
 function loginRateLimit(req, res, next) {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
   const entry = loginAttempts.get(ip) || { count: 0, first: now };
   if (now - entry.first > 15 * 60 * 1000) { entry.count = 0; entry.first = now; }
@@ -48,7 +83,7 @@ function loginRateLimit(req, res, next) {
   next();
 }
 
-// ─── Input sanitiser ─────────────────────────────────────────────────────────
+// ─── Input helpers ────────────────────────────────────────────────────────────
 function str(v, max = 500) {
   if (v === undefined || v === null) return undefined;
   return String(v).slice(0, max);
@@ -72,35 +107,6 @@ function sanitizeClientBody(body) {
   return out;
 }
 
-// ─── Serve HTML ───────────────────────────────────────────────────────────────
-app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'crm.html')));
-
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-const ACCOUNTS = [
-  { username: process.env.LOGIN_USER  || 'admin',  password: process.env.LOGIN_PASS  || 'password', role: 'admin'  },
-  { username: process.env.COACH1_USER || 'coach1', password: process.env.COACH1_PASS || 'abusharbi', role: 'coach' },
-  { username: process.env.COACH2_USER || 'coach2', password: process.env.COACH2_PASS || 'taha',      role: 'coach' },
-];
-
-function safeEq(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-app.post('/api/auth/login', loginRateLimit, (req, res) => {
-  const { username = '', password = '' } = req.body || {};
-  if (typeof username !== 'string' || typeof password !== 'string')
-    return res.status(400).json({ ok: false, error: 'Invalid input' });
-  const u = username.trim().slice(0, 100);
-  const p = password.slice(0, 200);
-  const account = ACCOUNTS.find(a => safeEq(u, a.username) && safeEq(p, a.password));
-  if (!account) return res.status(401).json({ ok: false, error: 'بيانات الدخول غير صحيحة' });
-  res.json({ ok: true, role: account.role, username: account.username });
-});
-
 // ─── Helper ───────────────────────────────────────────────────────────────────
 function clean(c) {
   if (!c) return null;
@@ -109,25 +115,50 @@ function clean(c) {
   return rest;
 }
 
+// ─── Serve HTML ───────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'crm.html')));
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+app.post('/api/auth/login', loginRateLimit, async (req, res) => {
+  try {
+    const { username = '', password = '' } = req.body || {};
+    if (typeof username !== 'string' || typeof password !== 'string')
+      return res.status(400).json({ ok: false, error: 'Invalid input' });
+    const u = username.trim().toLowerCase().slice(0, 100);
+    const p = password.slice(0, 200);
+    const account = await findUserByUsername(u);
+    if (!account || !verifyPassword(p, account.passwordHash))
+      return res.status(401).json({ ok: false, error: 'بيانات الدخول غير صحيحة' });
+    const token = createSession(account.username, account.role);
+    res.json({ ok: true, role: account.role, username: account.username, token });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (token) sessions.delete(token);
+  res.json({ ok: true });
+});
+
 // ─── Clients ──────────────────────────────────────────────────────────────────
-app.get('/api/clients', async (_req, res) => {
+app.get('/api/clients', requireAuth, async (_req, res) => {
   try { res.json((await getClients()).map(clean)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/clients', async (req, res) => {
+app.post('/api/clients', requireAdmin, async (req, res) => {
   try {
     const client = await createClient(sanitizeClientBody(req.body));
     res.status(201).json(clean(client));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/clients/:id', async (req, res) => {
+app.put('/api/clients/:id', requireAuth, async (req, res) => {
   try { await updateClient(+req.params.id, sanitizeClientBody(req.body)); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/clients/:id/notes', async (req, res) => {
+app.put('/api/clients/:id/notes', requireAuth, async (req, res) => {
   try {
     const notes = (req.body.notes || []).map(n => ({
       ...n,
@@ -140,44 +171,44 @@ app.put('/api/clients/:id/notes', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/clients/:id', async (req, res) => {
+app.delete('/api/clients/:id', requireAdmin, async (req, res) => {
   try { await softDelete(+req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Trash ────────────────────────────────────────────────────────────────────
-app.get('/api/trash', async (_req, res) => {
+app.get('/api/trash', requireAdmin, async (_req, res) => {
   try { res.json((await getTrash()).map(clean)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/clients/:id/restore', async (req, res) => {
+app.post('/api/clients/:id/restore', requireAdmin, async (req, res) => {
   try { await restoreClient(+req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/trash/restore-all', async (_req, res) => {
+app.post('/api/trash/restore-all', requireAdmin, async (_req, res) => {
   try { await restoreAll(); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/trash/:id', async (req, res) => {
+app.delete('/api/trash/:id', requireAdmin, async (req, res) => {
   try { await permDelete(+req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/trash', async (_req, res) => {
+app.delete('/api/trash', requireAdmin, async (_req, res) => {
   try { await emptyTrash(); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Team ─────────────────────────────────────────────────────────────────────
-app.get('/api/team', async (_req, res) => {
+app.get('/api/team', requireAuth, async (_req, res) => {
   try { res.json(await getTeam()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/team/closers', async (req, res) => {
+app.post('/api/team/closers', requireAdmin, async (req, res) => {
   try {
     if (!await addMember('closers', str(req.body.name, 100)))
       return res.status(409).json({ error: 'الاسم موجود مسبقاً' });
@@ -185,17 +216,17 @@ app.post('/api/team/closers', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/team/closers/:old', async (req, res) => {
+app.put('/api/team/closers/:old', requireAdmin, async (req, res) => {
   try { await editMember('closers', decodeURIComponent(req.params.old), str(req.body.name, 100)); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/team/closers/:name', async (req, res) => {
+app.delete('/api/team/closers/:name', requireAdmin, async (req, res) => {
   try { await removeMember('closers', decodeURIComponent(req.params.name)); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/team/setters', async (req, res) => {
+app.post('/api/team/setters', requireAdmin, async (req, res) => {
   try {
     if (!await addMember('setters', str(req.body.name, 100)))
       return res.status(409).json({ error: 'الاسم موجود مسبقاً' });
@@ -203,44 +234,44 @@ app.post('/api/team/setters', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.put('/api/team/setters/:old', async (req, res) => {
+app.put('/api/team/setters/:old', requireAdmin, async (req, res) => {
   try { await editMember('setters', decodeURIComponent(req.params.old), str(req.body.name, 100)); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/team/setters/:name', async (req, res) => {
+app.delete('/api/team/setters/:name', requireAdmin, async (req, res) => {
   try { await removeMember('setters', decodeURIComponent(req.params.name)); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Team Trash ───────────────────────────────────────────────────────────────
-app.get('/api/team/trash', async (_req, res) => {
+app.get('/api/team/trash', requireAdmin, async (_req, res) => {
   try { res.json(await getTeamTrash()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/team/trash/restore', async (req, res) => {
+app.post('/api/team/trash/restore', requireAdmin, async (req, res) => {
   try { await restoreTeamMember(req.body.type, req.body.name); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/team/trash/:type/:name', async (req, res) => {
+app.delete('/api/team/trash/:type/:name', requireAdmin, async (req, res) => {
   try { await permDeleteTeamMember(req.params.type, decodeURIComponent(req.params.name)); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/team/trash', async (_req, res) => {
+app.delete('/api/team/trash', requireAdmin, async (_req, res) => {
   try { await emptyTeamTrash(); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Custom Plans ─────────────────────────────────────────────────────────────
-app.get('/api/plans', async (_req, res) => {
+app.get('/api/plans', requireAuth, async (_req, res) => {
   try { res.json(await getCustomPlans()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/plans', async (req, res) => {
+app.post('/api/plans', requireAdmin, async (req, res) => {
   try {
     if (!await addCustomPlan(str(req.body.name, 100), req.body.price))
       return res.status(409).json({ error: 'الباقة موجودة مسبقاً' });
@@ -248,7 +279,45 @@ app.post('/api/plans', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── Migration endpoint (protected — requires MIGRATE_SECRET env var) ─────────
+// ─── Users management (admin only) ───────────────────────────────────────────
+app.get('/api/users', requireAdmin, async (_req, res) => {
+  try { res.json(await getUsers()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/users', requireAdmin, async (req, res) => {
+  try {
+    const { username, password, role } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
+    if (!['admin', 'coach'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
+    const ok = await createUser(str(username, 50), str(password, 200), role);
+    if (!ok) return res.status(409).json({ error: 'اسم المستخدم موجود مسبقاً' });
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/users/:username', requireAdmin, async (req, res) => {
+  try {
+    const { password, role } = req.body || {};
+    if (role && !['admin', 'coach'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
+    const ok = await updateUser(req.params.username, {
+      password: password ? str(password, 200) : undefined,
+      role,
+    });
+    res.json({ ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/users/:username', requireAdmin, async (req, res) => {
+  try {
+    if (req.user.username === req.params.username.toLowerCase())
+      return res.status(400).json({ error: 'لا يمكنك حذف حسابك الخاص' });
+    const ok = await deleteUser(req.params.username);
+    res.json({ ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Migration endpoint ───────────────────────────────────────────────────────
 app.post('/api/migrate-import', async (req, res) => {
   const migrateSecret = process.env.MIGRATE_SECRET;
   if (!migrateSecret) return res.status(403).json({ error: 'forbidden' });
