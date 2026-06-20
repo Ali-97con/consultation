@@ -9,6 +9,33 @@ async function connectDB() {
   cachedConn = await mongoose.connect(process.env.MONGODB_URI);
 }
 
+// ─── Session schema — stored in MongoDB (serverless-safe) ────────────────────
+const SessionSchema = new mongoose.Schema({
+  token:     { type: String, required: true, unique: true, index: true },
+  username:  { type: String, required: true },
+  role:      { type: String, required: true },
+  expiresAt: { type: Date,   required: true },
+});
+SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // MongoDB auto-deletes expired
+const Session = mongoose.models.Session || mongoose.model('Session', SessionSchema);
+
+async function createSessionDB(username, role) {
+  await connectDB();
+  const token = crypto.randomBytes(32).toString('hex');
+  await Session.create({ token, username, role, expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000) });
+  return token;
+}
+async function getSessionDB(token) {
+  if (!token) return null;
+  await connectDB();
+  return Session.findOne({ token, expiresAt: { $gt: new Date() } }).lean();
+}
+async function deleteSessionDB(token) {
+  if (!token) return;
+  await connectDB();
+  await Session.deleteOne({ token });
+}
+
 // ─── User schema (separate collection) ───────────────────────────────────────
 const UserSchema = new mongoose.Schema({
   username:     { type: String, unique: true, required: true, trim: true, lowercase: true },
@@ -552,6 +579,8 @@ module.exports = {
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   // Plans
   getCustomPlans, addCustomPlan,
+  // Sessions (MongoDB-backed, serverless-safe)
+  createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 };

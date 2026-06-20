@@ -1,7 +1,6 @@
 'use strict';
 const express = require('express');
 const path    = require('path');
-const crypto  = require('crypto');
 const {
   getClients, getTrash,
   createClient, updateClient, updateNotes,
@@ -9,6 +8,7 @@ const {
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   getCustomPlans, addCustomPlan, importData,
+  createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
 
@@ -36,38 +36,28 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Sessions (in-memory, warm-instance reuse on Vercel) ──────────────────────
-const sessions = new Map();
-const SESSION_TTL = 8 * 60 * 60 * 1000; // 8h
-
-function createSession(username, role) {
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { username, role, expires: Date.now() + SESSION_TTL });
-  return token;
-}
-
-function getSession(token) {
-  if (!token) return null;
-  const s = sessions.get(token);
-  if (!s) return null;
-  if (s.expires < Date.now()) { sessions.delete(token); return null; }
-  return s;
-}
-
-// ─── Auth middleware ──────────────────────────────────────────────────────────
+// ─── Auth middleware (MongoDB sessions — serverless-safe) ─────────────────────
 function requireAuth(req, res, next) {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  const session = getSession(token);
-  if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
-  req.user = session;
-  next();
+  getSessionDB(token)
+    .then(session => {
+      if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
+      req.user = { username: session.username, role: session.role };
+      next();
+    })
+    .catch(() => res.status(500).json({ error: 'خطأ في التحقق من الجلسة' }));
 }
 
 function requireAdmin(req, res, next) {
-  requireAuth(req, res, () => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'هذه الميزة للمشرف فقط' });
-    next();
-  });
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  getSessionDB(token)
+    .then(session => {
+      if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
+      if (session.role !== 'admin') return res.status(403).json({ error: 'هذه الميزة للمشرف فقط' });
+      req.user = { username: session.username, role: session.role };
+      next();
+    })
+    .catch(() => res.status(500).json({ error: 'خطأ في التحقق من الجلسة' }));
 }
 
 // ─── Login rate limiter ───────────────────────────────────────────────────────
@@ -129,14 +119,14 @@ app.post('/api/auth/login', loginRateLimit, async (req, res) => {
     const account = await findUserByUsername(u);
     if (!account || !verifyPassword(p, account.passwordHash))
       return res.status(401).json({ ok: false, error: 'بيانات الدخول غير صحيحة' });
-    const token = createSession(account.username, account.role);
+    const token = await createSessionDB(account.username, account.role);
     res.json({ ok: true, role: account.role, username: account.username, token });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', async (req, res) => {
   const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  if (token) sessions.delete(token);
+  await deleteSessionDB(token);
   res.json({ ok: true });
 });
 

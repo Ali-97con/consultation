@@ -1349,12 +1349,13 @@ async function api(method, url, body) {
 
 async function initApp() {
   try {
+    const _isCoach = isCoach();
     const [clientsData, trashData, teamData, plansData, teamTrashData] = await Promise.all([
       api('GET', '/api/clients'),
-      api('GET', '/api/trash'),
+      _isCoach ? Promise.resolve([]) : api('GET', '/api/trash'),
       api('GET', '/api/team'),
       api('GET', '/api/plans'),
-      api('GET', '/api/team/trash')
+      _isCoach ? Promise.resolve([]) : api('GET', '/api/team/trash'),
     ]);
     clients   = clientsData;
     trash     = trashData;
