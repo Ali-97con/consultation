@@ -1,0 +1,25 @@
+# Environment variables — NEVER commit secrets
+.env
+.env.*
+!.env.example
+
+# PII data — contains real customer data
+crm-data.json
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups & local tools
+backups/
+ozart/
+
+# Migration script (one-time use, not needed in prod)
+migrate.js

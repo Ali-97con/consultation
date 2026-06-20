@@ -328,7 +328,9 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
 /* CHART GRID 3 */
 .g3c{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
 @media(max-width:1200px){.kpi-g{grid-template-columns:repeat(3,1fr)}.g2{grid-template-columns:1fr}.g3{grid-template-columns:1fr 1fr}.g3c{grid-template-columns:1fr 1fr}}
-@media(max-width:768px){:root{--sw:0px}.sb{display:none}.kpi-g{grid-template-columns:repeat(2,1fr)}.g22{grid-template-columns:1fr}.g3c{grid-template-columns:1fr}}
+@media(max-width:768px){:root{--sw:0px}.sb{display:none}.sb.mob-open{display:flex;position:fixed;inset:0 auto 0 0;z-index:500;box-shadow:4px 0 32px rgba(0,0,0,.6)}.mob-menu-btn{display:flex!important}.mob-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:499;backdrop-filter:blur(2px)}.mob-ov.on{display:block}.kpi-g{grid-template-columns:repeat(2,1fr)}.g22{grid-template-columns:1fr}.g3c{grid-template-columns:1fr}.tbar{gap:6px}.th-search{width:100%!important}}
+.mob-menu-btn{display:none;align-items:center;justify-content:center;width:36px;height:36px;border-radius:9px;border:1px solid var(--b2);background:var(--hv);color:var(--t1);cursor:pointer;flex-shrink:0;font-size:16px;transition:all .15s}
+.mob-menu-btn:hover{background:var(--b2)}
 
 /* ── SKELETON ── */
 @keyframes shimmer{0%{background-position:-600px 0}100%{background-position:600px 0}}
@@ -379,7 +381,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
 </head>
 <body>
 <!-- SIDEBAR -->
-<nav class="sb">
+<nav class="sb" id="sb">
   <div class="sb-hd">
     <div class="logo" style="background:none;padding:0;overflow:hidden">
       <img id="brand-logo" src="تصميم بدون عنوان.png" alt="AH97" style="width:42px;height:42px;border-radius:10px;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
@@ -434,8 +436,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     </div>
   </div>
 </nav>
+<!-- Mobile overlay -->
+<div id="mob-ov" class="mob-ov" onclick="closeMobMenu()"></div>
 <!-- TOPBAR -->
 <header class="tb">
+  <button class="mob-menu-btn" onclick="toggleMobMenu()" aria-label="القائمة">☰</button>
   <div><div class="tb-ti" id="pg-title">لوحة التحكم</div><div class="tb-su" id="pg-sub"></div></div>
   <div class="tb-srch">
     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke-width="2" stroke-linecap="round"/></svg>
@@ -730,6 +735,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
 </div>
 
 <script>
+// ═══════════════ XSS ESCAPE ═══════════════
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // ═══════════════ CONSTANTS ═══════════════
 const PLANS = { 'CORE':2500, 'CORE+':3000, 'PREMIUM':4000, 'PREMIUM 4299':4299, 'PREMIUM 5000':5000, 'INNER CIRCLE':7000 };
 const PCNT  = { 'دفعة واحدة':1, 'قسطين':2, '3 أقساط':3, '4 أقساط':4 };
@@ -1266,6 +1282,15 @@ function isCoach() {
   try { return sessionStorage.getItem('ah97_role') === 'coach'; } catch(_) { return false; }
 }
 
+function toggleMobMenu() {
+  document.getElementById('sb').classList.toggle('mob-open');
+  document.getElementById('mob-ov').classList.toggle('on');
+}
+function closeMobMenu() {
+  document.getElementById('sb').classList.remove('mob-open');
+  document.getElementById('mob-ov').classList.remove('on');
+}
+
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, trash + orphaned section headers
@@ -1486,6 +1511,7 @@ function updateStaticText() {
 
 function nav(v) {
   if (isCoach() && v === 'overview') v = 'clients';
+  closeMobMenu();
   destroyCharts(); S.view = v;
   document.querySelectorAll('.nl').forEach(n => n.classList.toggle('on', n.dataset.v === v));
   document.querySelectorAll('.pg').forEach(p => p.classList.remove('on'));
@@ -2030,7 +2056,7 @@ function confirmDelClient() {
   clients=clients.filter(x=>x.id!==id); S.sel.delete(id);
   updateTrashBadge();
   if(S.view==='clients') renderTable();
-  toast(`${t('msg_moved_to_trash').replace('{name}',c.name)} — <span onclick="restoreClient(${id})" style="cursor:pointer;text-decoration:underline;font-weight:700">${t('msg_undo')}</span>`,'🗑️', 5000);
+  toast(`${t('msg_moved_to_trash').replace('{name}',esc(c.name))} — <span onclick="restoreClient(${id})" style="cursor:pointer;text-decoration:underline;font-weight:700">${t('msg_undo')}</span>`,'🗑️', 5000);
   logActivity('🗑️', LANG==='ar'?'حذف عميل':'Client Deleted', c.name, 'var(--rbg)', 'var(--r)');
 }
 
@@ -3038,7 +3064,7 @@ function restoreClient(id) {
   updateTrashBadge();
   if (S.view === 'clients') renderTable();
   if (S.view === 'trash') renderTrash();
-  toast(`${t('msg_restored')} "${c.name}"`, '↩️');
+  toast(`${t('msg_restored')} "${esc(c.name)}"`, '↩️');
 }
 
 function permanentDeleteClient(id) {
@@ -3049,7 +3075,7 @@ function permanentDeleteClient(id) {
   trash = trash.filter(x=>x.id!==id);
   updateTrashBadge();
   renderTrash();
-  toast(`${t('msg_perm_deleted')} "${c.name}"`, '❌');
+  toast(`${t('msg_perm_deleted')} "${esc(c.name)}"`, '❌');
 }
 
 function emptyTrash() {
@@ -3224,6 +3250,13 @@ function saveCalls(id) {
 }
 
 // ═══════════════ DETAIL PANEL ═══════════════
+function dpQuickAction(id, type) {
+  const c = clients.find(x=>x.id===id);
+  const name = c ? esc(c.name) : '';
+  if (type === 'email') toast(t('dp_email_sent') + ' ' + name, '📧');
+  if (type === 'call')  toast(t('dp_called') + ' ' + name, '📞');
+}
+
 function openDetail(id) {
   const c = clients.find(x=>x.id===id);
   if (!c) return;
@@ -3235,8 +3268,8 @@ function openDetail(id) {
   <div class="dp-hd">
     <div class="dp-av" style="background:${col(c.ci)}">${ini(c.name)}</div>
     <div style="flex:1;min-width:0">
-      <div class="dp-nm">${c.name}</div>
-      <div class="dp-ph">${c.phone}</div>
+      <div class="dp-nm">${esc(c.name)}</div>
+      <div class="dp-ph">${esc(c.phone)}</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
         <span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span>
         ${planBadge(c.plan)}
@@ -3248,9 +3281,9 @@ function openDetail(id) {
 
   <!-- ── ACTIONS ── -->
   <div style="padding:12px 22px;border-bottom:1px solid var(--b1);display:flex;gap:8px">
-    <button class="btn btn-p" style="flex:1;justify-content:center" onclick="toast(t('dp_email_sent')+' ${c.name}','📧')">${t('dp_send_email')}</button>
+    <button class="btn btn-p" style="flex:1;justify-content:center" onclick="dpQuickAction(${c.id},'email')">${t('dp_send_email')}</button>
     ${!isCoach()?`<button class="btn btn-g" style="flex:1;justify-content:center" onclick="openModal(${c.id})">${t('dp_edit')}</button>`:''}
-    <button class="btn btn-r" style="flex:1;justify-content:center" onclick="toast(t('dp_called')+' ${c.name}','📞')">${t('dp_call')}</button>
+    <button class="btn btn-r" style="flex:1;justify-content:center" onclick="dpQuickAction(${c.id},'call')">${t('dp_call')}</button>
   </div>
 
   <!-- ── INFO GRID (contact + team) ── -->
@@ -3258,19 +3291,19 @@ function openDetail(id) {
   <div class="dp2-grid">
     <div class="dp2-col">
       <div class="dp-st">📞 ${t('dp_contact')}</div>
-      <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${c.email||'—'}</span></div>
+      <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${esc(c.email)||'—'}</span></div>
       <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
       <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.callsDone||0, c.callsTotal||0)}</span></div>
     </div>
     <div class="dp2-col">
       <div class="dp-st">👥 ${t('dp_team')}</div>
-      <div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${c.closer||'—'}</span></div>
-      <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${c.setter||'—'}</span></div>
+      <div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${esc(c.closer)||'—'}</span></div>
+      <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${esc(c.setter)||'—'}</span></div>
     </div>
   </div>` : `
   <div class="dp-sc">
     <div class="dp-st">📞 ${t('dp_contact')}</div>
-    <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px">${c.email||'—'}</span></div>
+    <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px">${esc(c.email)||'—'}</span></div>
     <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
     <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.callsDone||0, c.callsTotal||0)}</span></div>
   </div>`}
@@ -3344,11 +3377,11 @@ function renderNotes(id) {
     <div class="note-item ${n.pin?'pinned':''}" id="note-${id}-${n.id}">
       <div class="note-hd">
         ${n.pin?'<span class="note-pin-ic">📌</span>':''}
-        <span class="note-author">${n.author}</span>
+        <span class="note-author">${esc(n.author)}</span>
         ${n.edited?'<span style="font-size:9.5px;color:var(--p2);background:var(--pbg);padding:1px 6px;border-radius:4px">'+(LANG==='ar'?'مُعدَّل':'edited')+'</span>':''}
-        <span class="note-time">${n.date}</span>
+        <span class="note-time">${esc(n.date)}</span>
       </div>
-      <div class="note-txt">${n.txt}</div>
+      <div class="note-txt">${esc(n.txt)}</div>
       <div class="note-acts">
         <button class="note-btn" onclick="pinNote(${id},${n.id})">${n.pin?'📌 '+t('note_pin').replace('📍 ',''):t('note_pin')}</button>
         <button class="note-btn" style="color:var(--p2)" onclick="editNote(${id},${n.id})">✏️ ${LANG==='ar'?'تعديل':'Edit'}</button>
