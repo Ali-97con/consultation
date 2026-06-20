@@ -2072,12 +2072,42 @@ function confirmDelClient() {
 }
 
 function exportCSV() {
-  const rows=[[LANG==='ar'?'الاسم':'Name',LANG==='ar'?'الهاتف':'Phone',LANG==='ar'?'البريد':'Email',t('col_status'),t('col_plan'),t('col_pay_type'),t('dp_collected'),t('dp_remaining'),t('col_closer'),t('col_setter'),t('col_reg'),t('col_last_pay')]];
-  getFiltered().forEach(c=>rows.push([c.name,c.phone,c.email,SL[c.status]||c.status,c.plan,c.paymentType,fx(c),fr(c),c.closer,c.setter,c.regDate,c.lastPayDate||'']));
-  const csv=rows.map(r=>r.join(',')).join('\n');
-  const a=document.createElement('a');
-  a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(csv);
-  a.download='clients_ah97.csv'; a.click(); toast(t('msg_exported'),'📁');
+  function q(v) {
+    const s = (v === null || v === undefined) ? '' : String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+  const header = [
+    LANG==='ar'?'الاسم':'Name',
+    LANG==='ar'?'الهاتف':'Phone',
+    LANG==='ar'?'البريد':'Email',
+    t('col_status'), t('col_plan'), t('col_pay_type'),
+    t('dp_collected'), t('dp_remaining'),
+    t('col_closer'), t('col_setter'),
+    t('col_reg'), t('col_last_pay'),
+    LANG==='ar'?'الملاحظات':'Notes',
+  ];
+  const rows = [header.map(q)];
+  getFiltered().forEach(c => {
+    const notesStr = (c.notes || [])
+      .filter(n => n && n.txt)
+      .map(n => `${n.date||''} : ${n.txt}`)
+      .join(' | ');
+    rows.push([
+      c.name, c.phone, c.email, SL[c.status]||c.status,
+      c.plan, c.paymentType, fx(c), fr(c),
+      c.closer, c.setter, c.regDate, c.lastPayDate||'',
+      notesStr,
+    ].map(q));
+  });
+  const csv = rows.map(r => r.join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv);
+  a.download = 'clients_ah97.csv';
+  a.click();
+  toast(t('msg_exported'), '📁');
 }
 
 function globalSearch(q) {
