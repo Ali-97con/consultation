@@ -2915,14 +2915,20 @@ function memberLineItems(name){
   return items;
 }
 
-function openCommDetail(name){
-  const items = memberLineItems(name).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+function openCommDetail(name, month){
+  month = month || '';
+  const all = memberLineItems(name).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const items = month ? all.filter(i => (i.date||'').startsWith(month)) : all;   // filtered → KPIs + table
   const total = items.reduce((s,i) => s + i.comm, 0);
   const clientsCount = new Set(items.map(i => i.cid)).size;
+  // chart always shows the full monthly history (independent of the filter)
   const months = getLast12Months();
   const byMonth = {};
-  items.forEach(it => { const m = it.date.slice(0,7); byMonth[m] = (byMonth[m]||0) + it.comm; });
+  all.forEach(it => { const m = it.date.slice(0,7); byMonth[m] = (byMonth[m]||0) + it.comm; });
   const data = months.map(m => Math.round(byMonth[m.key]||0));
+  const availMonths = [...new Set(all.map(i => i.date.slice(0,7)))].sort().reverse();
+  const monthOpts = `<option value="">${LANG==='ar'?'كل الشهور':'All months'}</option>`
+    + availMonths.map(m => `<option value="${m}"${m===month?' selected':''}>${monthLabel(m)}</option>`).join('');
 
   const roleLabel = r => r==='setter' ? (LANG==='ar'?'إعداد':'Setter') : r==='closer' ? (LANG==='ar'?'إغلاق':'Closer') : (LANG==='ar'?'داخلي مزدوج':'Combined');
   const roleColor = r => r==='setter' ? 'var(--g)' : r==='closer' ? 'var(--p2)' : 'var(--y)';
@@ -2938,6 +2944,11 @@ function openCommDetail(name){
 
   $('comm-title').textContent = (LANG==='ar'?'عمولات: ':'Commissions: ') + name;
   $('comm-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--t2);font-weight:600">${LANG==='ar'?'تصفية حسب الشهر:':'Filter by month:'}</span>
+      <select class="fsl" onchange="openCommDetail('${esc(name)}', this.value)" style="min-width:170px">${monthOpts}</select>
+      ${month?`<span style="font-size:11px;background:var(--pbg);color:var(--p2);border:1px solid var(--pbd);padding:3px 10px;border-radius:20px;font-weight:600">${monthLabel(month)}</span>`:''}
+    </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:var(--g)">${fmtMoney(total)}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'إجمالي العمولات':'Total'}</div></div>
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800">${clientsCount}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'عملاء':'Clients'}</div></div>
