@@ -587,6 +587,19 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     </div>
   </div>
 </div>
+<!-- COMMISSION DETAIL MODAL -->
+<div class="mo" id="comm-modal" onclick="if(event.target===this)closeCommDetail()">
+  <div class="mbox" style="max-width:680px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="15" height="15" fill="none" stroke="var(--p2)" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m9-4a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+      <h3 id="comm-title">العمولات</h3>
+      <button class="mcls" onclick="closeCommDetail()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="comm-body" style="padding:18px;max-height:76vh;overflow-y:auto"></div>
+  </div>
+</div>
 <!-- DETAIL PANEL -->
 <div class="dov" id="dov" onclick="closeDetail()"></div>
 <div class="dp" id="dp"><div id="dp-body"></div></div>
@@ -2832,10 +2845,10 @@ function renderCommissions(){
   const palette = ['#6366f1','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#f87171'];
 
   const body = rows.length ? rows.map((p,i) => `
-    <tr style="border-bottom:1px solid var(--b1)">
+    <tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openCommDetail('${esc(p.name)}')" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
       <td style="padding:12px 14px"><div style="display:flex;align-items:center;gap:10px">
         <div class="av" style="background:${palette[i%palette.length]};width:30px;height:30px;font-size:12px">${ini(p.name)}</div>
-        <span style="font-weight:600;font-size:13px">${esc(p.name)||'—'}</span>
+        <span style="font-weight:600;font-size:13px">${esc(p.name)||'—'} <span style="color:var(--t3);font-size:10px">›</span></span>
       </div></td>
       <td style="padding:12px 14px;text-align:center;font-size:12px;color:var(--t2)">${p.n}</td>
       <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:var(--g)">${p.asSetter?fmtMoney(p.asSetter):'—'}</td>
@@ -2881,6 +2894,81 @@ function renderCommissions(){
       </tr></tfoot>`:''}
     </table>
   </div>`;
+}
+
+// All commission line-items (one per payment per role) for one member, across all months.
+function memberLineItems(name){
+  const items = [];
+  clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel === 'inbound' || c.channel === 'outbound')).forEach(c => {
+    const isSetter = c.setter === name, isCloser = c.closer === name;
+    if (!isSetter && !isCloser) return;
+    const pays = [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].filter(([a,d]) => a > 0 && d);
+    pays.forEach(([amt,date]) => {
+      if (c.channel === 'inbound' && c.setter === c.closer && c.setter === name) {
+        items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, role:'combined', rate:COMM_RATES.inbound.combined, comm:amt*COMM_RATES.inbound.combined });
+      } else {
+        if (isSetter) { const r = COMM_RATES[c.channel].setter; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, role:'setter', rate:r, comm:amt*r }); }
+        if (isCloser) { const r = COMM_RATES[c.channel].closer; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, role:'closer', rate:r, comm:amt*r }); }
+      }
+    });
+  });
+  return items;
+}
+
+function openCommDetail(name){
+  const items = memberLineItems(name).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const total = items.reduce((s,i) => s + i.comm, 0);
+  const clientsCount = new Set(items.map(i => i.cid)).size;
+  const months = getLast12Months();
+  const byMonth = {};
+  items.forEach(it => { const m = it.date.slice(0,7); byMonth[m] = (byMonth[m]||0) + it.comm; });
+  const data = months.map(m => Math.round(byMonth[m.key]||0));
+
+  const roleLabel = r => r==='setter' ? (LANG==='ar'?'إعداد':'Setter') : r==='closer' ? (LANG==='ar'?'إغلاق':'Closer') : (LANG==='ar'?'داخلي مزدوج':'Combined');
+  const roleColor = r => r==='setter' ? 'var(--g)' : r==='closer' ? 'var(--p2)' : 'var(--y)';
+
+  const rows = items.length ? items.map(it => `
+    <tr style="border-bottom:1px solid var(--b1)">
+      <td style="padding:9px 10px;font-size:11.5px;color:var(--t3);white-space:nowrap">${fmtDate(it.date)}</td>
+      <td style="padding:9px 10px;font-size:12px;font-weight:600">${esc(it.client)}</td>
+      <td style="padding:9px 10px"><span style="font-size:10.5px;color:${roleColor(it.role)};background:var(--hv);padding:2px 7px;border-radius:6px;white-space:nowrap">${roleLabel(it.role)} ${Math.round(it.rate*100)}%</span></td>
+      <td style="padding:9px 10px;text-align:left;font-size:12px;color:var(--t2)">${fmtMoney(it.amt)}</td>
+      <td style="padding:9px 10px;text-align:left;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(it.comm)}</td>
+    </tr>`).join('') : `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--t3)">${LANG==='ar'?'لا يوجد سجل':'No history'}</td></tr>`;
+
+  $('comm-title').textContent = (LANG==='ar'?'عمولات: ':'Commissions: ') + name;
+  $('comm-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:var(--g)">${fmtMoney(total)}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'إجمالي العمولات':'Total'}</div></div>
+      <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800">${clientsCount}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'عملاء':'Clients'}</div></div>
+      <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800">${items.length}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'دفعات':'Payments'}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px"><div class="ch"><h3>📊 ${LANG==='ar'?'العمولات حسب الشهر':'Commission by month'}</h3></div><div class="cb"><canvas id="comm-chart" height="120"></canvas></div></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+          <th style="padding:9px 10px;font-size:10.5px;color:var(--t3);text-align:right">${LANG==='ar'?'التاريخ':'Date'}</th>
+          <th style="padding:9px 10px;font-size:10.5px;color:var(--t3);text-align:right">${LANG==='ar'?'العميل':'Client'}</th>
+          <th style="padding:9px 10px;font-size:10.5px;color:var(--t3);text-align:right">${LANG==='ar'?'الدور':'Role'}</th>
+          <th style="padding:9px 10px;font-size:10.5px;color:var(--t3);text-align:left">${LANG==='ar'?'الدفعة':'Payment'}</th>
+          <th style="padding:9px 10px;font-size:10.5px;color:var(--t3);text-align:left">${LANG==='ar'?'العمولة':'Commission'}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  $('comm-modal').classList.add('on');
+  if (S.charts.commDetail) { try{ S.charts.commDetail.destroy(); }catch(e){} }
+  S.charts.commDetail = new Chart($('comm-chart'), {
+    type:'bar',
+    data:{ labels:months.map(m=>m.label), datasets:[{ data, backgroundColor:'#6366f1', borderRadius:5, maxBarThickness:26 }] },
+    options:{ ...chartOpts(), plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:c=>fmtMoney(c.parsed.y) } } } }
+  });
+}
+
+function closeCommDetail(){
+  const ov = $('comm-modal'); if (ov) ov.classList.remove('on');
+  if (S.charts.commDetail) { try{ S.charts.commDetail.destroy(); }catch(e){} S.charts.commDetail = null; }
 }
 
 function toggleAgentDetail(type, idx) {
