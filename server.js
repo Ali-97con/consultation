@@ -8,6 +8,7 @@ const {
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   getCustomPlans, addCustomPlan, importData,
+  saveContract, getContract, deleteContract,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
@@ -267,6 +268,36 @@ app.post('/api/plans', requireAdmin, async (req, res) => {
       return res.status(409).json({ error: 'الباقة موجودة مسبقاً' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Client contract (PDF) ────────────────────────────────────────────────────
+app.post('/api/clients/:id/contract',
+  requireAdmin,
+  express.raw({ type: ['application/pdf', 'application/octet-stream'], limit: '8mb' }),
+  async (req, res) => {
+    try {
+      const buf = req.body;
+      if (!Buffer.isBuffer(buf) || buf.length === 0)
+        return res.status(400).json({ error: 'ملف غير صالح' });
+      const filename = str(req.query.name, 200) || 'contract.pdf';
+      await saveContract(+req.params.id, filename, 'application/pdf', buf);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+app.get('/api/clients/:id/contract', requireAuth, async (req, res) => {
+  try {
+    const c = await getContract(+req.params.id);
+    if (!c) return res.status(404).json({ error: 'لا يوجد عقد' });
+    res.setHeader('Content-Type', c.mime || 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="contract-${+req.params.id}.pdf"`);
+    res.send(c.data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/clients/:id/contract', requireAdmin, async (req, res) => {
+  try { const ok = await deleteContract(+req.params.id); res.json({ ok }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Users management (admin only) ───────────────────────────────────────────

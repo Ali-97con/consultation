@@ -1550,6 +1550,10 @@ function animateKpiNums() {
 
 function renderOverview() {
   const total      = clients.length;
+  // Months available for the plan-distribution filter (latest first)
+  const planMonths   = [...new Set(clients.map(c=>(c.regDate||'').slice(0,7)).filter(m=>m && m.length===7))].sort().reverse();
+  const planDefMonth = planMonths[0] || 'all';
+  const fmtYM = ym => { if(!ym||ym==='all') return LANG==='ar'?'كل الأشهر':'All months'; const [y,m]=ym.split('-'); return new Date(+y,+m-1,1).toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{month:'short',year:'numeric'}); };
   const refClients = clients.filter(c=>c.status==='refunded');
   const refAmount  = refClients.reduce((a,c)=>a+fx(c),0);
   const collected  = clients.reduce((a,c)=>a+netFx(c),0);
@@ -1662,12 +1666,18 @@ function renderOverview() {
       <div class="cb" id="closer-bars"></div>
     </div>
     <div class="card">
-      <div class="ch"><h3>🎯 ${t('plan_dist')}</h3></div>
+      <div class="ch" style="gap:6px">
+        <h3 style="flex:none">🎯 ${t('plan_dist')}</h3>
+        <select class="fsl" id="plan-month" onchange="renderPlanDist(this.value)" style="margin-right:auto;font-size:11px">
+          ${planMonths.map(m=>`<option value="${m}"${m===planDefMonth?' selected':''}>${fmtYM(m)}</option>`).join('')}
+          <option value="all"${planDefMonth==='all'?' selected':''}>${LANG==='ar'?'كل الأشهر':'All months'}</option>
+        </select>
+      </div>
       <div class="cb" style="display:flex;gap:18px;align-items:center">
         <div style="position:relative;flex-shrink:0;width:110px;height:110px">
           <canvas id="planC" width="110" height="110"></canvas>
           <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
-            <div style="font-size:20px;font-weight:800;line-height:1.1">${total}</div>
+            <div id="plan-center" style="font-size:20px;font-weight:800;line-height:1.1">${total}</div>
             <div style="font-size:9px;color:var(--t3)">${LANG==='ar'?'عميل':'clients'}</div>
           </div>
         </div>
@@ -1713,30 +1723,8 @@ function renderOverview() {
     </div>`;
   }).join('') : `<div class="empty">${LANG==='ar'?'لا يوجد بيانات':'No data'}</div>`;
 
-  // ── Plan donut with center count ──
-  const planCnt = { CORE:0, 'CORE+':0, PREMIUM:0, 'INNER CIRCLE':0 };
-  clients.forEach(c => { if(planCnt[c.plan]!==undefined) planCnt[c.plan]++; });
-  const planColors = ['#06b6d4','#818cf8','#8b5cf6','#f59e0b'];
-  const planLabels = Object.keys(planCnt);
-  S.charts.plan = new Chart($('planC'), {
-    type:'doughnut',
-    data:{ labels:planLabels, datasets:[{ data:Object.values(planCnt), backgroundColor:planColors, borderWidth:0, hoverOffset:6 }] },
-    options:{ ...chartOpts(), cutout:'72%', animation:{animateRotate:true,duration:700} }
-  });
-  $('plan-leg').innerHTML = planLabels.map((l,i)=>{
-    const pct = total ? Math.round(planCnt[l]/total*100) : 0;
-    return `<div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--t2)">
-          <span style="width:9px;height:9px;border-radius:2px;background:${planColors[i]};flex-shrink:0"></span>${l}
-        </span>
-        <span style="font-size:12px;font-weight:700">${planCnt[l]}</span>
-      </div>
-      <div style="height:4px;background:var(--b1);border-radius:2px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:${planColors[i]};border-radius:2px;transition:width .5s ease"></div>
-      </div>
-    </div>`;
-  }).join('');
+  // ── Plan donut (filtered by month; defaults to the latest month) ──
+  renderPlanDist(planDefMonth);
 
   // ── Activity feed ──
   renderActivityFeed();
@@ -1756,6 +1744,41 @@ function renderOverview() {
         <div style="font-size:11px;background:var(--rbg);color:var(--r);padding:2px 8px;border-radius:10px;font-weight:600">${t('overdue_badge')}</div>
       </div>
     </div>`).join('');
+}
+
+function renderPlanDist(scope){
+  if (!$('planC')) return;
+  const list = (!scope || scope==='all') ? clients : clients.filter(c=>(c.regDate||'').startsWith(scope));
+  const planCnt = { CORE:0, 'CORE+':0, PREMIUM:0, 'INNER CIRCLE':0 };
+  list.forEach(c => {
+    if (planCnt[c.plan]!==undefined) planCnt[c.plan]++;
+    else if ((c.plan||'').startsWith('PREMIUM')) planCnt.PREMIUM++;   // fold PREMIUM 4299/5000 into PREMIUM
+  });
+  const planColors = ['#06b6d4','#818cf8','#8b5cf6','#f59e0b'];
+  const planLabels = Object.keys(planCnt);
+  if (S.charts.plan) { try{S.charts.plan.destroy();}catch(e){} }
+  S.charts.plan = new Chart($('planC'), {
+    type:'doughnut',
+    data:{ labels:planLabels, datasets:[{ data:Object.values(planCnt), backgroundColor:planColors, borderWidth:0, hoverOffset:6 }] },
+    options:{ ...chartOpts(), cutout:'72%', animation:{animateRotate:true,duration:700} }
+  });
+  const shown = Object.values(planCnt).reduce((a,b)=>a+b,0);
+  const center = $('plan-center'); if (center) center.textContent = list.length;
+  const leg = $('plan-leg');
+  if (leg) leg.innerHTML = planLabels.map((l,i)=>{
+    const pct = shown ? Math.round(planCnt[l]/shown*100) : 0;
+    return `<div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--t2)">
+          <span style="width:9px;height:9px;border-radius:2px;background:${planColors[i]};flex-shrink:0"></span>${l}
+        </span>
+        <span style="font-size:12px;font-weight:700">${planCnt[l]}</span>
+      </div>
+      <div style="height:4px;background:var(--b1);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${planColors[i]};border-radius:2px;transition:width .5s ease"></div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function getLast12Months() {
@@ -3392,6 +3415,21 @@ function openDetail(id) {
     </div>
   </div>` : ''}
 
+  <!-- ── CONTRACT (PDF) ── -->
+  <div class="dp-sc">
+    <div class="dp-st">📄 ${LANG==='ar'?'العقد':'Contract'}</div>
+    ${c.hasContract ? `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--t2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(c.contractName||'contract.pdf')}</span>
+        <button class="btn btn-p" onclick="downloadContract(${id})">⬇️ ${LANG==='ar'?'تحميل':'Download'}</button>
+        ${!isCoach()?`<button class="btn btn-r" onclick="deleteContract(${id})">🗑️ ${LANG==='ar'?'حذف':'Delete'}</button>`:''}
+      </div>
+    ` : (!isCoach() ? `
+      <input type="file" id="contract-inp-${id}" accept="application/pdf,.pdf" style="display:none" onchange="uploadContract(${id},this)"/>
+      <button class="btn btn-g" style="width:100%;justify-content:center" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة عقد (PDF)':'Add contract (PDF)'}</button>
+    ` : `<div style="color:var(--t3);font-size:12px">${LANG==='ar'?'لا يوجد عقد':'No contract'}</div>`)}
+  </div>
+
   <!-- ── NOTES ── -->
   <div class="dp-sc">
     <div class="dp-st">📝 ${t('dp_notes')} <span style="font-size:10px;color:var(--t3);font-weight:400;text-transform:none;letter-spacing:0">(${c.notes.length})</span></div>
@@ -3404,6 +3442,36 @@ function openDetail(id) {
 
   $('dp').classList.add('on');
   $('dov').classList.add('on');
+}
+
+// ─── Contract (PDF) upload / download / delete ───
+function uploadContract(id, inputEl){
+  const file = inputEl.files && inputEl.files[0];
+  if(!file) return;
+  const isPdf = file.type==='application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if(!isPdf){ toast(LANG==='ar'?'يجب أن يكون الملف PDF':'File must be a PDF','⚠️'); inputEl.value=''; return; }
+  if(file.size > 4*1024*1024){ toast(LANG==='ar'?'الحد الأقصى 4 ميغابايت':'Max size 4 MB','⚠️'); inputEl.value=''; return; }
+  toast(LANG==='ar'?'جارٍ رفع العقد...':'Uploading…','⏳');
+  fetch(`/api/clients/${id}/contract?name=${encodeURIComponent(file.name)}`,{
+    method:'POST',
+    headers:{'Content-Type':'application/pdf','Authorization':'Bearer '+getToken()},
+    body:file
+  }).then(r=>{ if(!r.ok) throw new Error(); return r.json(); })
+    .then(()=>{ const c=clients.find(x=>x.id===id); if(c){c.hasContract=true;c.contractName=file.name;} openDetail(id); toast(LANG==='ar'?'تم حفظ العقد':'Contract saved','✅'); })
+    .catch(()=>toast(LANG==='ar'?'فشل رفع العقد':'Upload failed','❌'));
+}
+function downloadContract(id){
+  const c=clients.find(x=>x.id===id);
+  fetch(`/api/clients/${id}/contract`,{headers:{'Authorization':'Bearer '+getToken()}})
+    .then(r=>{ if(!r.ok) throw new Error(); return r.blob(); })
+    .then(blob=>{ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=(c&&c.contractName)||`contract-${id}.pdf`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); })
+    .catch(()=>toast(LANG==='ar'?'فشل تحميل العقد':'Download failed','❌'));
+}
+function deleteContract(id){
+  if(!confirm(LANG==='ar'?'حذف العقد؟':'Delete contract?')) return;
+  fetch(`/api/clients/${id}/contract`,{method:'DELETE',headers:{'Authorization':'Bearer '+getToken()}})
+    .then(r=>{ if(!r.ok) throw new Error(); const c=clients.find(x=>x.id===id); if(c){c.hasContract=false;c.contractName=null;} openDetail(id); toast(LANG==='ar'?'تم حذف العقد':'Contract deleted','🗑️'); })
+    .catch(()=>toast(LANG==='ar'?'فشل حذف العقد':'Delete failed','❌'));
 }
 
 function renderNotes(id) {
@@ -3682,6 +3750,9 @@ function openModal(id=null) {
     CLOSERS.forEach(c=>{const o=document.createElement('option');o.textContent=c;mc.appendChild(o);});
     SETTERS.forEach(s=>{const o=document.createElement('option');o.textContent=s;ms.appendChild(o);});
   }
+
+  // Rebuild plan options from PLANS (includes custom plans loaded from the DB)
+  rebuildPlanSelect();
 
   if (id) {
     const c=clients.find(x=>x.id===id); if(!c) return;

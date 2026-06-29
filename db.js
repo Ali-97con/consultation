@@ -34,6 +34,14 @@ async function ensureSchema() {
     create index if not exists clients_deleted_idx on clients(deleted);
     create sequence if not exists clients_id_seq start with 1000;
 
+    create table if not exists contracts (
+      client_id   integer primary key,
+      filename    text,
+      mime        text,
+      data        bytea       not null,
+      uploaded_at timestamptz not null default now()
+    );
+
     create table if not exists team_members (
       id         bigserial primary key,
       type       text    not null,          -- 'closers' | 'setters'
@@ -187,8 +195,13 @@ function ready() { if (!initPromise) initPromise = ensureInit(); return initProm
 // ─── Client helpers ───────────────────────────────────────────────────────────
 const getClients = async () => {
   await ready();
-  const { rows } = await q('select data from clients where deleted = false order by id');
-  return rows.map(r => r.data);
+  const { rows } = await q(`
+    select c.data, (ct.client_id is not null) as has_contract, ct.filename as contract_name
+    from clients c
+    left join contracts ct on ct.client_id = c.id
+    where c.deleted = false
+    order by c.id`);
+  return rows.map(r => ({ ...r.data, hasContract: r.has_contract, contractName: r.contract_name || null }));
 };
 
 const getTrash = async () => {
@@ -329,6 +342,30 @@ async function addCustomPlan(name, price) {
   if (rows.length) return false;
   await q('insert into custom_plans(name, price) values($1, $2::jsonb)', [name, j(price ?? null)]);
   return true;
+}
+
+// ─── Contract helpers (PDF stored as bytea, one per client) ───────────────────
+async function saveContract(clientId, filename, mime, buffer) {
+  await ready();
+  await q(`insert into contracts(client_id, filename, mime, data, uploaded_at)
+           values($1,$2,$3,$4, now())
+           on conflict (client_id) do update
+             set filename = excluded.filename, mime = excluded.mime,
+                 data = excluded.data, uploaded_at = now()`,
+    [clientId, filename, mime, buffer]);
+  return true;
+}
+
+async function getContract(clientId) {
+  await ready();
+  const { rows } = await q('select filename, mime, data from contracts where client_id = $1', [clientId]);
+  return rows[0] || null;
+}
+
+async function deleteContract(clientId) {
+  await ready();
+  const r = await q('delete from contracts where client_id = $1', [clientId]);
+  return r.rowCount > 0;
 }
 
 // ─── Bulk import (used by migration + /api/migrate-import) ─────────────────────
@@ -613,6 +650,8 @@ module.exports = {
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   // Plans
   getCustomPlans, addCustomPlan,
+  // Contracts (PDF in Postgres)
+  saveContract, getContract, deleteContract,
   // Sessions (Postgres-backed, serverless-safe)
   createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)
