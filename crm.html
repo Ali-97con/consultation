@@ -613,6 +613,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         <option value="refunded">💸 تم ارجاع المبلغ</option>
       </select></div></div>
       <div class="fg"><label>تاريخ التسجيل</label><input class="inp" id="m-reg" type="date"/></div>
+      <div class="fg" style="margin-top:10px">
+        <label>📄 العقد (PDF)</label>
+        <input type="file" id="m-contract-file" accept="application/pdf,.pdf" style="display:none" onchange="onModalContractPick(this)"/>
+        <div id="m-contract-box" style="display:flex;align-items:center;gap:8px"></div>
+      </div>
     </div>
     <!-- Tab 1: Payments -->
     <div class="m-tp" id="mt-1">
@@ -638,9 +643,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         <div class="fr" style="gap:8px;align-items:flex-end">
           <div class="fg"><label>اسم الباقة</label><input class="inp" id="m-cplan-name" type="text" placeholder="مثال: DIAMOND" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/></div>
           <div class="fg"><label>السعر ($)</label><input class="inp" id="m-cplan-price" type="number" min="0" step="1" placeholder="0"/></div>
-          <button class="btn btn-p" onclick="confirmCustomPlan()" style="flex-shrink:0;padding:7px 14px">✓ إضافة</button>
+          <button class="btn btn-p" id="cplan-confirm-btn" onclick="confirmCustomPlan()" style="flex-shrink:0;padding:7px 14px">✓ إضافة</button>
           <button class="btn btn-g" onclick="cancelCustomPlan()" style="flex-shrink:0;padding:7px 14px">✕</button>
         </div>
+        <div id="plan-manager"></div>
       </div>
       <div class="fr"><div class="fg"><label>عدد الأقساط</label><select class="inp" id="m-paytype" onchange="updatePayFields()">
         <option>دفعة واحدة</option><option>قسطين</option>
@@ -1362,7 +1368,10 @@ async function initApp() {
     teamTrash = teamTrashData;
     CLOSERS.splice(0, CLOSERS.length, ...teamData.closers);
     SETTERS.splice(0, SETTERS.length, ...teamData.setters);
-    plansData.forEach(p => { if (!PLANS[p.name]) PLANS[p.name] = p.price; });
+    // Keep the hardcoded defaults as a base (existing clients rely on them);
+    // DB plans add to / override them, so custom plans show up and edits persist.
+    // Deleting a DB plan removes it on next load; deleting a default is in-memory only.
+    plansData.forEach(p => { PLANS[p.name] = p.price; });
     updateTrashBadge();
     $('cnt-badge').textContent = clients.length;
     const ldr = $('app-loader');
@@ -1750,9 +1759,11 @@ function renderPlanDist(scope){
   if (!$('planC')) return;
   const list = (!scope || scope==='all') ? clients : clients.filter(c=>(c.regDate||'').startsWith(scope));
   const planCnt = { CORE:0, 'CORE+':0, PREMIUM:0, 'INNER CIRCLE':0 };
+  const planAmt = { CORE:0, 'CORE+':0, PREMIUM:0, 'INNER CIRCLE':0 };
   list.forEach(c => {
-    if (planCnt[c.plan]!==undefined) planCnt[c.plan]++;
-    else if ((c.plan||'').startsWith('PREMIUM')) planCnt.PREMIUM++;   // fold PREMIUM 4299/5000 into PREMIUM
+    // fold PREMIUM 4299/5000 into PREMIUM
+    const key = planCnt[c.plan]!==undefined ? c.plan : ((c.plan||'').startsWith('PREMIUM') ? 'PREMIUM' : null);
+    if (key) { planCnt[key]++; planAmt[key] += (c.customTotal||PLANS[c.plan]||0); }
   });
   const planColors = ['#06b6d4','#818cf8','#8b5cf6','#f59e0b'];
   const planLabels = Object.keys(planCnt);
@@ -1772,7 +1783,7 @@ function renderPlanDist(scope){
         <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--t2)">
           <span style="width:9px;height:9px;border-radius:2px;background:${planColors[i]};flex-shrink:0"></span>${l}
         </span>
-        <span style="font-size:12px;font-weight:700">${planCnt[l]}</span>
+        <span style="font-size:12px;font-weight:700">${planCnt[l]} <span style="font-weight:600;color:var(--t3);font-size:10px">· ${fmtMoney(planAmt[l])}</span></span>
       </div>
       <div style="height:4px;background:var(--b1);border-radius:2px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${planColors[i]};border-radius:2px;transition:width .5s ease"></div>
@@ -3604,12 +3615,36 @@ function rebuildPlanSelect(selectVal) {
   sel.innerHTML = opts + `<option value="__custom__" style="color:var(--p2)">➕ إضافة باقة جديدة...</option>`;
 }
 
+let _editingPlan = null;
+
 function confirmCustomPlan() {
   const nameEl = $('m-cplan-name'), priceEl = $('m-cplan-price');
   const name = (nameEl ? nameEl.value.trim().toUpperCase() : '');
   const price = priceEl ? (+priceEl.value || 0) : 0;
   if (!name) { toast('أدخل اسم الباقة', '⚠️'); nameEl && nameEl.focus(); return; }
   if (!price) { toast('أدخل سعر الباقة', '⚠️'); priceEl && priceEl.focus(); return; }
+
+  if (_editingPlan) {
+    const oldName = _editingPlan;
+    if (name !== oldName && PLANS[name]) { toast(`الباقة "${name}" موجودة مسبقاً`, '⚠️'); return; }
+    const cnt = clients.filter(c => c.plan === oldName).length;
+    if (name !== oldName && cnt > 0 && !confirm(LANG==='ar'
+        ? `${cnt} عميل مرتبط بباقة "${oldName}". سيتم تحديثهم إلى "${name}". متابعة؟`
+        : `${cnt} client(s) use "${oldName}". They will be moved to "${name}". Continue?`)) return;
+    api('PUT', `/api/plans/${encodeURIComponent(oldName)}`, { newName: name, price })
+      .then(() => {
+        delete PLANS[oldName]; PLANS[name] = price;
+        clients.forEach(c => { if (c.plan === oldName) c.plan = name; });
+        trash.forEach(c => { if (c.plan === oldName) c.plan = name; });
+        _stopEditPlan();
+        if (nameEl) nameEl.value = ''; if (priceEl) priceEl.value = '';
+        rebuildPlanSelect(name); renderPlanManager();
+        toast(LANG==='ar' ? `تم تحديث الباقة "${name}"` : `Plan "${name}" updated`, '✅');
+      })
+      .catch(e => toast('خطأ: ' + (e.message||''), '❌'));
+    return;
+  }
+
   if (PLANS[name]) { toast(`الباقة "${name}" موجودة مسبقاً`, '⚠️'); return; }
   PLANS[name] = price;
   api('POST', '/api/plans', {name, price}).catch(e=>console.error(e));
@@ -3617,6 +3652,103 @@ function confirmCustomPlan() {
   $('custom-plan-row').style.display = 'none';
   updatePlanPrice();
   toast(`تمت إضافة باقة "${name}" بسعر $${price.toLocaleString()}`, '✅');
+}
+
+function _stopEditPlan() {
+  _editingPlan = null;
+  const btn = $('cplan-confirm-btn');
+  if (btn) btn.textContent = '✓ ' + (LANG==='ar' ? 'إضافة' : 'Add');
+}
+
+function startEditPlan(name) {
+  _editingPlan = name;
+  const ne = $('m-cplan-name'), pe = $('m-cplan-price');
+  if (ne) ne.value = name;
+  if (pe) pe.value = PLANS[name] || 0;
+  const btn = $('cplan-confirm-btn');
+  if (btn) btn.textContent = '✓ ' + (LANG==='ar' ? 'تحديث' : 'Update');
+  ne && ne.focus();
+}
+
+function deletePlanUI(name) {
+  const cnt = clients.filter(c => c.plan === name).length;
+  const msg = cnt > 0
+    ? (LANG==='ar'
+        ? `${cnt} عميل مرتبط بباقة "${name}". الحذف لن يحذف العملاء لكنه قد يؤثر على أسعارهم. حذف الباقة؟`
+        : `${cnt} client(s) use "${name}". Deleting won't remove them but may affect pricing. Delete plan?`)
+    : (LANG==='ar' ? `حذف باقة "${name}"؟` : `Delete plan "${name}"?`);
+  if (!confirm(msg)) return;
+  api('DELETE', `/api/plans/${encodeURIComponent(name)}`)
+    .then(() => {
+      delete PLANS[name];
+      if (_editingPlan === name) _stopEditPlan();
+      rebuildPlanSelect($('m-plan') && PLANS[$('m-plan').value] ? $('m-plan').value : undefined);
+      renderPlanManager();
+      toast(LANG==='ar' ? `تم حذف الباقة "${name}"` : `Plan "${name}" deleted`, '🗑️');
+    })
+    .catch(e => toast('خطأ: ' + (e.message||''), '❌'));
+}
+
+function renderPlanManager() {
+  const box = $('plan-manager');
+  if (!box) return;
+  const names = Object.keys(PLANS);
+  box.innerHTML =
+    `<div style="font-size:11px;font-weight:600;color:var(--t3);margin:12px 0 6px">${LANG==='ar'?'الباقات الحالية':'Existing plans'}</div>`
+    + (names.length ? names.map(nm => {
+        const cnt = clients.filter(c => c.plan === nm).length;
+        return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--b1)">
+          <span style="flex:1;min-width:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nm)} <span style="color:var(--t3)">— $${(PLANS[nm]||0).toLocaleString()}</span>${cnt?` <span style="color:var(--t3);font-size:10px">· ${cnt} ${LANG==='ar'?'عميل':'clients'}</span>`:''}</span>
+          <button type="button" class="btn btn-g" style="flex-shrink:0;padding:3px 9px;font-size:12px" onclick="startEditPlan('${esc(nm)}')">✏️</button>
+          <button type="button" class="btn btn-r" style="flex-shrink:0;padding:3px 9px;font-size:12px" onclick="deletePlanUI('${esc(nm)}')">🗑️</button>
+        </div>`;
+      }).join('') : `<div style="color:var(--t3);font-size:12px">—</div>`);
+}
+
+// ─── Contract field inside the add/edit client modal ───
+let _modalContract = null; // { file, existingName, remove }
+function resetModalContract(c) {
+  _modalContract = { file: null, existingName: (c && c.hasContract) ? (c.contractName || 'contract.pdf') : null, remove: false };
+  const inp = $('m-contract-file'); if (inp) inp.value = '';
+  renderModalContractBox();
+}
+function onModalContractPick(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if (!isPdf) { toast(LANG==='ar'?'يجب أن يكون الملف PDF':'File must be a PDF', '⚠️'); input.value=''; return; }
+  if (file.size > 4*1024*1024) { toast(LANG==='ar'?'الحد الأقصى 4 ميغابايت':'Max size 4 MB', '⚠️'); input.value=''; return; }
+  if (!_modalContract) _modalContract = { file:null, existingName:null, remove:false };
+  _modalContract.file = file; _modalContract.remove = false;
+  renderModalContractBox();
+}
+function modalContractRemove() {
+  if (!_modalContract) return;
+  _modalContract.file = null;
+  if (_modalContract.existingName) _modalContract.remove = true;
+  _modalContract.existingName = null;
+  const inp = $('m-contract-file'); if (inp) inp.value = '';
+  renderModalContractBox();
+}
+function renderModalContractBox() {
+  const box = $('m-contract-box'); if (!box || !_modalContract) return;
+  const pickBtn = `<button type="button" class="btn btn-g" style="flex:1;justify-content:center" onclick="document.getElementById('m-contract-file').click()">⬆️ ${LANG==='ar'?'اختر ملف PDF':'Choose PDF'}</button>`;
+  if (_modalContract.file) {
+    box.innerHTML = `<span style="flex:1;min-width:0;font-size:12px;color:var(--g);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(_modalContract.file.name)}</span><button type="button" class="btn btn-r" style="padding:6px 12px" onclick="modalContractRemove()">✕</button>`;
+  } else if (_modalContract.existingName) {
+    box.innerHTML = `<span style="flex:1;min-width:0;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(_modalContract.existingName)}</span>${pickBtn}<button type="button" class="btn btn-r" style="padding:6px 12px" onclick="modalContractRemove()">🗑️</button>`;
+  } else {
+    box.innerHTML = pickBtn;
+  }
+}
+function _contractUpload(id, file) {
+  return fetch(`/api/clients/${id}/contract?name=${encodeURIComponent(file.name)}`, {
+    method:'POST', headers:{'Content-Type':'application/pdf','Authorization':'Bearer '+getToken()}, body:file
+  }).then(r => { if (!r.ok) throw new Error(); return r.json(); });
+}
+function _contractDelete(id) {
+  return fetch(`/api/clients/${id}/contract`, { method:'DELETE', headers:{'Authorization':'Bearer '+getToken()} })
+    .then(r => { if (!r.ok) throw new Error(); });
 }
 
 function cancelCustomPlan() {
@@ -3630,6 +3762,7 @@ function updatePlanPrice() {
   const sel = $('m-plan');
   if (sel && sel.value === '__custom__') {
     $('custom-plan-row').style.display = '';
+    renderPlanManager();
     $('m-cplan-name') && $('m-cplan-name').focus();
     return;
   }
@@ -3798,6 +3931,7 @@ function openModal(id=null) {
     if(dw) dw.style.display='none'; if(db) db.style.display='none';
     updatePlanPrice(); updatePayFields();
   }
+  resetModalContract(id ? clients.find(x=>x.id===id) : null);
   $('modal').classList.add('on');
 }
 
@@ -3833,6 +3967,7 @@ async function saveClient() {
     regDate:$('m-reg').value||new Date().toISOString().split('T')[0],
     lastPayDate:pd.filter(Boolean).slice(-1)[0]||'',
   };
+  let savedId = null, savedObj = null;
   try {
     if (S.editId) {
       await api('PUT', `/api/clients/${S.editId}`, data);
@@ -3853,6 +3988,7 @@ async function saveClient() {
       }
       const idx=clients.findIndex(x=>x.id===S.editId);
       if(idx>-1) clients[idx]={...clients[idx],...data};
+      savedId=S.editId; savedObj=(idx>-1?clients[idx]:null);
       toast(`${LANG==='ar'?'تم تعديل بيانات':'Updated'} ${name}`,'✏️');
       logActivity('✏️', LANG==='ar'?'تعديل بيانات عميل':'Client Updated', name, 'var(--ybg)', 'var(--y)');
     } else {
@@ -3861,11 +3997,24 @@ async function saveClient() {
       const ci=Math.floor(Math.random()*COLORS.length);
       const newClient = await api('POST', '/api/clients', {...data, notes, ci});
       clients.unshift(newClient);
+      savedId=newClient.id; savedObj=newClient;
       toast(`${t('msg_added')} ${name} ✨`,'🎉');
       logActivity('👤', LANG==='ar'?'تسجيل عميل جديد':'New Client', name, 'var(--pbg)', 'var(--p2)');
     }
   } catch(e) {
     toast('خطأ في الحفظ: '+e.message,'❌'); return;
+  }
+  // Contract (PDF) attached in the modal — upload/remove after the client is saved
+  if (_modalContract && savedId && (_modalContract.file || _modalContract.remove)) {
+    try {
+      if (_modalContract.file) {
+        await _contractUpload(savedId, _modalContract.file);
+        if (savedObj) { savedObj.hasContract = true; savedObj.contractName = _modalContract.file.name; }
+      } else if (_modalContract.remove) {
+        await _contractDelete(savedId);
+        if (savedObj) { savedObj.hasContract = false; savedObj.contractName = null; }
+      }
+    } catch(_) { toast(LANG==='ar'?'تعذّر حفظ العقد':'Contract save failed','⚠️'); }
   }
   closeModal();
   if(S.view==='clients') renderTable();
@@ -3901,7 +4050,7 @@ async function renderUsers() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
         <div>
           <div style="font-size:16px;font-weight:700">إدارة المستخدمين</div>
-          <div style="font-size:12px;color:var(--t3);margin-top:2px">${users.length} مستخدم — مخزّنون في MongoDB</div>
+          <div style="font-size:12px;color:var(--t3);margin-top:2px">${users.length} مستخدم — مخزّنون في Supabase</div>
         </div>
         <button class="btn btn-p" onclick="openAddUser()">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>

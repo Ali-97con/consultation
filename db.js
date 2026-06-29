@@ -344,6 +344,31 @@ async function addCustomPlan(name, price) {
   return true;
 }
 
+// Update a plan's price and/or name. Renaming also re-labels every client on that plan.
+async function updateCustomPlan(oldName, newName, price) {
+  await ready();
+  const renaming = newName && newName !== oldName;
+  if (renaming) {
+    const { rows } = await q('select 1 from custom_plans where name = $1', [newName]);
+    if (rows.length) return false;                     // target name already taken
+  }
+  const target = renaming ? newName : oldName;
+  await q('delete from custom_plans where name = $1', [oldName]);
+  await q(`insert into custom_plans(name, price) values($1, $2::jsonb)
+           on conflict (name) do update set price = excluded.price`, [target, j(price ?? null)]);
+  if (renaming) {
+    await q(`update clients set data = jsonb_set(data, '{plan}', to_jsonb($2::text))
+             where data->>'plan' = $1`, [oldName, newName]);
+  }
+  return true;
+}
+
+async function deleteCustomPlan(name) {
+  await ready();
+  await q('delete from custom_plans where name = $1', [name]);
+  return true;
+}
+
 // ─── Contract helpers (PDF stored as bytea, one per client) ───────────────────
 async function saveContract(clientId, filename, mime, buffer) {
   await ready();
@@ -649,7 +674,7 @@ module.exports = {
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   // Plans
-  getCustomPlans, addCustomPlan,
+  getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan,
   // Contracts (PDF in Postgres)
   saveContract, getContract, deleteContract,
   // Sessions (Postgres-backed, serverless-safe)

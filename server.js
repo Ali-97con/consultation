@@ -7,7 +7,7 @@ const {
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
-  getCustomPlans, addCustomPlan, importData,
+  getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan, importData,
   saveContract, getContract, deleteContract,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
@@ -268,6 +268,21 @@ app.post('/api/plans', requireAdmin, async (req, res) => {
       return res.status(409).json({ error: 'الباقة موجودة مسبقاً' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/plans/:name', requireAdmin, async (req, res) => {
+  try {
+    const { newName, price } = req.body || {};
+    const ok = await updateCustomPlan(decodeURIComponent(req.params.name),
+      newName ? str(newName, 100) : undefined, price);
+    if (!ok) return res.status(409).json({ error: 'اسم الباقة موجود مسبقاً' });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/plans/:name', requireAdmin, async (req, res) => {
+  try { await deleteCustomPlan(decodeURIComponent(req.params.name)); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Client contract (PDF) ────────────────────────────────────────────────────
