@@ -2799,7 +2799,8 @@ function buildCommMonthOptions(){
 function computeCommissions(month){
   const people = {};
   const get = n => people[n] || (people[n] = { name:n, asSetter:0, asCloser:0, combined:0, cset:new Set() });
-  clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
+  // Only clients with an explicit channel (i.e. the new ones) count toward commissions.
+  clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel === 'inbound' || c.channel === 'outbound')).forEach(c => {
     const collected = [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]]
       .filter(([a,dt]) => a > 0 && dt && (!month || dt.startsWith(month)))
       .reduce((s,[a]) => s + a, 0);
