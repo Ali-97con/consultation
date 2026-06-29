@@ -1,50 +1,93 @@
 'use strict';
-const mongoose = require('mongoose');
+const { Pool } = require('pg');
 const crypto   = require('crypto');
 
-// ─── Connection (cached for serverless) ───────────────────────────────────────
-let cachedConn = null;
-async function connectDB() {
-  if (cachedConn && mongoose.connection.readyState === 1) return;
-  cachedConn = await mongoose.connect(process.env.MONGODB_URI);
+// ─── Connection (pooled, cached for serverless) ───────────────────────────────
+// Use the Supabase **Transaction pooler** connection string (port 6543) in
+// production/serverless. DATABASE_URL must be set or the app throws on first query.
+let pool = null;
+function getPool() {
+  if (pool) return pool;
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error('DATABASE_URL is not set');
+  pool = new Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false }, // Supabase requires TLS
+    max: 3,
+    idleTimeoutMillis: 30000,
+  });
+  return pool;
 }
+const q = (text, params) => getPool().query(text, params);
+const j = (v) => JSON.stringify(v);
 
-// ─── Session schema — stored in MongoDB (serverless-safe) ────────────────────
-const SessionSchema = new mongoose.Schema({
-  token:     { type: String, required: true, unique: true, index: true },
-  username:  { type: String, required: true },
-  role:      { type: String, required: true },
-  expiresAt: { type: Date,   required: true },
-});
-SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // MongoDB auto-deletes expired
-const Session = mongoose.models.Session || mongoose.model('Session', SessionSchema);
+// ─── Schema (idempotent — self-heals if the SQL-editor step was skipped) ──────
+let schemaPromise = null;
+async function ensureSchema() {
+  await q(`
+    create table if not exists clients (
+      id         integer primary key,
+      data       jsonb   not null,
+      deleted    boolean not null default false,
+      deleted_at timestamptz
+    );
+    create index if not exists clients_deleted_idx on clients(deleted);
+    create sequence if not exists clients_id_seq start with 1000;
 
+    create table if not exists team_members (
+      id         bigserial primary key,
+      type       text    not null,          -- 'closers' | 'setters'
+      name       text    not null,
+      deleted    boolean not null default false,
+      deleted_at timestamptz
+    );
+
+    create table if not exists custom_plans (
+      name  text primary key,
+      price jsonb
+    );
+
+    create table if not exists users (
+      username      text primary key,
+      password_hash text not null,
+      role          text not null default 'coach',
+      created_at    text
+    );
+
+    create table if not exists sessions (
+      token      text primary key,
+      username   text        not null,
+      role       text        not null,
+      expires_at timestamptz not null
+    );
+    create index if not exists sessions_expires_idx on sessions(expires_at);
+  `);
+}
+function schemaReady() { if (!schemaPromise) schemaPromise = ensureSchema(); return schemaPromise; }
+
+// ─── Sessions (DB-backed, serverless-safe) ────────────────────────────────────
 async function createSessionDB(username, role) {
-  await connectDB();
+  await schemaReady();
   const token = crypto.randomBytes(32).toString('hex');
-  await Session.create({ token, username, role, expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000) });
+  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  await q('insert into sessions(token, username, role, expires_at) values($1,$2,$3,$4)',
+    [token, username, role, expiresAt]);
   return token;
 }
 async function getSessionDB(token) {
   if (!token) return null;
-  await connectDB();
-  return Session.findOne({ token, expiresAt: { $gt: new Date() } }).lean();
+  await schemaReady();
+  const { rows } = await q(
+    'select username, role from sessions where token = $1 and expires_at > now()', [token]);
+  return rows[0] || null;
 }
 async function deleteSessionDB(token) {
   if (!token) return;
-  await connectDB();
-  await Session.deleteOne({ token });
+  await schemaReady();
+  await q('delete from sessions where token = $1', [token]);
 }
 
-// ─── User schema (separate collection) ───────────────────────────────────────
-const UserSchema = new mongoose.Schema({
-  username:     { type: String, unique: true, required: true, trim: true, lowercase: true },
-  passwordHash: { type: String, required: true },
-  role:         { type: String, enum: ['admin', 'coach'], default: 'coach' },
-  createdAt:    { type: String, default: () => new Date().toISOString() },
-});
-const User = mongoose.models.User || mongoose.model('User', UserSchema);
-
+// ─── Password hashing (PBKDF2-SHA256) ─────────────────────────────────────────
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha256').toString('hex');
@@ -62,252 +105,257 @@ function verifyPassword(password, stored) {
   } catch { return false; }
 }
 
-// Seeds initial accounts from env vars on first boot
-let userSeedPromise = null;
+// ─── Users ────────────────────────────────────────────────────────────────────
+let usersPromise = null;
 async function ensureUsers() {
-  await connectDB();
-  const count = await User.countDocuments();
-  if (count === 0) {
+  await schemaReady();
+  const { rows } = await q('select count(*)::int as n from users');
+  if (rows[0].n === 0) {
     const defaults = [
-      { username: (process.env.LOGIN_USER  || 'admin').toLowerCase().trim(),  password: process.env.LOGIN_PASS  || 'password', role: 'admin' },
+      { username: (process.env.LOGIN_USER  || 'admin').toLowerCase().trim(),  password: process.env.LOGIN_PASS  || 'password',  role: 'admin' },
       { username: (process.env.COACH1_USER || 'coach1').toLowerCase().trim(), password: process.env.COACH1_PASS || 'abusharbi', role: 'coach' },
       { username: (process.env.COACH2_USER || 'coach2').toLowerCase().trim(), password: process.env.COACH2_PASS || 'taha',      role: 'coach' },
     ];
     for (const u of defaults) {
-      await User.create({ username: u.username, passwordHash: hashPassword(u.password), role: u.role });
+      await q('insert into users(username, password_hash, role, created_at) values($1,$2,$3,$4) on conflict (username) do nothing',
+        [u.username, hashPassword(u.password), u.role, new Date().toISOString()]);
     }
     console.log('✅ Seeded initial users');
   }
 }
-const usersReady = () => { if (!userSeedPromise) userSeedPromise = ensureUsers(); return userSeedPromise; };
+function usersReady() { if (!usersPromise) usersPromise = ensureUsers(); return usersPromise; }
 
-// User CRUD
 const findUserByUsername = async (username) => {
   await usersReady();
-  return User.findOne({ username: String(username).toLowerCase().trim() }).lean();
+  const { rows } = await q(
+    'select username, password_hash, role, created_at from users where username = $1',
+    [String(username).toLowerCase().trim()]);
+  if (!rows[0]) return null;
+  return { username: rows[0].username, passwordHash: rows[0].password_hash, role: rows[0].role, createdAt: rows[0].created_at };
 };
 
 const getUsers = async () => {
   await usersReady();
-  return User.find({}, { passwordHash: 0, __v: 0 }).lean();
+  const { rows } = await q('select username, role, created_at from users order by created_at');
+  return rows.map(r => ({ username: r.username, role: r.role, createdAt: r.created_at }));
 };
 
 const createUser = async (username, password, role) => {
   await usersReady();
   const u = String(username).toLowerCase().trim();
-  const exists = await User.findOne({ username: u });
-  if (exists) return false;
-  await User.create({ username: u, passwordHash: hashPassword(password), role });
+  const { rows } = await q('select 1 from users where username = $1', [u]);
+  if (rows.length) return false;
+  await q('insert into users(username, password_hash, role, created_at) values($1,$2,$3,$4)',
+    [u, hashPassword(password), role, new Date().toISOString()]);
   return true;
 };
 
 const updateUser = async (username, { password, role }) => {
   await usersReady();
-  const update = {};
-  if (password) update.passwordHash = hashPassword(password);
-  if (role)     update.role = role;
-  if (!Object.keys(update).length) return false;
-  const r = await User.updateOne({ username: String(username).toLowerCase().trim() }, { $set: update });
-  return r.modifiedCount > 0;
+  const sets = [], vals = [];
+  if (password) { vals.push(hashPassword(password)); sets.push(`password_hash = $${vals.length}`); }
+  if (role)     { vals.push(role);                   sets.push(`role = $${vals.length}`); }
+  if (!sets.length) return false;
+  vals.push(String(username).toLowerCase().trim());
+  const r = await q(`update users set ${sets.join(', ')} where username = $${vals.length}`, vals);
+  return r.rowCount > 0;
 };
 
 const deleteUser = async (username) => {
   await usersReady();
-  const r = await User.deleteOne({ username: String(username).toLowerCase().trim() });
-  return r.deletedCount > 0;
+  const r = await q('delete from users where username = $1', [String(username).toLowerCase().trim()]);
+  return r.rowCount > 0;
 };
 
-// ─── Store schema ─────────────────────────────────────────────────────────────
-const StoreSchema = new mongoose.Schema({
-  clients:      [mongoose.Schema.Types.Mixed],
-  closers:      [String],
-  setters:      [String],
-  custom_plans: [mongoose.Schema.Types.Mixed],
-  team_trash:   [mongoose.Schema.Types.Mixed],
-  _nextId:      { type: Number, default: 1000 },
-});
-const Store = mongoose.models.Store || mongoose.model('Store', StoreSchema);
-
-// ─── Read helper ──────────────────────────────────────────────────────────────
-async function getDoc() {
-  await connectDB();
-  return Store.findOne({}).lean();
-}
-
-// ─── Init / Seed (runs once if no document exists) ────────────────────────────
+// ─── Init / Seed (runs once if the clients table is empty) ────────────────────
 let initPromise = null;
 async function ensureInit() {
-  await connectDB();
-  const doc = await Store.findOne({}).lean();
-  if (!doc) {
-    await Store.create({
-      clients: SEED_CLIENTS.map(mkC), closers: [...SEED_CLOSERS],
-      setters: [...SEED_SETTERS], custom_plans: [], team_trash: [], _nextId: 1000,
-    });
+  await schemaReady();
+  const { rows } = await q('select count(*)::int as n from clients');
+  if (rows[0].n === 0) {
+    await q(`insert into clients(id, data, deleted, deleted_at)
+             select (c->>'id')::int, c, coalesce((c->>'deleted')::boolean, false), null
+             from jsonb_array_elements($1::jsonb) c`, [j(SEED_CLIENTS.map(mkC))]);
+    await q(`insert into team_members(type, name) select 'closers', n from unnest($1::text[]) n`, [SEED_CLOSERS]);
+    await q(`insert into team_members(type, name) select 'setters', n from unnest($1::text[]) n`, [SEED_SETTERS]);
+    await q(`select setval('clients_id_seq', 1000, false)`);
     console.log('✅ Seeded initial data');
-  } else if (!doc.clients || doc.clients.length === 0) {
-    await Store.updateOne({}, { $set: {
-      clients: SEED_CLIENTS.map(mkC), closers: [...SEED_CLOSERS],
-      setters: [...SEED_SETTERS], _nextId: 1000,
-    }});
   }
 }
-const ready = () => { if (!initPromise) initPromise = ensureInit(); return initPromise; };
+function ready() { if (!initPromise) initPromise = ensureInit(); return initPromise; }
 
 // ─── Client helpers ───────────────────────────────────────────────────────────
 const getClients = async () => {
   await ready();
-  const doc = await getDoc();
-  return (doc?.clients || []).filter(c => !c.deleted);
+  const { rows } = await q('select data from clients where deleted = false order by id');
+  return rows.map(r => r.data);
 };
 
 const getTrash = async () => {
   await ready();
-  const doc = await getDoc();
-  return (doc?.clients || []).filter(c => c.deleted)
-    .sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
+  const { rows } = await q('select data from clients where deleted = true order by deleted_at desc nulls last');
+  return rows.map(r => r.data);
 };
 
 async function createClient(c) {
   await ready();
-  const before = await Store.findOneAndUpdate({}, { $inc: { _nextId: 1 } }, { new: false, lean: true });
-  const id = before._nextId;
+  const { rows } = await q(`select nextval('clients_id_seq') as id`);
+  const id = Number(rows[0].id);
   const client = { ...c, id, deleted: false, deletedAt: null };
-  await Store.updateOne({}, { $push: { clients: { $each: [client], $position: 0 } } });
+  await q('insert into clients(id, data, deleted, deleted_at) values($1,$2,false,null)', [id, j(client)]);
   return client;
 }
 
 async function updateClient(id, patch) {
   await ready();
-  const doc = await getDoc();
-  const client = (doc?.clients || []).find(x => x.id === id);
-  if (!client) return null;
-  // never overwrite notes via this path
-  const { notes, ...safePatch } = patch;
-  const updated = { ...client, ...safePatch, id };
-  await Store.updateOne({ 'clients.id': id }, { $set: { 'clients.$': updated } });
+  const { rows } = await q('select data from clients where id = $1', [id]);
+  if (!rows.length) return null;
+  const { notes, ...safePatch } = patch;          // never overwrite notes via this path
+  const updated = { ...rows[0].data, ...safePatch, id };
+  await q('update clients set data = $2 where id = $1', [id, j(updated)]);
   return updated;
 }
 
 async function updateNotes(id, notes) {
   await ready();
-  const result = await Store.updateOne(
-    { 'clients.id': id },
-    { $set: { 'clients.$.notes': notes } }
-  );
-  return result.modifiedCount > 0;
+  const r = await q(`update clients set data = jsonb_set(data, '{notes}', $2::jsonb) where id = $1`,
+    [id, j(notes)]);
+  return r.rowCount > 0;
 }
 
 async function softDelete(id) {
   await ready();
-  const result = await Store.updateOne(
-    { 'clients.id': id },
-    { $set: { 'clients.$.deleted': true, 'clients.$.deletedAt': new Date().toISOString() } }
-  );
-  return result.modifiedCount > 0;
+  const { rows } = await q('select data from clients where id = $1 and deleted = false', [id]);
+  if (!rows.length) return false;
+  const deletedAt = new Date().toISOString();
+  const data = { ...rows[0].data, deleted: true, deletedAt };
+  await q('update clients set data = $2, deleted = true, deleted_at = $3 where id = $1', [id, j(data), deletedAt]);
+  return true;
 }
 
 async function restoreClient(id) {
   await ready();
-  const result = await Store.updateOne(
-    { 'clients.id': id },
-    { $set: { 'clients.$.deleted': false, 'clients.$.deletedAt': null } }
-  );
-  return result.modifiedCount > 0;
+  const { rows } = await q('select data from clients where id = $1 and deleted = true', [id]);
+  if (!rows.length) return false;
+  const data = { ...rows[0].data, deleted: false, deletedAt: null };
+  await q('update clients set data = $2, deleted = false, deleted_at = null where id = $1', [id, j(data)]);
+  return true;
 }
 
 async function restoreAll() {
   await ready();
-  const doc = await getDoc();
-  const updates = {};
-  (doc?.clients || []).forEach((c, i) => {
-    if (c.deleted) { updates[`clients.${i}.deleted`] = false; updates[`clients.${i}.deletedAt`] = null; }
-  });
-  if (Object.keys(updates).length) await Store.updateOne({}, { $set: updates });
+  await q(`update clients
+           set deleted = false, deleted_at = null,
+               data = jsonb_set(jsonb_set(data, '{deleted}', 'false'), '{deletedAt}', 'null')
+           where deleted = true`);
 }
 
 async function permDelete(id) {
   await ready();
-  await Store.updateOne({}, { $pull: { clients: { id, deleted: true } } });
+  await q('delete from clients where id = $1 and deleted = true', [id]);
   return true;
 }
 
 async function emptyTrash() {
   await ready();
-  await Store.updateOne({}, { $pull: { clients: { deleted: true } } });
+  await q('delete from clients where deleted = true');
 }
 
 // ─── Team helpers ─────────────────────────────────────────────────────────────
 const getTeam = async () => {
   await ready();
-  const doc = await getDoc();
-  return { closers: doc?.closers || [], setters: doc?.setters || [] };
+  const { rows } = await q('select type, name from team_members where deleted = false order by id');
+  return {
+    closers: rows.filter(r => r.type === 'closers').map(r => r.name),
+    setters: rows.filter(r => r.type === 'setters').map(r => r.name),
+  };
 };
 
 async function addMember(type, name) {
   await ready();
-  const doc = await getDoc();
-  if ((doc?.[type] || []).includes(name)) return false;
-  await Store.updateOne({}, { $push: { [type]: name } });
+  const { rows } = await q('select 1 from team_members where type = $1 and name = $2 and deleted = false', [type, name]);
+  if (rows.length) return false;
+  await q('insert into team_members(type, name) values($1,$2)', [type, name]);
   return true;
 }
 
 async function editMember(type, oldName, newName) {
   await ready();
-  const doc = await getDoc();
-  const idx = (doc?.[type] || []).indexOf(oldName);
-  if (idx === -1) return false;
-  await Store.updateOne({}, { $set: { [`${type}.${idx}`]: newName } });
-  return true;
+  const r = await q('update team_members set name = $3 where type = $1 and name = $2 and deleted = false', [type, oldName, newName]);
+  return r.rowCount > 0;
 }
 
 async function removeMember(type, name) {
   await ready();
-  const doc = await getDoc();
-  if (!(doc?.[type] || []).includes(name)) return false;
-  await Store.updateOne({}, {
-    $pull: { [type]: name },
-    $push: { team_trash: { type, name, deletedAt: new Date().toISOString() } },
-  });
-  return true;
+  const r = await q('update team_members set deleted = true, deleted_at = now() where type = $1 and name = $2 and deleted = false', [type, name]);
+  return r.rowCount > 0;
 }
 
 const getTeamTrash = async () => {
   await ready();
-  const doc = await getDoc();
-  return doc?.team_trash || [];
+  const { rows } = await q('select type, name, deleted_at from team_members where deleted = true order by deleted_at desc');
+  return rows.map(r => ({ type: r.type, name: r.name, deletedAt: r.deleted_at ? r.deleted_at.toISOString() : null }));
 };
 
 async function restoreTeamMember(type, name) {
   await ready();
-  await Store.updateOne({}, { $pull: { team_trash: { type, name } }, $addToSet: { [type]: name } });
+  // mimic $addToSet: drop any active duplicate, then reactivate the trashed row
+  await q('delete from team_members where type = $1 and name = $2 and deleted = false', [type, name]);
+  await q('update team_members set deleted = false, deleted_at = null where type = $1 and name = $2 and deleted = true', [type, name]);
   return true;
 }
 
 async function permDeleteTeamMember(type, name) {
   await ready();
-  await Store.updateOne({}, { $pull: { team_trash: { type, name } } });
+  await q('delete from team_members where type = $1 and name = $2 and deleted = true', [type, name]);
   return true;
 }
 
 async function emptyTeamTrash() {
   await ready();
-  await Store.updateOne({}, { $set: { team_trash: [] } });
+  await q('delete from team_members where deleted = true');
 }
 
 // ─── Plan helpers ─────────────────────────────────────────────────────────────
 const getCustomPlans = async () => {
   await ready();
-  const doc = await getDoc();
-  return doc?.custom_plans || [];
+  const { rows } = await q('select name, price from custom_plans order by name');
+  return rows.map(r => ({ name: r.name, price: r.price }));
 };
 
 async function addCustomPlan(name, price) {
   await ready();
-  const doc = await getDoc();
-  if ((doc?.custom_plans || []).find(p => p.name === name)) return false;
-  await Store.updateOne({}, { $push: { custom_plans: { name, price } } });
+  const { rows } = await q('select 1 from custom_plans where name = $1', [name]);
+  if (rows.length) return false;
+  await q('insert into custom_plans(name, price) values($1, $2::jsonb)', [name, j(price ?? null)]);
   return true;
+}
+
+// ─── Bulk import (used by migration + /api/migrate-import) ─────────────────────
+async function importData(data) {
+  await schemaReady();
+  await q('truncate clients, team_members, custom_plans');   // leaves users + sessions intact
+  const clients = data.clients || [];
+  if (clients.length) {
+    await q(`insert into clients(id, data, deleted, deleted_at)
+             select (c->>'id')::int, c, coalesce((c->>'deleted')::boolean, false),
+                    nullif(c->>'deletedAt', '')::timestamptz
+             from jsonb_array_elements($1::jsonb) c`, [j(clients)]);
+  }
+  if ((data.closers || []).length)
+    await q(`insert into team_members(type, name) select 'closers', n from unnest($1::text[]) n`, [data.closers]);
+  if ((data.setters || []).length)
+    await q(`insert into team_members(type, name) select 'setters', n from unnest($1::text[]) n`, [data.setters]);
+  if ((data.team_trash || []).length)
+    await q(`insert into team_members(type, name, deleted, deleted_at)
+             select t->>'type', t->>'name', true, nullif(t->>'deletedAt', '')::timestamptz
+             from jsonb_array_elements($1::jsonb) t`, [j(data.team_trash)]);
+  if ((data.custom_plans || []).length)
+    await q(`insert into custom_plans(name, price)
+             select p->>'name', p->'price'
+             from jsonb_array_elements($1::jsonb) p on conflict (name) do nothing`, [j(data.custom_plans)]);
+  await q(`select setval('clients_id_seq', $1, false)`, [data._nextId || 1000]);
+  initPromise = null; // reset so the next request sees the imported data
 }
 
 // ─── Seed data ────────────────────────────────────────────────────────────────
@@ -555,20 +603,6 @@ const SEED_CLIENTS = [
 [223,'عيسى عبيد الكندي','971 50 363 6565','','PREMIUM',4299,'تحويل بنكي',4299,0,0,0,'عبدالإله','عبدرحمن','2026-05','enrolled'],
 ];
 
-async function importData(data) {
-  await connectDB();
-  await Store.deleteMany({});
-  await Store.create({
-    clients:      data.clients      || [],
-    closers:      data.closers      || [],
-    setters:      data.setters      || [],
-    custom_plans: data.custom_plans || [],
-    team_trash:   data.team_trash   || [],
-    _nextId:      data._nextId      || 1000,
-  });
-  initPromise = null; // reset so next request reloads fresh
-}
-
 module.exports = {
   // Clients
   getClients, getTrash, importData,
@@ -579,7 +613,7 @@ module.exports = {
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   // Plans
   getCustomPlans, addCustomPlan,
-  // Sessions (MongoDB-backed, serverless-safe)
+  // Sessions (Postgres-backed, serverless-safe)
   createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,

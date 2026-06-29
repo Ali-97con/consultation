@@ -10,46 +10,69 @@ npm start          # node server.js   → http://localhost:3000
 npm run dev        # nodemon for autoreload
 ```
 
-There is no test suite, linter, or build step configured. `PORT` env var overrides the default 3000.
+There is no test suite, linter, or build step. `PORT` overrides the default 3000.
+
+**Required env var:** `DATABASE_URL` — Supabase Postgres connection string (use the **Transaction pooler**, port 6543, for serverless). The app connects on the first query and throws without it. There is no local fallback store. Optional seed-account vars (used only on first boot of an empty `users` collection): `LOGIN_USER`/`LOGIN_PASS` (admin), `COACH1_USER`/`COACH1_PASS`, `COACH2_USER`/`COACH2_PASS`. `MIGRATE_SECRET` gates the `/api/migrate-import` endpoint.
 
 ## Two parallel codebases — only one runs
 
 This directory contains two independent implementations of the same CRM. Be explicit about which you're touching:
 
-1. **Node/Express app (root)** — the live, running system. Single-process Express server backed by a JSON file. This is what `npm start` boots.
-2. **`secure_backend/`** — a separate Django reference/blueprint. It has its own `requirements.txt` and `manage.py`, uses Postgres + Redis + Channels, and is **not** wired into the Node app. Treat it as a parallel design artifact unless the user explicitly asks about Django/security work.
+1. **Node/Express app (root)** — the live, running system. Express server backed by **Supabase / Postgres** via the `pg` driver. This is what `npm start` boots and what deploys to Vercel.
+2. **`secure_backend/`** — a separate Django reference/blueprint. Own `requirements.txt` + `manage.py`, uses Postgres + Redis + Channels, and is **not** wired into the Node app. Treat it as a parallel design artifact unless the user explicitly asks about Django/security work.
 
 Default to the Node app unless the request clearly concerns Django, Postgres, RBAC, or WAF concerns.
 
 ## Node app architecture
 
-Three files do everything:
+Two files do the backend work; the front-end is several standalone HTML pages.
 
-- [server.js](server.js) — Express routes. Thin HTTP layer; every handler is a one-liner that calls into `db.js`. Serves [crm.html](crm.html) at `/`.
-- [db.js](db.js) — In-memory store + JSON persistence. **Every mutation calls `save()` synchronously**, which rewrites the entire `crm-data.json` file (~160KB). There is no transaction layer, no concurrency control, no migrations.
-- [crm.html](crm.html) — Single-page Arabic/RTL UI (~160KB, all inline CSS+JS). Calls the REST API via a small `api()` helper. No build step, no framework — vanilla JS + Chart.js from CDN.
+- [server.js](server.js) — Express routes + auth/CORS/rate-limit middleware. Thin HTTP layer; each handler is `async` and calls into `db.js`. Serves [crm.html](crm.html) at `/`.
+- [db.js](db.js) — All Postgres access via the `pg` pool. Defines the schema (`ensureSchema`), the seed data, and the exported data-access functions. **No JSON file is read or written at runtime.**
+- Front-end pages (served statically by `express.static(__dirname)`): [crm.html](crm.html) (main SPA, ~260KB, all inline CSS+JS, Arabic/RTL, Chart.js from CDN), [login.html](login.html), [dashboard.html](dashboard.html), [splash.html](splash.html). No build step, no framework.
 
-### State model
+### Persistence model (Postgres, serverless-safe)
 
-`store` in [db.js:8-14](db.js#L8-L14) holds: `clients` (active + soft-deleted in the same array, distinguished by `deleted` flag), `closers`, `setters`, `custom_plans`, and `_nextId` (auto-increment starting at 1000; seed IDs 1–223 are reserved).
+The `pg` Pool is **cached across invocations** (`getPool` in [db.js](db.js)) so a warm Vercel lambda reuses connections; use the Supabase **Transaction pooler** (port 6543) so many lambdas share a small server-side pool. Five tables (one row per entity — no single-document blob):
 
-Soft delete pattern: `softDelete` flips `deleted: true` + sets `deletedAt`. `getClients()` filters out deleted; `getTrash()` returns only deleted. Permanent deletion is a separate call.
+- **`clients`** — `id int pk`, `data jsonb` (the full client object), `deleted bool`, `deleted_at`. Reads pull `data`; mutations are per-row, so they are concurrency-safe (the old positional-array hazard is gone). `id` for new clients comes from the `clients_id_seq` sequence (starts at 1000; seed ids are 1–223).
+- **`team_members`** — `type` (`'closers'`/`'setters'`), `name`, `deleted`/`deleted_at`. Active members have `deleted=false`; the team trash is the `deleted=true` rows.
+- **`custom_plans`** — `name pk`, `price jsonb`.
+- **`users`** — `username pk` (lowercased), `password_hash`, `role` (`admin`|`coach`), `created_at`.
+- **`sessions`** — `token pk`, `username`, `role`, `expires_at`. `getSessionDB` filters `expires_at > now()`; there is no TTL job, so expired rows linger until overwritten (harmless — they never validate). In the DB rather than memory so serverless instances share auth state.
 
-### Seed data
+Client objects keep their `notes` array inside `data`; `updateClient` strips `notes` so only the dedicated notes endpoint writes them. JSONB params are always `JSON.stringify`'d before binding (so arrays aren't mistaken for Postgres arrays).
 
-On first boot (no `crm-data.json` present, or empty `clients` array), [db.js:380-391](db.js#L380-L391) seeds from inline arrays `SEED_CLIENTS`, `SEED_CLOSERS`, `SEED_SETTERS`. The `mkC()` helper at [db.js:136](db.js#L136) converts the compact tuple format into full client objects. To reseed, delete `crm-data.json` and restart.
+### Lazy init / seeding
+
+Memoized promises guard one-time setup. `schemaReady()` runs `ensureSchema` (idempotent `CREATE TABLE IF NOT EXISTS …`, so the app self-heals even if `schema.sql` was never run). `ready()`/`ensureInit()` seeds clients + team from inline `SEED_CLIENTS`/`SEED_CLOSERS`/`SEED_SETTERS` **only when the `clients` table is empty**; `usersReady()`/`ensureUsers()` seeds the three default accounts only when `users` is empty. `mkC()` expands the compact tuple format. To reseed clients, `TRUNCATE clients` (and `team_members`) and restart.
+
+### Auth
+
+- Passwords: PBKDF2-SHA256, 100k iterations, per-password salt, stored as `salt:hash`; verified with `timingSafeEqual` ([db.js:48-63](db.js#L48-L63)).
+- Login (`POST /api/auth/login`) returns a token; the front-end stores it in `sessionStorage` (`ah97_token`, `ah97_role`, `ah97_user`, `ah97_authed`) and sends it as `Authorization: Bearer <token>`. The `api()` helper in [crm.html](crm.html) attaches it automatically.
+- Route guards: `requireAuth` (any valid session) and `requireAdmin` (role `admin` only) in [server.js:40-61](server.js#L40-L61). **Coaches are read-mostly:** GET endpoints use `requireAuth`; create/edit/delete of clients, team, plans, and users use `requireAdmin`. The only writes a coach can do are `PUT /api/clients/:id` and `PUT /api/clients/:id/notes`.
+- `loginRateLimit` is an in-memory `Map` (per-IP, 10 tries / 15 min). It is **per-lambda and resets on cold start** — best-effort, not a real limiter in serverless.
 
 ### API surface
 
-All endpoints under `/api/*` return JSON. Client IDs are numeric, parsed with `+req.params.id`. The `clean()` helper in [server.js:21](server.js#L21) strips the internal `deleted`/`deletedAt` fields and exposes `_deletedAt` on trash responses only.
+All endpoints under `/api/*` return JSON; every handler is wrapped in try/catch returning `{ error }` with a 500. Client IDs are numeric (`+req.params.id`). `clean()` ([server.js:101](server.js#L101)) strips internal `deleted`/`deletedAt` and exposes `_deletedAt` on trash responses. Team endpoints take `closers`/`setters` as a path segment; names in URLs are `decodeURIComponent`'d. `sanitizeClientBody` ([server.js:81](server.js#L81)) whitelists + length-caps incoming client fields, and `updateClient` deliberately **never** writes `notes` (notes go only through the dedicated notes endpoint).
 
-Team endpoints take `closers` or `setters` as a path segment (`/api/team/closers`, `/api/team/setters`). Name fields in URLs are URL-encoded — handlers `decodeURIComponent` them.
+Soft delete: `softDelete` sets `deleted:true` + `deletedAt`; `getClients` filters deleted out, `getTrash` returns only deleted. Permanent delete (`permDelete`/`emptyTrash`) `$pull`s them. Team members get a parallel trash (`team_trash`).
 
-### Notable conventions
+### Migration
 
-- All user-facing strings, names, and notes are Arabic. The HTML is `dir="rtl"`.
-- The `clients[]` array is mutated in place; `unshift` is used so new clients appear first.
-- `crm-data.json` is the source of truth at rest — it's checked into the working directory and contains real customer PII (names, phones, emails). Treat with care.
+The data lives in **Supabase**. `importData()` (used by `POST /api/migrate-import`, guarded by `MIGRATE_SECRET`) `TRUNCATE`s and reloads `clients`/`team_members`/`custom_plans` and resets the id sequence — it leaves `users`/`sessions` intact. [migrate-to-supabase.js](migrate-to-supabase.js) (`npm run migrate:supabase`) is the one-time MongoDB→Postgres script: it reads the old Mongo `Store` doc + users (needs both `MONGODB_URI` and `DATABASE_URL`) and preserves password hashes so logins keep working. The legacy [migrate.js](migrate.js) (JSON→Mongo) and `crm-data.json` are gitignored leftovers; `crm-data.json` still holds **real customer PII** if present.
+
+### Deployment
+
+Vercel serverless ([vercel.json](vercel.json)): all routes → `server.js`; `includeFiles` bundles the HTML/asset files. Security headers (CSP, HSTS, X-Frame-Options, etc.) are set in `vercel.json` for prod; CORS is handled in `server.js` against an allowlist (`consultation-lake.vercel.app` + localhost). `module.exports = app` lets Vercel import the Express app.
+
+### Conventions
+
+- All user-facing strings, names, notes are **Arabic**; HTML is `dir="rtl"`. API error messages are Arabic too.
+- New clients are inserted at array position 0 (`$position: 0`) so they appear first.
+- Roles are exactly `admin` and `coach` — validate against this set when touching user endpoints.
 
 ## secure_backend (Django, not running)
 
