@@ -409,6 +409,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
       أداء الفريق
     </div>
+    <div class="nl" data-v="commissions" id="nl-commissions">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      العمولات
+    </div>
     <div class="ns" id="ns-sys">النظام</div>
     <div class="nl" data-v="users" id="nl-users">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
@@ -557,6 +561,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   </div>
   <div class="pg" id="pg-analytics"></div>
   <div class="pg" id="pg-team"></div>
+  <div class="pg" id="pg-commissions"></div>
   <div class="pg" id="pg-users"></div>
   <div class="pg" id="pg-trash"></div>
 </main>
@@ -680,6 +685,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     </div>
     <!-- Tab 2: Team -->
     <div class="m-tp" id="mt-2">
+      <div class="fr"><div class="fg"><label>نوع العميل (Inbound / Outbound)</label><select class="inp" id="m-channel">
+        <option value="outbound">خارجي — Outbound</option>
+        <option value="inbound">داخلي — Inbound</option>
+      </select></div></div>
       <div class="fr"><div class="fg"><label>مندوب الإغلاق (Closer)</label><select class="inp" id="m-closer"></select></div>
       <div class="fg"><label>مندوب الإعداد (Setter)</label><select class="inp" id="m-setter"></select></div></div>
       <div class="fg"><label>ملاحظات العميل</label><textarea class="inp" id="m-notes" rows="4" placeholder="أي ملاحظات إضافية عن العميل..."></textarea></div>
@@ -1006,8 +1015,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',commissions:'عمولات الفريق',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',commissions:'Team Commissions',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171' };
@@ -1305,7 +1314,7 @@ function closeMobMenu() {
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, users, trash + orphaned section headers
-  ['overview','analytics','team','users','trash'].forEach(v => {
+  ['overview','analytics','team','commissions','users','trash'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1538,7 +1547,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, users:renderUsers, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, commissions:renderCommissions, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -2764,6 +2773,115 @@ function buildTeamMonthOptions() {
       }).join('');
 }
 
+// ═══════════════ TEAM COMMISSIONS ═══════════════
+// Outbound (خارجي): setter 5% · closer 10%   |   Inbound (داخلي): setter 3% · closer 10%
+// If, on an inbound client, the setter and closer are the SAME person → 12% combined.
+// Commission is on the amount COLLECTED in the selected month (per-installment), not the contract total.
+const COMM_RATES = { outbound:{ setter:0.05, closer:0.10 }, inbound:{ setter:0.03, closer:0.10, combined:0.12 } };
+let _commMonth = null; // null = uninitialised, '' = all months, else 'YYYY-MM'
+
+function setCommMonth(val){ _commMonth = val; renderCommissions(); }
+
+function buildCommMonthOptions(){
+  const now = new Date(); const months = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
+  const payCount = {};
+  clients.forEach(c => [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([a,dt]) => {
+    if (a > 0 && dt) { const ym = dt.slice(0,7); payCount[ym] = (payCount[ym]||0)+1; }
+  }));
+  return `<option value="">${LANG==='ar'?'كل الشهور':'All Months'}</option>`
+    + months.map(m => `<option value="${m}"${m===_commMonth?' selected':''}>${monthLabel(m)}${payCount[m]?` (${payCount[m]})`:''}</option>`).join('');
+}
+
+function computeCommissions(month){
+  const people = {};
+  const get = n => people[n] || (people[n] = { name:n, asSetter:0, asCloser:0, combined:0, cset:new Set() });
+  clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
+    const collected = [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]]
+      .filter(([a,dt]) => a > 0 && dt && (!month || dt.startsWith(month)))
+      .reduce((s,[a]) => s + a, 0);
+    if (collected <= 0) return;
+    const channel = c.channel === 'inbound' ? 'inbound' : 'outbound';
+    const setter = c.setter, closer = c.closer;
+    if (channel === 'inbound' && setter && closer && setter === closer) {
+      const p = get(setter); p.combined += collected * COMM_RATES.inbound.combined; p.cset.add(c.id);
+    } else {
+      if (setter) { const p = get(setter); p.asSetter += collected * COMM_RATES[channel].setter; p.cset.add(c.id); }
+      if (closer) { const p = get(closer); p.asCloser += collected * COMM_RATES[channel].closer; p.cset.add(c.id); }
+    }
+  });
+  return people;
+}
+
+function renderCommissions(){
+  if (_commMonth === null) {
+    const ms = [];
+    clients.forEach(c => [c.p1d,c.p2d,c.p3d,c.p4d].forEach(dt => { if (dt) ms.push(dt.slice(0,7)); }));
+    _commMonth = ms.length ? ms.sort().reverse()[0] : '';
+  }
+  const people = computeCommissions(_commMonth);
+  const rows = Object.values(people)
+    .map(p => ({ ...p, n:p.cset.size, total:p.asSetter + p.asCloser + p.combined }))
+    .filter(p => p.total > 0.005)
+    .sort((a,b) => b.total - a.total);
+  const g = rows.reduce((a,p) => ({ asSetter:a.asSetter+p.asSetter, asCloser:a.asCloser+p.asCloser, combined:a.combined+p.combined, total:a.total+p.total }), {asSetter:0,asCloser:0,combined:0,total:0});
+  const palette = ['#6366f1','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#f87171'];
+
+  const body = rows.length ? rows.map((p,i) => `
+    <tr style="border-bottom:1px solid var(--b1)">
+      <td style="padding:12px 14px"><div style="display:flex;align-items:center;gap:10px">
+        <div class="av" style="background:${palette[i%palette.length]};width:30px;height:30px;font-size:12px">${ini(p.name)}</div>
+        <span style="font-weight:600;font-size:13px">${esc(p.name)||'—'}</span>
+      </div></td>
+      <td style="padding:12px 14px;text-align:center;font-size:12px;color:var(--t2)">${p.n}</td>
+      <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:var(--g)">${p.asSetter?fmtMoney(p.asSetter):'—'}</td>
+      <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:var(--p2)">${p.asCloser?fmtMoney(p.asCloser):'—'}</td>
+      <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:var(--y)">${p.combined?fmtMoney(p.combined):'—'}</td>
+      <td style="padding:12px 14px;text-align:left;font-weight:800;font-size:13px">${fmtMoney(p.total)}</td>
+    </tr>`).join('')
+    : `<tr><td colspan="6" style="padding:40px;text-align:center;color:var(--t3)">${LANG==='ar'?'لا توجد عمولات في هذا الشهر':'No commissions this month'}</td></tr>`;
+
+  $('pg-commissions').innerHTML = `
+  <div class="card mb" style="padding:12px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16" style="color:var(--p2);flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M16 2v4M8 2v4M3 10h18"/></svg>
+    <span style="font-size:12.5px;font-weight:600;color:var(--t2)">${LANG==='ar'?'الشهر:':'Month:'}</span>
+    <select class="fsl" onchange="setCommMonth(this.value)" style="min-width:180px">${buildCommMonthOptions()}</select>
+    ${_commMonth?`<span style="font-size:11px;background:var(--pbg);color:var(--p2);border:1px solid var(--pbd);padding:3px 10px;border-radius:20px;font-weight:600">${monthLabel(_commMonth)}</span>`:''}
+    <span style="margin-right:auto;font-size:11px;color:var(--t3)">${LANG==='ar'?'خارجي: إعداد 5٪ · إغلاق 10٪ — داخلي: إعداد 3٪ · إغلاق 10٪ (نفس الشخص 12٪)':'Outbound: setter 5% · closer 10% — Inbound: setter 3% · closer 10% (same person 12%)'}</span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
+    <div class="kpi" style="border-bottom:2px solid #6366f155"><div style="font-size:21px;font-weight:800">${fmtMoney(g.total)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'إجمالي العمولات':'Total Commissions'}</div></div>
+    <div class="kpi" style="border-bottom:2px solid #10b98155"><div style="font-size:21px;font-weight:800;color:var(--g)">${fmtMoney(g.asSetter)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'عمولات الإعداد':'Setter Commissions'}</div></div>
+    <div class="kpi" style="border-bottom:2px solid #6366f155"><div style="font-size:21px;font-weight:800;color:var(--p2)">${fmtMoney(g.asCloser)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'عمولات الإغلاق':'Closer Commissions'}</div></div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+        <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:right">${LANG==='ar'?'المندوب':'Member'}</th>
+        <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:center">${LANG==='ar'?'عملاء':'Clients'}</th>
+        <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'عمولة الإعداد':'As Setter'}</th>
+        <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'عمولة الإغلاق':'As Closer'}</th>
+        <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'داخلي مزدوج':'Inbound solo'}</th>
+        <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'الإجمالي':'Total'}</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+      ${rows.length?`<tfoot><tr style="border-top:2px solid var(--b2);background:var(--hv)">
+        <td style="padding:12px 14px;font-weight:700;font-size:12.5px">${LANG==='ar'?'الإجمالي':'Total'}</td>
+        <td></td>
+        <td style="padding:12px 14px;text-align:left;font-weight:700;color:var(--g)">${fmtMoney(g.asSetter)}</td>
+        <td style="padding:12px 14px;text-align:left;font-weight:700;color:var(--p2)">${fmtMoney(g.asCloser)}</td>
+        <td style="padding:12px 14px;text-align:left;font-weight:700;color:var(--y)">${fmtMoney(g.combined)}</td>
+        <td style="padding:12px 14px;text-align:left;font-weight:800">${fmtMoney(g.total)}</td>
+      </tr></tfoot>`:''}
+    </table>
+  </div>`;
+}
+
 function toggleAgentDetail(type, idx) {
   const panel = document.getElementById(`tdp-${type}-${idx}`);
   const chv   = document.getElementById(`tdc-${type}-${idx}`);
@@ -3915,10 +4033,12 @@ function openModal(id=null) {
       if(va) va.value=vals[i-1]||0; if(da) da.value=dates[i-1]||'';
     }
     $('m-closer').value=c.closer; $('m-setter').value=c.setter;
+    if($('m-channel')) $('m-channel').value=c.channel||'outbound';
     $('m-notes').value=c.notes.map(n=>n.txt).join('\n');
   } else {
     ['m-name','m-phone','m-email','m-notes'].forEach(id=>{if($(id))$(id).value='';});
     $('m-status').value='lead'; $('m-plan').value='CORE'; $('m-paytype').value='دفعة واحدة';
+    if($('m-channel')) $('m-channel').value='outbound';
     $('m-reg').value=new Date().toISOString().split('T')[0];
     const cpr=$('custom-plan-row'); if(cpr) cpr.style.display='none';
     // Reset total field and discount on new client
@@ -3964,6 +4084,7 @@ async function saveClient() {
     payMethod:$('m-paymethod')?$('m-paymethod').value:'Zina',
     p1:pv[0],p1d:pd[0],p2:pv[1],p2d:pd[1],p3:pv[2],p3d:pd[2],p4:pv[3],p4d:pd[3],
     closer:$('m-closer').value, setter:$('m-setter').value,
+    channel:$('m-channel')?$('m-channel').value:'outbound',
     regDate:$('m-reg').value||new Date().toISOString().split('T')[0],
     lastPayDate:pd.filter(Boolean).slice(-1)[0]||'',
   };
