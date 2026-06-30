@@ -2830,6 +2830,25 @@ function computeCommissions(month){
   return people;
 }
 
+// Expected commission = on the FULL contract value (paid or not), by registration month.
+function computeExpectedCommissions(month){
+  let asSetter = 0, asCloser = 0, combined = 0;
+  clients.filter(c => !c.deleted && c.status !== 'refunded' && c.status !== 'lead'
+      && (c.channel === 'inbound' || c.channel === 'outbound')
+      && (!month || (c.regDate||'').startsWith(month))).forEach(c => {
+    const base = c.customTotal || PLANS[c.plan] || 0;
+    if (base <= 0) return;
+    const channel = c.channel === 'inbound' ? 'inbound' : 'outbound';
+    if (channel === 'inbound' && c.setter && c.closer && c.setter === c.closer) {
+      combined += base * COMM_RATES.inbound.combined;
+    } else {
+      if (c.setter) asSetter += base * COMM_RATES[channel].setter;
+      if (c.closer) asCloser += base * COMM_RATES[channel].closer;
+    }
+  });
+  return { asSetter, asCloser, combined, total: asSetter + asCloser + combined };
+}
+
 function renderCommissions(){
   if (_commMonth === null) {
     const ms = [];
@@ -2842,6 +2861,7 @@ function renderCommissions(){
     .filter(p => p.total > 0.005)
     .sort((a,b) => b.total - a.total);
   const g = rows.reduce((a,p) => ({ asSetter:a.asSetter+p.asSetter, asCloser:a.asCloser+p.asCloser, combined:a.combined+p.combined, total:a.total+p.total }), {asSetter:0,asCloser:0,combined:0,total:0});
+  const exp = computeExpectedCommissions(_commMonth);
   const palette = ['#6366f1','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#f87171'];
 
   const body = rows.length ? rows.map((p,i) => `
@@ -2868,9 +2888,21 @@ function renderCommissions(){
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
-    <div class="kpi" style="border-bottom:2px solid #6366f155"><div style="font-size:21px;font-weight:800">${fmtMoney(g.total)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'إجمالي العمولات':'Total Commissions'}</div></div>
-    <div class="kpi" style="border-bottom:2px solid #10b98155"><div style="font-size:21px;font-weight:800;color:var(--g)">${fmtMoney(g.asSetter)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'عمولات الإعداد':'Setter Commissions'}</div></div>
-    <div class="kpi" style="border-bottom:2px solid #6366f155"><div style="font-size:21px;font-weight:800;color:var(--p2)">${fmtMoney(g.asCloser)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'عمولات الإغلاق':'Closer Commissions'}</div></div>
+    <div class="kpi" style="border-bottom:2px solid #6366f155">
+      <div style="font-size:21px;font-weight:800">${fmtMoney(g.total)}</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'إجمالي العمولات (محصّل)':'Total (collected)'}</div>
+      <div style="font-size:11.5px;color:var(--y);font-weight:700;margin-top:6px">${LANG==='ar'?'المتوقّع':'Expected'}: ${fmtMoney(exp.total)}</div>
+    </div>
+    <div class="kpi" style="border-bottom:2px solid #10b98155">
+      <div style="font-size:21px;font-weight:800;color:var(--g)">${fmtMoney(g.asSetter)}</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'عمولات الإعداد (محصّل)':'Setter (collected)'}</div>
+      <div style="font-size:11.5px;color:var(--y);font-weight:700;margin-top:6px">${LANG==='ar'?'المتوقّع':'Expected'}: ${fmtMoney(exp.asSetter)}</div>
+    </div>
+    <div class="kpi" style="border-bottom:2px solid #6366f155">
+      <div style="font-size:21px;font-weight:800;color:var(--p2)">${fmtMoney(g.asCloser)}</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'عمولات الإغلاق (محصّل)':'Closer (collected)'}</div>
+      <div style="font-size:11.5px;color:var(--y);font-weight:700;margin-top:6px">${LANG==='ar'?'المتوقّع':'Expected'}: ${fmtMoney(exp.asCloser)}</div>
+    </div>
   </div>
 
   <div class="card" style="padding:0;overflow:hidden">
