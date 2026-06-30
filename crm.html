@@ -2297,7 +2297,7 @@ function renderTeamIncomeDetail(month) {
   if (!wrap) return;
 
   const closerTotals = {}, setterTotals = {};
-  clients.filter(c => !c.deleted).forEach(c => {
+  clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
     [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([amt,date]) => {
       if (amt > 0 && date && date.startsWith(month)) {
         if (c.closer) closerTotals[c.closer] = (closerTotals[c.closer]||0) + amt;
@@ -2921,6 +2921,14 @@ function openCommDetail(name, month){
   const items = month ? all.filter(i => (i.date||'').startsWith(month)) : all;   // filtered → KPIs + table
   const total = items.reduce((s,i) => s + i.comm, 0);
   const clientsCount = new Set(items.map(i => i.cid)).size;
+  // Total cash collected on this member's deals (each payment counted once, even if setter+closer)
+  let collected = 0;
+  clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel==='inbound'||c.channel==='outbound')).forEach(c => {
+    if (c.setter !== name && c.closer !== name) return;
+    [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([a,d]) => {
+      if (a > 0 && d && (!month || d.startsWith(month))) collected += a;
+    });
+  });
   // chart always shows the full monthly history (independent of the filter)
   const months = getLast12Months();
   const byMonth = {};
@@ -2949,8 +2957,9 @@ function openCommDetail(name, month){
       <select class="fsl" onchange="openCommDetail('${esc(name)}', this.value)" style="min-width:170px">${monthOpts}</select>
       ${month?`<span style="font-size:11px;background:var(--pbg);color:var(--p2);border:1px solid var(--pbd);padding:3px 10px;border-radius:20px;font-weight:600">${monthLabel(month)}</span>`:''}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
-      <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:var(--g)">${fmtMoney(total)}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'إجمالي العمولات':'Total'}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:var(--y)">${fmtMoney(collected)}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'المبلغ المحصّل':'Cash collected'}</div></div>
+      <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:var(--g)">${fmtMoney(total)}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'إجمالي العمولات':'Commission'}</div></div>
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800">${clientsCount}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'عملاء':'Clients'}</div></div>
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800">${items.length}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'دفعات':'Payments'}</div></div>
     </div>
