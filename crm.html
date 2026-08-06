@@ -1706,9 +1706,8 @@ function renderOverview() {
   const refAmount  = refClients.reduce((a,c)=>a+fx(c),0);
   const collected  = clients.reduce((a,c)=>a+netFx(c),0);
   const pending    = clients.reduce((a,c)=>a+fr(c),0);
-  const fullPaid   = clients.filter(c=>fr(c)===0&&c.status!=='lead'&&c.status!=='refunded').length;
-  const partial    = clients.filter(c=>fr(c)>0&&fx(c)>0&&c.status!=='refunded').length;
   const overdue    = clients.filter(isOverdue).length;
+  const endingSoon = clients.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;}).length;
 
   // Total contract value & collection rate
   const totalContract = clients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+(c.customTotal||PLANS[c.plan]||0),0);
@@ -1741,8 +1740,8 @@ function renderOverview() {
     {l:t('kpi_clients'),v:total,num:total,tr:momBadge(thisClients.length,lastClients.length),ic:'#6366f1',ico:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>'},
     {l:t('kpi_revenue'),v:fmtMoney(collected),num:null,tr:momBadge(thisMoRev,lastMoRev),ic:'#10b981',ico:'<circle cx="12" cy="12" r="9" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 7v1m0 8v1m-3-5h2a1 1 0 010 2h-2m1-4h2a1 1 0 110 2h-1"/>'},
     {l:t('kpi_pending'),v:fmtMoney(pending),num:null,tr:'',ic:'#f59e0b',ico:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>'},
-    {l:t('kpi_fullpaid'),v:fullPaid,num:fullPaid,tr:'',ic:'#8b5cf6',ico:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>'},
-    {l:t('kpi_partial'),v:partial,num:partial,tr:'',ic:'#3b82f6',ico:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>'},
+    {l:LANG==='ar'?'عقود تنتهي ≤ 30 يوم':'Contracts ending',v:endingSoon,num:endingSoon,tr:'',ic:'#f59e0b',ico:'<rect x="3" y="4" width="18" height="18" rx="2" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M16 2v4M8 2v4M3 10h18"/>'},
+    {l:LANG==='ar'?'دفعات متأخرة':'Overdue',v:overdue,num:overdue,tr:'',ic:'#ef4444',ico:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>'},
     {l:LANG==='ar'?'مُسترجع':'Refunded',v:refClients.length?`${refClients.length} · ${fmtMoney(refAmount)}`:'0',num:refClients.length===0?0:null,tr:'',ic:'#f87171',ico:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>'},
   ];
 
@@ -1834,10 +1833,10 @@ function renderOverview() {
     </div>
   </div>
 
-  <!-- Activity + Overdue -->
+  <!-- Contracts ending soon + Overdue -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-    <div class="card"><div class="ch"><h3>⚡ ${t('recent_activity')}</h3><span class="sub" id="act-sub"></span></div>
-      <div class="cb" id="act-feed"></div></div>
+    <div class="card"><div class="ch"><h3>📅 ${LANG==='ar'?'عقود تنتهي قريباً':'Contracts ending soon'}</h3><span class="sub" style="color:var(--y)">${endingSoon} ${t('client_word')}</span></div>
+      <div class="cb" id="ending-list"></div></div>
     <div class="card"><div class="ch"><h3>⚠️ ${t('overdue_title')}</h3><span class="sub" style="color:var(--r)">${overdue} ${t('client_word')}</span></div>
       <div class="cb" id="od-list"></div></div>
   </div>`;
@@ -1874,8 +1873,22 @@ function renderOverview() {
   // ── Plan donut (filtered by month; defaults to the latest month) ──
   renderPlanDist(planDefMonth);
 
-  // ── Activity feed ──
-  renderActivityFeed();
+  // ── Contracts ending soon list ──
+  const endList = clients.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;})
+    .sort((a,b)=>daysUntil(a.contractEnd)-daysUntil(b.contractEnd));
+  $('ending-list').innerHTML = endList.length === 0
+    ? `<div class="empty">${LANG==='ar'?'لا توجد عقود تنتهي قريباً':'No contracts ending soon'}</div>`
+    : endList.slice(0,8).map(c=>{ const d=daysUntil(c.contractEnd); return `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${c.id})">
+      ${clientAv(c)}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}</div>
+        <div style="font-size:11px;color:var(--t3)">${planBadge(c.plan)} · ${LANG==='ar'?'ينتهي':'ends'} ${fmtDate(c.contractEnd)}</div>
+      </div>
+      <div style="text-align:left;flex-shrink:0">
+        <div style="font-size:11px;background:${d<=3?'var(--rbg)':'rgba(245,158,11,.14)'};color:${d<=3?'var(--r)':'var(--y)'};padding:2px 8px;border-radius:10px;font-weight:700">${d} ${LANG==='ar'?'يوم':'d'}</div>
+      </div>
+    </div>`; }).join('');
 
   // ── Overdue list ──
   const odList = clients.filter(isOverdue);
