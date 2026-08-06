@@ -433,6 +433,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
       متابعة العملاء
     </div>
+    <div class="nl" data-v="notifs" id="nl-notifs">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+      التنبيهات
+      <span class="nl-b" id="nl-notif-badge" style="display:none;background:var(--r)">0</span>
+    </div>
     <div class="ns" id="ns-sys">النظام</div>
     <div class="nl" data-v="users" id="nl-users">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
@@ -475,6 +480,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <input id="g-search" placeholder="بحث بالاسم أو الهاتف أو البريد..." oninput="globalSearch(this.value)"/>
   </div>
   <div class="tb-acts">
+    <button class="ib" id="notif-btn" title="التنبيهات" style="display:none;position:relative" onclick="nav('notifs')">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+      <span id="notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 3px;background:var(--r);color:#fff;font-size:9px;font-weight:700;border-radius:10px;align-items:center;justify-content:center;box-sizing:border-box">0</span>
+    </button>
     <button class="ib" id="alert-btn" title="تنبيهات الدفع" style="display:none">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
       <span class="dot"></span>
@@ -583,6 +592,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   <div class="pg" id="pg-team"></div>
   <div class="pg" id="pg-commissions"></div>
   <div class="pg" id="pg-csm"></div>
+  <div class="pg" id="pg-notifs"></div>
   <div class="pg" id="pg-users"></div>
   <div class="pg" id="pg-trash"></div>
 </main>
@@ -634,6 +644,18 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
 </div>
 <!-- PRINT REPORT (hidden; used for CSM PDF export via browser print) -->
 <div id="print-area"></div>
+<!-- NOTIFICATIONS LOGIN POP-UP -->
+<div class="mo" id="notif-pop" onclick="if(event.target===this)closeNotifPopup()">
+  <div class="mbox" style="max-width:460px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--rbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">🔔</div>
+      <h3>تنبيهات جديدة</h3>
+      <button class="mcls" onclick="closeNotifPopup()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="notif-pop-body" style="padding:18px"></div>
+    <div style="padding:0 18px 18px;display:flex;justify-content:flex-end"><button class="btn btn-p" onclick="closeNotifPopup()">إغلاق</button></div>
+  </div>
+</div>
 <!-- COMMISSION DETAIL MODAL -->
 <div class="mo" id="comm-modal" onclick="if(event.target===this)closeCommDetail()">
   <div class="mbox" style="max-width:680px;width:100%">
@@ -1081,8 +1103,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',notifs:'Notifications',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171' };
@@ -1407,7 +1429,7 @@ function closeMobMenu() {
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, users, trash + orphaned section headers
-  ['overview','analytics','team','commissions','csm','users','trash'].forEach(v => {
+  ['overview','analytics','team','commissions','csm','notifs','users','trash'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1483,6 +1505,8 @@ async function initApp() {
     applyCoachRestrictions();
     applyCsmRestrictions();
     if (_isCsm) nav('csm'); else if (_isCoach) nav('clients'); else renderOverview();
+    updateNotifBadge();
+    if (!_isCoach) setTimeout(showNotifPopup, 400);
   } catch(e) {
     console.error(e);
     const msg = 'فشل الاتصال بالخادم — تأكد من تشغيل: <b>node server.js</b>';
@@ -1653,7 +1677,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, commissions:renderCommissions, csm:renderCsm, users:renderUsers, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, commissions:renderCommissions, csm:renderCsm, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -4370,6 +4394,12 @@ function daysUntil(dateStr){
   const d = new Date(dateStr); if (isNaN(d)) return null;
   return Math.ceil((d - new Date())/86400000);
 }
+function daysSince(dateStr){ const d = daysUntil(dateStr); return d===null ? null : -d; }
+function agoLabel(dateStr){
+  const n = daysSince(dateStr);
+  if (n===null) return '—';
+  return n<=0 ? 'اليوم' : n===1 ? 'أمس' : `منذ ${n} يوم`;
+}
 function condColor(cond){
   return cond==='يرد'?'var(--g)':cond==='مايرد'?'var(--r)':cond==='موقف'?'var(--y)':cond==='طلع'?'var(--r)':cond==='لسا ما بلش'?'var(--t3)':'var(--p2)';
 }
@@ -4422,6 +4452,7 @@ function renderCsm(){
         <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:right">بداية العقد</th>
         <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:right">نهاية العقد</th>
         <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:right">آخر حالة</th>
+        <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:right">آخر متابعة</th>
         <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:center">متابعات</th>
       </tr></thead>
       <tbody>${rows.map(c=>{
@@ -4432,6 +4463,7 @@ function renderCsm(){
           <td style="padding:11px 14px;font-size:12px;color:var(--t2)">${c.regDate?fmtDate(c.regDate):'—'}</td>
           <td style="padding:11px 14px;font-size:12px;color:${expired?'var(--r)':soon?'var(--y)':'var(--t2)'};font-weight:${soon||expired?'700':'400'}">${c.contractEnd?fmtDate(c.contractEnd)+(soon?` · ${d}ي`:expired?' · منتهٍ':''):'—'}</td>
           <td style="padding:11px 14px">${condBadge(l&&l.condition)}</td>
+          <td style="padding:11px 14px;font-size:12px;color:var(--t2)">${l&&l.date?`${fmtDate(l.date)} <span style="color:var(--t3);font-size:10px">· ${agoLabel(l.date)}</span>`:'—'}</td>
           <td style="padding:11px 14px;text-align:center;font-size:12px;color:var(--t3)">${(c.csmNotes||[]).length||'—'}</td>
         </tr>`;
       }).join('')}</tbody>
@@ -4558,6 +4590,90 @@ function exportCsmPdf(id){
   document.body.classList.add('printing');
   window.print();
   setTimeout(()=>document.body.classList.remove('printing'),400);
+}
+
+// ═══════════════ NOTIFICATIONS (contract end reminders) ═══════════════
+function computeNotifs(){
+  const out = [];
+  clients.filter(c=>!c.deleted && c.contractEnd).forEach(c=>{
+    const d = daysUntil(c.contractEnd); if (d===null) return;
+    let type = null;
+    if (d < 0) type='ended'; else if (d <= 3) type='3d'; else if (d <= 15) type='15d';
+    if (type) out.push({ key:c.id+':'+type, cid:c.id, type, name:c.name, plan:c.plan, end:c.contractEnd, days:d });
+  });
+  const order = { ended:0, '3d':1, '15d':2 };
+  return out.sort((a,b)=>(order[a.type]-order[b.type]) || (a.days-b.days));
+}
+function getSeenNotifs(){ try{ return new Set(JSON.parse(localStorage.getItem('notif_seen')||'[]')); }catch(_){ return new Set(); } }
+function saveSeenNotifs(set){ try{ localStorage.setItem('notif_seen', JSON.stringify([...set])); }catch(_){} }
+function markNotifsSeen(keys){ const s=getSeenNotifs(); keys.forEach(k=>s.add(k)); saveSeenNotifs(s); updateNotifBadge(); }
+function unseenNotifs(){ const s=getSeenNotifs(); return computeNotifs().filter(n=>!s.has(n.key)); }
+function notifMeta(n){
+  if (n.type==='ended') return { ic:'🔴', clr:'var(--r)', txt:(LANG==='ar'?`انتهى منذ ${-n.days} يوم`:`ended ${-n.days}d ago`) };
+  if (n.type==='3d')    return { ic:'🟠', clr:'var(--y)', txt:(LANG==='ar'?`ينتهي خلال ${n.days} يوم`:`ends in ${n.days}d`) };
+  return { ic:'🟡', clr:'#f59e0b', txt:(LANG==='ar'?`ينتهي خلال ${n.days} يوم`:`ends in ${n.days}d`) };
+}
+function updateNotifBadge(){
+  const btn=$('notif-btn'), badge=$('notif-badge'), navBadge=$('nl-notif-badge');
+  if(isCoach()){ if(btn) btn.style.display='none'; return; }
+  const n=unseenNotifs().length;
+  if(btn) btn.style.display='flex';
+  if(badge){ badge.textContent=n; badge.style.display=n>0?'flex':'none'; }
+  if(navBadge){ navBadge.textContent=n; navBadge.style.display=n>0?'inline-flex':'none'; }
+}
+function openClientFromNotif(cid){ if(isCsm()) openCsmDetail(cid); else openDetail(cid); }
+
+function renderNotifs(){
+  const all=computeNotifs(), seen=getSeenNotifs();
+  const groups=[
+    {type:'ended', title:'🔴 عقود منتهية'},
+    {type:'3d',    title:'🟠 تنتهي خلال 3 أيام'},
+    {type:'15d',   title:'🟡 تنتهي خلال 15 يوم'},
+  ];
+  $('pg-notifs').innerHTML = `
+  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600">🔔 تنبيهات نهاية العقود</span>
+    <span style="font-size:12px;color:var(--t3)">${all.length} تنبيه</span>
+    <button class="btn btn-g" style="margin-right:auto" onclick="markNotifsSeen(computeNotifs().map(n=>n.key));renderNotifs()">✓ تحديد الكل كمقروء</button>
+  </div>
+  ${groups.map(g=>{
+    const items=all.filter(n=>n.type===g.type);
+    if(!items.length) return '';
+    return `<div class="card mb" style="padding:0;overflow:hidden">
+      <div style="padding:10px 16px;font-size:12px;font-weight:700;border-bottom:1px solid var(--b1);background:var(--hv)">${g.title} (${items.length})</div>
+      ${items.map(n=>{ const c=clients.find(x=>x.id===n.cid); const isNew=!seen.has(n.key); return `
+        <div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openClientFromNotif(${n.cid})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
+          ${c?clientAv(c):''}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600">${esc(n.name)}${isNew?' <span style="font-size:9px;background:var(--rbg);color:var(--r);padding:1px 6px;border-radius:10px">جديد</span>':''}</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:2px;display:flex;align-items:center;gap:6px">${planBadge(n.plan)} · ينتهي ${fmtDate(n.end)}</div>
+          </div>
+          <div style="font-size:12px;font-weight:700;color:${g.type==='ended'?'var(--r)':'var(--y)'}">${g.type==='ended'?`منذ ${-n.days} يوم`:`${n.days} يوم`}</div>
+        </div>`; }).join('')}
+    </div>`;
+  }).join('') || `<div class="card" style="padding:44px;text-align:center;color:var(--t3)">لا توجد تنبيهات حالياً</div>`}`;
+}
+
+function showNotifPopup(){
+  if(isCoach()) return;
+  const unseen=unseenNotifs();
+  if(!unseen.length) return;
+  window._popNotifKeys = unseen.map(n=>n.key);
+  $('notif-pop-body').innerHTML = `
+    <div style="font-size:12.5px;color:var(--t2);margin-bottom:12px">لديك <b>${unseen.length}</b> تنبيه غير مقروء حول عقود العملاء:</div>
+    <div style="max-height:46vh;overflow-y:auto">
+    ${unseen.slice(0,60).map(n=>{ const m=notifMeta(n); return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1)">
+      <span style="font-size:16px">${m.ic}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(n.name)}</div><div style="font-size:11px;color:var(--t3)">${esc(n.plan||'—')} · <span style="color:${m.clr}">${m.txt}</span> · ${fmtDate(n.end)}</div></div>
+    </div>`; }).join('')}
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;cursor:pointer;user-select:none"><input type="checkbox" id="notif-seen-chk"/> ✅ تم الاطلاع — لا تظهر مرة أخرى</label>`;
+  $('notif-pop').classList.add('on');
+}
+function closeNotifPopup(){
+  const chk=$('notif-seen-chk');
+  if(chk && chk.checked && window._popNotifKeys) markNotifsSeen(window._popNotifKeys);
+  $('notif-pop').classList.remove('on');
 }
 
 // ═══════════════ USERS ═══════════════
