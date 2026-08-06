@@ -272,7 +272,7 @@ tbody tr.overdue-row td{border-right:2px solid var(--r)}
 .m-tabs{display:flex;gap:0;border-bottom:1px solid var(--b1);padding:0 18px}
 .m-tab{padding:10px 14px;font-size:12.5px;font-weight:500;color:var(--t3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
 .m-tab.on{color:var(--p2);border-bottom-color:var(--p)}
-.m-tp{display:none;padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.m-tp{display:none;padding:16px 18px;flex-direction:column;gap:12px}
 .m-tp.on{display:flex}
 .fg{display:flex;flex-direction:column;gap:5px}
 .fg label{font-size:11px;font-weight:600;color:var(--t2)}
@@ -614,9 +614,8 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <button class="mcls" onclick="closeModal()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
     </div>
     <div class="m-tabs">
-      <div class="m-tab on" onclick="switchTab(0)">👤 الملف الشخصي</div>
-      <div class="m-tab" onclick="switchTab(1)">📄 العقد</div>
-      <div class="m-tab" onclick="switchTab(2)">👥 فريق المبيعات</div>
+      <div class="m-tab on" onclick="switchTab(0)">① 👤 الملف الشخصي</div>
+      <div class="m-tab" onclick="switchTab(1)">② 📄 العقد والمبيعات</div>
     </div>
     <!-- Tab 0: Client Info -->
     <div class="m-tp on" id="mt-0">
@@ -702,9 +701,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       </div>
       <div class="fg"><label>المبلغ المتبقي (تلقائي)</label><input class="inp inp-ro" id="m-rem" readonly/></div></div>
       <div id="pay-fields"></div>
-    </div>
-    <!-- Tab 2: Team -->
-    <div class="m-tp" id="mt-2">
+      <div style="height:1px;background:var(--b1);margin:8px 0"></div>
       <div class="fr"><div class="fg"><label>نوع العميل (Inbound / Outbound)</label><select class="inp" id="m-channel">
         <option value="outbound">خارجي — Outbound</option>
         <option value="inbound">داخلي — Inbound</option>
@@ -715,7 +712,9 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     </div>
     <div class="mft">
       <button class="btn btn-g" onclick="closeModal()">إلغاء</button>
-      <button class="btn btn-p" onclick="saveClient()">💾 حفظ العميل</button>
+      <button class="btn btn-g" id="m-prev-btn" onclick="switchTab(0)" style="display:none">→ السابق</button>
+      <button class="btn btn-p" id="m-next-btn" onclick="modalNext()">التالي ←</button>
+      <button class="btn btn-p" id="m-save-btn" onclick="saveClient()" style="display:none">💾 حفظ العميل</button>
     </div>
   </div>
 </div>
@@ -3652,7 +3651,7 @@ function openDetail(id) {
 
   <!-- ── FINANCIAL & CONTRACT (admin, collapsible) ── -->
   ${!isCoach() ? `<div class="dp-sc">
-    <button class="btn btn-g" id="fin-toggle-${id}" style="width:100%;justify-content:center" onclick="toggleFinDetail(${id})">💳 ${LANG==='ar'?'عرض التفاصيل المالية والعقد':'Show financial & contract details'}</button>
+    <button class="btn btn-g" id="fin-toggle-${id}" style="padding:7px 14px;align-self:flex-start" onclick="toggleFinDetail(${id})">💳 ${LANG==='ar'?'التفاصيل المالية والعقد':'Financial & contract details'}</button>
     <div id="fin-detail-${id}" style="display:none;margin-top:14px">
       <div class="dp-st">💳 ${t('dp_pay_details')} — <span style="color:var(--p2);font-size:11px">${c.paymentType}</span></div>
       ${c.status === 'refunded' ? `<div style="margin-bottom:12px;padding:10px 14px;background:var(--rbg);border:1px dashed rgba(239,68,68,.4);border-radius:9px;color:var(--r);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="font-size:18px">💸</span><div><div>تم ارجاع المبلغ</div><div style="font-weight:400;color:var(--t2);font-size:11px;margin-top:2px">المبلغ المُسترجع: ${fmtMoney(fx(c))}</div></div></div>` : ''}
@@ -3852,6 +3851,18 @@ function switchTab(i) {
   S.activeTab=i;
   document.querySelectorAll('.m-tab').forEach((t,j)=>t.classList.toggle('on',i===j));
   document.querySelectorAll('.m-tp').forEach((t,j)=>t.classList.toggle('on',i===j));
+  // Wizard footer: step 0 = Next only; step 1 = Previous + Save
+  const prev=$('m-prev-btn'), next=$('m-next-btn'), save=$('m-save-btn');
+  if (prev) prev.style.display = i===0 ? 'none' : '';
+  if (next) next.style.display = i===0 ? '' : 'none';
+  if (save) save.style.display = i===0 ? 'none' : '';
+  const box = document.querySelector('#modal .mbox'); if (box) box.scrollTop = 0;
+}
+
+function modalNext() {
+  const name=$('m-name').value.trim(), phone=$('m-phone').value.trim();
+  if (!name || !phone) { toast(LANG==='ar'?'الاسم والهاتف مطلوبان':'Name and phone are required','⚠️'); switchTab(0); return; }
+  switchTab(1);
 }
 
 function _getModalPrice() {
