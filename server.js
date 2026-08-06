@@ -107,7 +107,11 @@ function clean(c) {
 }
 
 // ─── Serve HTML ───────────────────────────────────────────────────────────────
-app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'crm.html')));
+app.get('/', (_req, res) => {
+  // Always serve fresh HTML (avoid stale cached UI after a deploy)
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+  res.sendFile(path.join(__dirname, 'crm.html'));
+});
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', loginRateLimit, async (req, res) => {
