@@ -3671,11 +3671,14 @@ function saveCalls(id) {
 }
 
 // ═══════════════ DETAIL PANEL ═══════════════
-function dpQuickAction(id, type) {
-  const c = clients.find(x=>x.id===id);
-  const name = c ? esc(c.name) : '';
-  if (type === 'email') toast(t('dp_email_sent') + ' ' + name, '📧');
-  if (type === 'call')  toast(t('dp_called') + ' ' + name, '📞');
+// Inline quick-edit of a single client field from the profile (sex, dates…)
+function quickSaveField(id, field, value){
+  const c = clients.find(x=>x.id===id); if(!c) return;
+  c[field] = value;
+  api('PUT', `/api/clients/${id}`, {[field]: value}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
+  openDetail(id);
+  if (S.view==='clients') renderTable();
+  toast(LANG==='ar'?'تم الحفظ':'Saved','✅');
 }
 
 function openDetail(id) {
@@ -3684,13 +3687,39 @@ function openDetail(id) {
   const n = nc(c), pAmts=[c.p1,c.p2,c.p3,c.p4], pDates=[c.p1d,c.p2d,c.p3d,c.p4d];
   const instAmt = Math.round((c.customTotal||PLANS[c.plan]||0)/n);
 
+  // Clean profile: unset fields show "غير محدد"; sex/dates are editable inline (admin/coach)
+  const unset = `<span style="color:var(--t3)">${LANG==='ar'?'غير محدد':'Not set'}</span>`;
+  const editable = !isCoach();
+  const mini = 'background:var(--hv);border:1px solid var(--b2);border-radius:6px;padding:3px 8px;color:var(--t1);font-size:12px;cursor:pointer';
+  const sexLbl = c.sex==='male'?(LANG==='ar'?'ذكر':'Male'):c.sex==='female'?(LANG==='ar'?'أنثى':'Female'):null;
+  const sexInline = editable
+    ? `<select onchange="quickSaveField(${id},'sex',this.value)" style="${mini}"><option value=""${!c.sex?' selected':''}>${LANG==='ar'?'غير محدد':'—'}</option><option value="male"${c.sex==='male'?' selected':''}>${LANG==='ar'?'ذكر':'Male'}</option><option value="female"${c.sex==='female'?' selected':''}>${LANG==='ar'?'أنثى':'Female'}</option></select>`
+    : (sexLbl||unset);
+  const startInline = editable
+    ? `<input type="date" value="${c.regDate||''}" onchange="quickSaveField(${id},'regDate',this.value)" style="${mini}"/>`
+    : (c.regDate?fmtDate(c.regDate):unset);
+  const endInline = editable
+    ? `<input type="date" value="${c.contractEnd||''}" onchange="quickSaveField(${id},'contractEnd',this.value)" style="${mini}"/>`
+    : (c.contractEnd?fmtDate(c.contractEnd):unset);
+  const _d = daysUntil(c.contractEnd);
+  const daysBadge = !c.contractEnd ? unset
+    : _d<0   ? `<span style="color:var(--r);font-weight:700">${LANG==='ar'?`منتهٍ منذ ${-_d} يوم`:`ended ${-_d}d ago`}</span>`
+    : _d===0 ? `<span style="color:var(--y);font-weight:700">${LANG==='ar'?'ينتهي اليوم':'ends today'}</span>`
+    : `<span style="color:${_d<=15?'var(--y)':'var(--g)'};font-weight:700">${LANG==='ar'?`متبقي ${_d} يوم`:`${_d}d left`}</span>`;
+  const _l = csmLatest(c);
+  const csmSummary = _l
+    ? `<div class="dp-row"><span class="dp-k">${LANG==='ar'?'آخر حالة':'Last status'}</span><span class="dp-v">${condBadge(_l.condition)}</span></div>
+       <div class="dp-row"><span class="dp-k">${LANG==='ar'?'آخر متابعة':'Last update'}</span><span class="dp-v">${_l.date?fmtDate(_l.date)+' · '+agoLabel(_l.date):'—'}</span></div>
+       ${(_l.follow||[]).length?`<div class="dp-row"><span class="dp-k">${LANG==='ar'?'المتابعة':'Follow'}</span><span class="dp-v" style="font-size:11px;text-align:left">${_l.follow.map(esc).join('، ')}</span></div>`:''}`
+    : `<div style="font-size:12px;color:var(--t3);padding:4px 0">${LANG==='ar'?'لا يوجد متابعة من نجاح العملاء':'No CSM follow-up'}</div>`;
+
   $('dp-body').innerHTML = `
   <!-- ── HEADER ── -->
   <div class="dp-hd">
     ${clientAv(c,'dp-av',null,'30px')}
     <div style="flex:1;min-width:0">
       <div class="dp-nm">${esc(c.name)}</div>
-      <div class="dp-ph">${esc(c.phone)}${c.sex?` · ${c.sex==='male'?(LANG==='ar'?'ذكر':'M'):(LANG==='ar'?'أنثى':'F')}`:''}</div>
+      <div class="dp-ph">${esc(c.phone)||'—'}</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
         <span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span>
         ${planBadge(c.plan)}
@@ -3700,27 +3729,36 @@ function openDetail(id) {
     <button class="dp-cls" onclick="closeDetail()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
   </div>
 
-  <!-- ── ACTIONS ── -->
-  <div style="padding:12px 22px;border-bottom:1px solid var(--b1);display:flex;gap:8px">
-    <button class="btn btn-p" style="flex:1;justify-content:center" onclick="dpQuickAction(${c.id},'email')">${t('dp_send_email')}</button>
-    ${!isCoach()?`<button class="btn btn-g" style="flex:1;justify-content:center" onclick="openModal(${c.id})">${t('dp_edit')}</button>`:''}
-    <button class="btn btn-r" style="flex:1;justify-content:center" onclick="dpQuickAction(${c.id},'call')">${t('dp_call')}</button>
-  </div>
+  <!-- ── EDIT (admin/coach) ── -->
+  ${!isCoach()?`<div style="padding:12px 22px;border-bottom:1px solid var(--b1)">
+    <button class="btn btn-g" style="width:100%;justify-content:center" onclick="openModal(${c.id})">✏️ ${t('dp_edit')}</button>
+  </div>`:''}
 
-  <!-- ── PROFILE: contact + contract dates ── -->
+  <!-- ── PROFILE: personal + contract ── -->
   <div class="dp2-grid">
     <div class="dp2-col">
-      <div class="dp-st">📞 ${t('dp_contact')}</div>
-      <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${esc(c.email)||'—'}</span></div>
+      <div class="dp-st">👤 ${LANG==='ar'?'المعلومات الشخصية':'Personal'}</div>
+      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'الجنس':'Sex'}</span><span class="dp-v">${sexInline}</span></div>
+      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'الهاتف':'Phone'}</span><span class="dp-v">${c.phone?esc(c.phone):unset}</span></div>
+      <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${c.email?esc(c.email):unset}</span></div>
       <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.callsDone||0, c.callsTotal||0)}</span></div>
     </div>
     <div class="dp2-col">
       <div class="dp-st">📅 ${LANG==='ar'?'العقد':'Contract'}</div>
-      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'بداية العقد':'Start'}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
-      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'نهاية العقد':'End'}</span><span class="dp-v">${c.contractEnd?fmtDate(c.contractEnd):'—'}</span></div>
-      ${!isCoach()?`<div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${esc(c.closer)||'—'}</span></div>
-      <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${esc(c.setter)||'—'}</span></div>`:''}
+      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'البداية':'Start'}</span><span class="dp-v">${startInline}</span></div>
+      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'النهاية':'End'}</span><span class="dp-v">${endInline}</span></div>
+      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'المتبقي':'Remaining'}</span><span class="dp-v">${daysBadge}</span></div>
+      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'الباقة':'Plan'}</span><span class="dp-v">${planBadge(c.plan)}</span></div>
+      ${!isCoach()?`<div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${c.closer?esc(c.closer):unset}</span></div>
+      <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${c.setter?esc(c.setter):unset}</span></div>`:''}
     </div>
+  </div>
+
+  <!-- ── FOLLOW-UP SUMMARY ── -->
+  <div class="dp-sc">
+    <div class="dp-st">🎯 ${LANG==='ar'?'المتابعة':'Follow-up'}</div>
+    ${csmSummary}
+    <div class="dp-row"><span class="dp-k">${LANG==='ar'?'ملاحظات الفريق':'Team notes'}</span><span class="dp-v">${c.notes.length} ${LANG==='ar'?'ملاحظة':'notes'}</span></div>
   </div>
 
   <!-- ── NOTES ── -->
@@ -3735,7 +3773,7 @@ function openDetail(id) {
 
   <!-- ── FINANCIAL & CONTRACT (admin, collapsible) ── -->
   ${!isCoach() ? `<div class="dp-sc">
-    <button class="btn btn-g" id="fin-toggle-${id}" style="padding:7px 14px;align-self:flex-start" onclick="toggleFinDetail(${id})">💳 ${LANG==='ar'?'التفاصيل المالية والعقد':'Financial & contract details'}</button>
+    <button class="btn btn-g" id="fin-toggle-${id}" style="padding:7px 14px;align-self:flex-start" onclick="toggleFinDetail(${id})">📋 ${LANG==='ar'?'التفاصيل الكاملة (العقد والدفعات)':'Full details (contract & payments)'}</button>
     <div id="fin-detail-${id}" style="display:none;margin-top:14px">
       <div class="dp-st">💳 ${t('dp_pay_details')} — <span style="color:var(--p2);font-size:11px">${c.paymentType}</span></div>
       ${c.status === 'refunded' ? `<div style="margin-bottom:12px;padding:10px 14px;background:var(--rbg);border:1px dashed rgba(239,68,68,.4);border-radius:9px;color:var(--r);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="font-size:18px">💸</span><div><div>تم ارجاع المبلغ</div><div style="font-weight:400;color:var(--t2);font-size:11px;margin-top:2px">المبلغ المُسترجع: ${fmtMoney(fx(c))}</div></div></div>` : ''}
@@ -3925,9 +3963,9 @@ function toggleFinDetail(id){
   if (!d) return;
   const open = d.style.display === 'none';
   d.style.display = open ? 'block' : 'none';
-  if (b) b.textContent = (open ? '▲ ' : '💳 ') + (LANG==='ar'
-    ? (open ? 'إخفاء التفاصيل المالية والعقد' : 'عرض التفاصيل المالية والعقد')
-    : (open ? 'Hide financial & contract details' : 'Show financial & contract details'));
+  if (b) b.textContent = (open ? '▲ ' : '📋 ') + (LANG==='ar'
+    ? (open ? 'إخفاء التفاصيل الكاملة' : 'التفاصيل الكاملة (العقد والدفعات)')
+    : (open ? 'Hide full details' : 'Full details (contract & payments)'));
 }
 
 // ═══════════════ MODAL ═══════════════
