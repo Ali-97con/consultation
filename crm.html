@@ -419,6 +419,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
       التحليلات
     </div>
+    <div class="nl" data-v="insights" id="nl-insights">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      التحليل الذكي
+    </div>
     <div class="ns" id="ns-team">الفريق</div>
     <div class="nl" data-v="team">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -589,6 +593,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     </div>
   </div>
   <div class="pg" id="pg-analytics"></div>
+  <div class="pg" id="pg-insights"></div>
   <div class="pg" id="pg-team"></div>
   <div class="pg" id="pg-commissions"></div>
   <div class="pg" id="pg-csm"></div>
@@ -1103,8 +1108,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',notifs:'Notifications',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',notifs:'Notifications',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171' };
@@ -1401,7 +1406,7 @@ let CSM_OPTS = { conditions: [], follows: [] };
 function applyCsmRestrictions() {
   if (!isCsm()) return;
   // CSM sees only the follow-up section (can still open client profiles from it)
-  ['overview','clients','analytics','team','commissions','users','trash'].forEach(v => {
+  ['overview','clients','analytics','insights','team','commissions','users','trash'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1429,7 +1434,7 @@ function closeMobMenu() {
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, users, trash + orphaned section headers
-  ['overview','analytics','team','commissions','csm','notifs','users','trash'].forEach(v => {
+  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1677,7 +1682,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, commissions:renderCommissions, csm:renderCsm, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -4641,6 +4646,105 @@ function exportCsmPdf(id){
   document.body.classList.add('printing');
   window.print();
   setTimeout(()=>document.body.classList.remove('printing'),400);
+}
+
+// ═══════════════ SMART INSIGHTS (Phase 1 — deterministic, no AI) ═══════════════
+let _insMonth = null, _insMember = '';
+function setInsMonth(v){ _insMonth=v; renderInsights(); }
+function setInsMember(v){ _insMember=v; renderInsights(); }
+function prevMonth(ym){ const [y,m]=ym.split('-').map(Number); const d=new Date(y,m-2,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+
+function insMemberStats(name, month){
+  let collectedCloser=0, collectedSetter=0, newAsCloser=0, newAsSetter=0, contractClosed=0;
+  clients.filter(c=>!c.deleted && c.status!=='refunded').forEach(c=>{
+    const col=[[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]]
+      .filter(([a,d])=>a>0&&d&&d.startsWith(month)).reduce((s,[a])=>s+a,0);
+    if(c.closer===name) collectedCloser+=col;
+    if(c.setter===name) collectedSetter+=col;
+    if((c.regDate||'').startsWith(month)){
+      if(c.closer===name){ newAsCloser++; contractClosed+=(c.customTotal||PLANS[c.plan]||0); }
+      if(c.setter===name) newAsSetter++;
+    }
+  });
+  const p=computeCommissions(month)[name];
+  return { collected:collectedCloser+collectedSetter, newClients:newAsCloser+newAsSetter,
+           newAsCloser, newAsSetter, contractValue:contractClosed,
+           commission: p ? (p.asSetter+p.asCloser+p.combined) : 0 };
+}
+
+function insInsights(cur, pr){
+  const out=[];
+  const pct=(a,b)=> b>0?Math.round((a-b)/b*100):(a>0?100:0);
+  if(cur.collected>pr.collected && pr.collected>0) out.push({t:'good',x:`📈 التحصيل ارتفع ${pct(cur.collected,pr.collected)}% عن الشهر الماضي — أداء ممتاز 👏`});
+  else if(cur.collected<pr.collected && pr.collected>0) out.push({t:'bad',x:`📉 التحصيل انخفض ${Math.abs(pct(cur.collected,pr.collected))}% عن الشهر الماضي — يستحسن المتابعة`});
+  if(cur.newClients===0) out.push({t:'bad',x:'⚠️ لم يُسجَّل أي عميل جديد هذا الشهر'});
+  else if(cur.newClients>pr.newClients) out.push({t:'good',x:`👍 عملاء جدد أكثر: ${cur.newClients} (مقابل ${pr.newClients} الشهر الماضي)`});
+  else if(cur.newClients<pr.newClients) out.push({t:'bad',x:`📉 عملاء جدد أقل: ${cur.newClients} (مقابل ${pr.newClients} الشهر الماضي)`});
+  if(cur.commission>pr.commission && pr.commission>0) out.push({t:'good',x:`💰 العمولة ارتفعت إلى ${fmtMoney(cur.commission)}`});
+  else if(cur.commission<pr.commission && pr.commission>0) out.push({t:'bad',x:`💰 العمولة انخفضت إلى ${fmtMoney(cur.commission)}`});
+  if(!out.length) out.push({t:'neutral',x:'الأداء مستقر مقارنةً بالشهر الماضي.'});
+  return out;
+}
+
+function renderInsights(){
+  if(_insMonth===null){
+    const ms=[...new Set(clients.map(c=>(c.regDate||'').slice(0,7)).filter(Boolean))].sort().reverse();
+    _insMonth = ms[0] || new Date().toISOString().slice(0,7);
+  }
+  const month=_insMonth, prev=prevMonth(month);
+  const members=[...new Set([...CLOSERS, ...SETTERS])].filter(Boolean).sort();
+  const now=new Date(); const monthsList=[];
+  for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); monthsList.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  if(!monthsList.includes(month)) monthsList.unshift(month);
+
+  const controls=`
+  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600">📊 تحليل الأداء</span>
+    <select class="fsl" onchange="setInsMonth(this.value)" style="min-width:150px">${monthsList.map(m=>`<option value="${m}"${m===month?' selected':''}>${monthLabel(m)}</option>`).join('')}</select>
+    <select class="fsl" onchange="setInsMember(this.value)" style="min-width:190px"><option value="">— اختر مندوباً —</option>${members.map(m=>`<option value="${esc(m)}"${m===_insMember?' selected':''}>${esc(m)}</option>`).join('')}</select>
+    <span style="font-size:11px;color:var(--t3);margin-right:auto">مقارنة ${monthLabel(month)} بـ ${monthLabel(prev)}</span>
+  </div>`;
+
+  let body='';
+  if(_insMember){
+    const cur=insMemberStats(_insMember,month), pr=insMemberStats(_insMember,prev);
+    const metric=(label,c,p,money)=>{
+      const pc = p>0?Math.round((c-p)/p*100):(c>0?100:0); const up=c>=p; const f=v=>money?fmtMoney(v):v;
+      return `<div class="kpi">
+        <div style="font-size:11px;color:var(--t3);margin-bottom:6px">${label}</div>
+        <div style="font-size:20px;font-weight:800">${f(c)}</div>
+        <div style="font-size:11px;margin-top:5px;color:${p===c?'var(--t3)':up?'var(--g)':'var(--r)'}">${p===c?'—':(up?'▲':'▼')+' '+Math.abs(pc)+'%'} <span style="color:var(--t3)">(${f(p)})</span></div>
+      </div>`;
+    };
+    body=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div class="av" style="background:${col(members.indexOf(_insMember))};width:40px;height:40px;font-size:15px">${ini(_insMember)}</div>
+      <div style="font-size:17px;font-weight:800">${esc(_insMember)}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+      ${metric('عملاء جدد', cur.newClients, pr.newClients, false)}
+      ${metric('المبلغ المحصّل', cur.collected, pr.collected, true)}
+      ${metric('العمولة', cur.commission, pr.commission, true)}
+      ${metric('قيمة العقود المُغلقة', cur.contractValue, pr.contractValue, true)}
+    </div>
+    <div class="card" style="padding:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">💡 ملاحظات وتوصيات</div>
+      ${insInsights(cur,pr).map(i=>`<div style="padding:7px 0;border-bottom:1px solid var(--b1);font-size:13px;color:${i.t==='good'?'var(--g)':i.t==='bad'?'var(--r)':'var(--t2)'}">${i.x}</div>`).join('')}
+    </div>`;
+  } else {
+    const rows=members.map(m=>({m,s:insMemberStats(m,month)})).filter(r=>r.s.collected>0||r.s.newClients>0).sort((a,b)=>b.s.collected-a.s.collected);
+    body=`<div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:11px 16px;font-size:12.5px;font-weight:700;background:var(--hv);border-bottom:1px solid var(--b1)">🏆 ترتيب المندوبين — ${monthLabel(month)}</div>
+      ${rows.length?rows.map((r,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="setInsMember('${esc(r.m)}')" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
+        <span style="width:22px;font-weight:700;color:var(--t3)">${i+1}</span>
+        <span style="flex:1;font-weight:600;font-size:13px">${esc(r.m)}</span>
+        <span style="font-size:12px;color:var(--t3)">${r.s.newClients} عميل</span>
+        <span style="font-size:13px;font-weight:700;color:var(--g)">${fmtMoney(r.s.collected)}</span>
+      </div>`).join(''):`<div style="padding:30px;text-align:center;color:var(--t3)">لا توجد بيانات لهذا الشهر</div>`}
+    </div>
+    <div style="font-size:12px;color:var(--t3);margin-top:12px;text-align:center">اختر مندوباً من الأعلى لعرض مقارنة أدائه بالشهر الماضي والتوصيات</div>`;
+  }
+  $('pg-insights').innerHTML = controls + body;
 }
 
 // ═══════════════ NOTIFICATIONS (contract end reminders) ═══════════════
