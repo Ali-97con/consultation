@@ -35,12 +35,29 @@ async function ensureSchema() {
     create sequence if not exists clients_id_seq start with 1000;
 
     create table if not exists contracts (
-      client_id   integer primary key,
+      id          bigserial primary key,
+      client_id   integer     not null,
       filename    text,
       mime        text,
       data        bytea       not null,
       uploaded_at timestamptz not null default now()
     );
+    -- migrate the old one-file-per-client schema (client_id was the PK, no id column)
+    alter table contracts add column if not exists id bigserial;
+    alter table contracts add column if not exists client_id integer;
+    do $mig$
+    begin
+      if exists (
+        select 1 from information_schema.table_constraints t
+        join information_schema.key_column_usage k on k.constraint_name = t.constraint_name
+        where t.table_name = 'contracts' and t.constraint_type = 'PRIMARY KEY' and k.column_name = 'client_id'
+      ) then
+        alter table contracts drop constraint contracts_pkey;
+        alter table contracts add primary key (id);
+      end if;
+    end
+    $mig$;
+    create index if not exists contracts_client_idx on contracts(client_id);
 
     create table if not exists team_members (
       id         bigserial primary key,
@@ -207,12 +224,13 @@ function ready() { if (!initPromise) initPromise = ensureInit(); return initProm
 const getClients = async () => {
   await ready();
   const { rows } = await q(`
-    select c.data, (ct.client_id is not null) as has_contract, ct.filename as contract_name
+    select c.data,
+      coalesce((select json_agg(json_build_object('id',ct.id,'filename',ct.filename,'uploadedAt',ct.uploaded_at) order by ct.uploaded_at)
+                from contracts ct where ct.client_id = c.id), '[]'::json) as contracts
     from clients c
-    left join contracts ct on ct.client_id = c.id
     where c.deleted = false
     order by c.id`);
-  return rows.map(r => ({ ...r.data, hasContract: r.has_contract, contractName: r.contract_name || null }));
+  return rows.map(r => ({ ...r.data, contracts: r.contracts || [], hasContract: (r.contracts || []).length > 0 }));
 };
 
 const getTrash = async () => {
@@ -409,27 +427,24 @@ async function deleteCustomPlan(name) {
   return true;
 }
 
-// ─── Contract helpers (PDF stored as bytea, one per client) ───────────────────
-async function saveContract(clientId, filename, mime, buffer) {
+// ─── Contract helpers (files stored as bytea; many per client) ────────────────
+async function addContract(clientId, filename, mime, buffer) {
   await ready();
-  await q(`insert into contracts(client_id, filename, mime, data, uploaded_at)
-           values($1,$2,$3,$4, now())
-           on conflict (client_id) do update
-             set filename = excluded.filename, mime = excluded.mime,
-                 data = excluded.data, uploaded_at = now()`,
+  const { rows } = await q(`insert into contracts(client_id, filename, mime, data, uploaded_at)
+                            values($1,$2,$3,$4, now()) returning id`,
     [clientId, filename, mime, buffer]);
-  return true;
+  return Number(rows[0].id);
 }
 
-async function getContract(clientId) {
+async function getContractById(contractId) {
   await ready();
-  const { rows } = await q('select filename, mime, data from contracts where client_id = $1', [clientId]);
+  const { rows } = await q('select filename, mime, data from contracts where id = $1', [contractId]);
   return rows[0] || null;
 }
 
-async function deleteContract(clientId) {
+async function deleteContractById(contractId) {
   await ready();
-  const r = await q('delete from contracts where client_id = $1', [clientId]);
+  const r = await q('delete from contracts where id = $1', [contractId]);
   return r.rowCount > 0;
 }
 
@@ -715,8 +730,8 @@ module.exports = {
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   // Plans
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan,
-  // Contracts (PDF in Postgres)
-  saveContract, getContract, deleteContract,
+  // Contracts (files in Postgres, many per client)
+  addContract, getContractById, deleteContractById,
   // CSM (customer success) follow-up
   updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption,
   // Sessions (Postgres-backed, serverless-safe)

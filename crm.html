@@ -716,7 +716,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <div class="fg"><label>📅 نهاية العقد</label><input class="inp" id="m-contract-end" type="date"/></div></div>
       <div class="fg" style="margin-bottom:10px">
         <label>📎 مستند العقد (PDF أو صورة)</label>
-        <input type="file" id="m-contract-file" accept="application/pdf,image/*" style="display:none" onchange="onModalContractPick(this)"/>
+        <input type="file" id="m-contract-file" accept="application/pdf,image/*" multiple style="display:none" onchange="onModalContractPick(this)"/>
         <div id="m-contract-box" style="display:flex;align-items:center;gap:8px"></div>
       </div>
       <div class="fr"><div class="fg"><label>خطة العرض</label><select class="inp" id="m-plan" onchange="updatePlanPrice()">
@@ -3822,13 +3822,14 @@ function openDetail(id) {
           <span>التقدم: <strong style="color:var(--p2)">${(c.customTotal||PLANS[c.plan]||0)?Math.round(fx(c)/(c.customTotal||PLANS[c.plan])*100):0}%</strong></span>
         </div>
       </div>
-      <div class="dp-st" style="margin-top:20px">📎 ${LANG==='ar'?'مستند العقد':'Contract document'}</div>
-      ${c.hasContract ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="font-size:12px;color:var(--t2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(c.contractName||'file')}</span>
-          <button class="btn btn-p" onclick="downloadContract(${id})">⬇️ ${LANG==='ar'?'فتح':'Open'}</button>
-          <button class="btn btn-r" onclick="deleteContract(${id})">🗑️ ${LANG==='ar'?'حذف':'Delete'}</button>
-        </div>` : `<input type="file" id="contract-inp-${id}" accept="application/pdf,image/*" style="display:none" onchange="uploadContract(${id},this)"/>
-        <button class="btn btn-g" style="width:100%;justify-content:center" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة ملف (PDF / صورة)':'Add file (PDF / image)'}</button>`}
+      <div class="dp-st" style="margin-top:20px">📎 ${LANG==='ar'?'ملفات العقد':'Contract files'} (${(c.contracts||[]).length})</div>
+      ${(c.contracts||[]).map(f=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <span style="font-size:12px;color:var(--t2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(f.filename||'file')}</span>
+          <button class="btn btn-p" style="padding:5px 10px" onclick="downloadContractFile(${f.id})">⬇️ ${LANG==='ar'?'فتح':'Open'}</button>
+          <button class="btn btn-r" style="padding:5px 10px" onclick="deleteOneContract(${id},${f.id})">🗑️</button>
+        </div>`).join('')}
+      <input type="file" id="contract-inp-${id}" accept="application/pdf,image/*" multiple style="display:none" onchange="uploadContractFiles(${id},this)"/>
+      <button class="btn btn-g" style="width:100%;justify-content:center;margin-top:6px" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة ملف / ملفات':'Add file(s)'}</button>
     </div>
   </div>` : ''}`;
 
@@ -3842,32 +3843,37 @@ function contractFileOk(file){
   const t=(file.type||'').toLowerCase();
   return t==='application/pdf' || t.startsWith('image/') || /\.(pdf|jpe?g|png|webp|gif|heic|heif)$/i.test(file.name||'');
 }
-function uploadContract(id, inputEl){
-  const file = inputEl.files && inputEl.files[0];
-  if(!file) return;
-  if(!contractFileOk(file)){ toast(LANG==='ar'?'يجب أن يكون الملف PDF أو صورة':'File must be a PDF or image','⚠️'); inputEl.value=''; return; }
-  if(file.size > 4*1024*1024){ toast(LANG==='ar'?'الحد الأقصى 4 ميغابايت':'Max size 4 MB','⚠️'); inputEl.value=''; return; }
+function uploadContractFiles(id, inputEl){
+  const files = [...(inputEl.files||[])];
+  inputEl.value='';
+  if(!files.length) return;
+  const valid = files.filter(f=>{
+    if(!contractFileOk(f)){ toast((LANG==='ar'?'ملف غير مدعوم: ':'Unsupported: ')+f.name,'⚠️'); return false; }
+    if(f.size > 4*1024*1024){ toast((LANG==='ar'?'كبير جداً (>4م): ':'Too big (>4MB): ')+f.name,'⚠️'); return false; }
+    return true;
+  });
+  if(!valid.length) return;
   toast(LANG==='ar'?'جارٍ الرفع...':'Uploading…','⏳');
-  fetch(`/api/clients/${id}/contract?name=${encodeURIComponent(file.name)}`,{
-    method:'POST',
-    headers:{'Content-Type':file.type||'application/octet-stream','Authorization':'Bearer '+getToken()},
-    body:file
-  }).then(r=>{ if(!r.ok) throw new Error(); return r.json(); })
-    .then(()=>{ const c=clients.find(x=>x.id===id); if(c){c.hasContract=true;c.contractName=file.name;} openDetail(id); toast(LANG==='ar'?'تم حفظ العقد':'Contract saved','✅'); })
-    .catch(()=>toast(LANG==='ar'?'فشل رفع العقد':'Upload failed','❌'));
+  const c=clients.find(x=>x.id===id); if(c && !c.contracts) c.contracts=[];
+  Promise.all(valid.map(f=>_contractUpload(id,f).then(r=>{ if(c && r && r.id) c.contracts.push({id:r.id,filename:f.name}); })))
+    .then(()=>{ if(c) c.hasContract=(c.contracts||[]).length>0; openDetail(id); toast(LANG==='ar'?'تم الرفع':'Uploaded','✅'); })
+    .catch(()=>{ openDetail(id); toast(LANG==='ar'?'فشل رفع بعض الملفات':'Some uploads failed','❌'); });
 }
-function downloadContract(id){
-  const c=clients.find(x=>x.id===id);
-  fetch(`/api/clients/${id}/contract`,{headers:{'Authorization':'Bearer '+getToken()}})
+function downloadContractFile(cid){
+  let name='file';
+  for(const c of clients){ const f=(c.contracts||[]).find(x=>x.id===cid); if(f){ name=f.filename||'file'; break; } }
+  fetch(`/api/contracts/${cid}`,{headers:{'Authorization':'Bearer '+getToken()}})
     .then(r=>{ if(!r.ok) throw new Error(); return r.blob(); })
-    .then(blob=>{ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=(c&&c.contractName)||`contract-${id}.pdf`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); })
-    .catch(()=>toast(LANG==='ar'?'فشل تحميل العقد':'Download failed','❌'));
+    .then(blob=>{ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); })
+    .catch(()=>toast(LANG==='ar'?'فشل فتح الملف':'Open failed','❌'));
 }
-function deleteContract(id){
-  if(!confirm(LANG==='ar'?'حذف العقد؟':'Delete contract?')) return;
-  fetch(`/api/clients/${id}/contract`,{method:'DELETE',headers:{'Authorization':'Bearer '+getToken()}})
-    .then(r=>{ if(!r.ok) throw new Error(); const c=clients.find(x=>x.id===id); if(c){c.hasContract=false;c.contractName=null;} openDetail(id); toast(LANG==='ar'?'تم حذف العقد':'Contract deleted','🗑️'); })
-    .catch(()=>toast(LANG==='ar'?'فشل حذف العقد':'Delete failed','❌'));
+function deleteOneContract(clientId, cid){
+  if(!confirm(LANG==='ar'?'حذف هذا الملف؟':'Delete this file?')) return;
+  fetch(`/api/contracts/${cid}`,{method:'DELETE',headers:{'Authorization':'Bearer '+getToken()}})
+    .then(r=>{ if(!r.ok) throw new Error();
+      const c=clients.find(x=>x.id===clientId); if(c){ c.contracts=(c.contracts||[]).filter(f=>f.id!==cid); c.hasContract=c.contracts.length>0; }
+      openDetail(clientId); toast(LANG==='ar'?'تم الحذف':'Deleted','🗑️');
+    }).catch(()=>toast(LANG==='ar'?'فشل الحذف':'Delete failed','❌'));
 }
 
 function renderNotes(id) {
@@ -4112,48 +4118,41 @@ function renderPlanManager() {
       }).join('') : `<div style="color:var(--t3);font-size:12px">—</div>`);
 }
 
-// ─── Contract field inside the add/edit client modal ───
-let _modalContract = null; // { file, existingName, remove }
+// ─── Contract files inside the add/edit client modal (multiple) ───
+let _modalContracts = null; // { existing:[{id,filename}], files:[File], removeIds:[id] }
 function resetModalContract(c) {
-  _modalContract = { file: null, existingName: (c && c.hasContract) ? (c.contractName || 'contract.pdf') : null, remove: false };
+  _modalContracts = { existing: (c && c.contracts) ? c.contracts.slice() : [], files: [], removeIds: [] };
   const inp = $('m-contract-file'); if (inp) inp.value = '';
   renderModalContractBox();
 }
 function onModalContractPick(input) {
-  const file = input.files && input.files[0];
-  if (!file) return;
-  if (!contractFileOk(file)) { toast(LANG==='ar'?'يجب أن يكون الملف PDF أو صورة':'File must be a PDF or image', '⚠️'); input.value=''; return; }
-  if (file.size > 4*1024*1024) { toast(LANG==='ar'?'الحد الأقصى 4 ميغابايت':'Max size 4 MB', '⚠️'); input.value=''; return; }
-  if (!_modalContract) _modalContract = { file:null, existingName:null, remove:false };
-  _modalContract.file = file; _modalContract.remove = false;
+  const files = [...(input.files||[])];
+  input.value='';
+  if (!_modalContracts) _modalContracts = { existing:[], files:[], removeIds:[] };
+  files.forEach(file => {
+    if (!contractFileOk(file)) { toast((LANG==='ar'?'ملف غير مدعوم: ':'Unsupported: ')+file.name, '⚠️'); return; }
+    if (file.size > 4*1024*1024) { toast((LANG==='ar'?'كبير جداً (>4م): ':'Too big (>4MB): ')+file.name, '⚠️'); return; }
+    _modalContracts.files.push(file);
+  });
   renderModalContractBox();
 }
-function modalContractRemove() {
-  if (!_modalContract) return;
-  _modalContract.file = null;
-  if (_modalContract.existingName) _modalContract.remove = true;
-  _modalContract.existingName = null;
-  const inp = $('m-contract-file'); if (inp) inp.value = '';
-  renderModalContractBox();
-}
+function modalRemoveExisting(cid){ if(_modalContracts){ _modalContracts.removeIds.push(cid); renderModalContractBox(); } }
+function modalUnpickFile(i){ if(_modalContracts){ _modalContracts.files.splice(i,1); renderModalContractBox(); } }
 function renderModalContractBox() {
-  const box = $('m-contract-box'); if (!box || !_modalContract) return;
-  const pickBtn = `<button type="button" class="btn btn-g" style="flex:1;justify-content:center" onclick="document.getElementById('m-contract-file').click()">⬆️ ${LANG==='ar'?'اختر ملف (PDF / صورة)':'Choose file'}</button>`;
-  if (_modalContract.file) {
-    box.innerHTML = `<span style="flex:1;min-width:0;font-size:12px;color:var(--g);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(_modalContract.file.name)}</span><button type="button" class="btn btn-r" style="padding:6px 12px" onclick="modalContractRemove()">✕</button>`;
-  } else if (_modalContract.existingName) {
-    box.innerHTML = `<span style="flex:1;min-width:0;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(_modalContract.existingName)}</span>${pickBtn}<button type="button" class="btn btn-r" style="padding:6px 12px" onclick="modalContractRemove()">🗑️</button>`;
-  } else {
-    box.innerHTML = pickBtn;
-  }
+  const box = $('m-contract-box'); if (!box || !_modalContracts) return;
+  const pickBtn = `<button type="button" class="btn btn-g" style="width:100%;justify-content:center" onclick="document.getElementById('m-contract-file').click()">⬆️ ${LANG==='ar'?'إضافة ملف / ملفات':'Add file(s)'}</button>`;
+  const existing = _modalContracts.existing.filter(f=>!_modalContracts.removeIds.includes(f.id));
+  let rows = existing.map(f=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="flex:1;min-width:0;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(f.filename||'file')}</span><button type="button" class="btn btn-r" style="padding:4px 10px" onclick="modalRemoveExisting(${f.id})">🗑️</button></div>`).join('');
+  rows += _modalContracts.files.map((f,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="flex:1;min-width:0;font-size:12px;color:var(--g);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(f.name)} <span style="color:var(--t3);font-size:10px">(${LANG==='ar'?'جديد':'new'})</span></span><button type="button" class="btn btn-r" style="padding:4px 10px" onclick="modalUnpickFile(${i})">✕</button></div>`).join('');
+  box.innerHTML = rows + pickBtn;
 }
 function _contractUpload(id, file) {
   return fetch(`/api/clients/${id}/contract?name=${encodeURIComponent(file.name)}`, {
     method:'POST', headers:{'Content-Type':file.type||'application/octet-stream','Authorization':'Bearer '+getToken()}, body:file
   }).then(r => { if (!r.ok) throw new Error(); return r.json(); });
 }
-function _contractDelete(id) {
-  return fetch(`/api/clients/${id}/contract`, { method:'DELETE', headers:{'Authorization':'Bearer '+getToken()} })
+function _contractDeleteById(cid) {
+  return fetch(`/api/contracts/${cid}`, { method:'DELETE', headers:{'Authorization':'Bearer '+getToken()} })
     .then(r => { if (!r.ok) throw new Error(); });
 }
 
@@ -4419,17 +4418,20 @@ async function saveClient() {
   } catch(e) {
     toast('خطأ في الحفظ: '+e.message,'❌'); return;
   }
-  // Contract (PDF) attached in the modal — upload/remove after the client is saved
-  if (_modalContract && savedId && (_modalContract.file || _modalContract.remove)) {
+  // Contract files attached in the modal — upload new + delete removed, after the client is saved
+  if (_modalContracts && savedId && (_modalContracts.files.length || _modalContracts.removeIds.length)) {
     try {
-      if (_modalContract.file) {
-        await _contractUpload(savedId, _modalContract.file);
-        if (savedObj) { savedObj.hasContract = true; savedObj.contractName = _modalContract.file.name; }
-      } else if (_modalContract.remove) {
-        await _contractDelete(savedId);
-        if (savedObj) { savedObj.hasContract = false; savedObj.contractName = null; }
+      if (savedObj && !savedObj.contracts) savedObj.contracts = [];
+      for (const f of _modalContracts.files) {
+        const r = await _contractUpload(savedId, f);
+        if (savedObj && r && r.id) savedObj.contracts.push({ id:r.id, filename:f.name });
       }
-    } catch(_) { toast(LANG==='ar'?'تعذّر حفظ العقد':'Contract save failed','⚠️'); }
+      for (const rid of _modalContracts.removeIds) {
+        await _contractDeleteById(rid);
+        if (savedObj) savedObj.contracts = (savedObj.contracts||[]).filter(x=>x.id!==rid);
+      }
+      if (savedObj) savedObj.hasContract = (savedObj.contracts||[]).length > 0;
+    } catch(_) { toast(LANG==='ar'?'تعذّر حفظ بعض الملفات':'Some files failed','⚠️'); }
   }
   closeModal();
   if(S.view==='clients') renderTable();

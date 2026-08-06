@@ -8,7 +8,7 @@ const {
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan, importData,
-  saveContract, getContract, deleteContract,
+  addContract, getContractById, deleteContractById,
   updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
@@ -344,9 +344,10 @@ app.delete('/api/plans/:name', requireAdmin, async (req, res) => {
 });
 
 // ─── Client contract (PDF) ────────────────────────────────────────────────────
+// Upload a file for a client (appends — many files allowed per client)
 app.post('/api/clients/:id/contract',
   requireAdmin,
-  express.raw({ type: () => true, limit: '8mb' }),   // accept any content-type (PDF or image)
+  express.raw({ type: () => true, limit: '8mb' }),
   async (req, res) => {
     try {
       const buf = req.body;
@@ -356,23 +357,24 @@ app.post('/api/clients/:id/contract',
       if (mime !== 'application/pdf' && !mime.startsWith('image/'))
         return res.status(415).json({ error: 'نوع الملف غير مدعوم — PDF أو صورة فقط' });
       const filename = str(req.query.name, 200) || 'file';
-      await saveContract(+req.params.id, filename, mime, buf);
-      res.json({ ok: true });
+      const cid = await addContract(+req.params.id, filename, mime, buf);
+      res.json({ ok: true, id: cid, filename });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-app.get('/api/clients/:id/contract', requireAuth, async (req, res) => {
+// Download a single file by its contract id
+app.get('/api/contracts/:cid', requireAuth, async (req, res) => {
   try {
-    const c = await getContract(+req.params.id);
+    const c = await getContractById(+req.params.cid);
     if (!c) return res.status(404).json({ error: 'لا يوجد ملف' });
     res.setHeader('Content-Type', c.mime || 'application/octet-stream');
-    res.setHeader('Content-Disposition', 'inline');   // let the browser preview; front-end names the download
+    res.setHeader('Content-Disposition', 'inline');
     res.send(c.data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/clients/:id/contract', requireAdmin, async (req, res) => {
-  try { const ok = await deleteContract(+req.params.id); res.json({ ok }); }
+app.delete('/api/contracts/:cid', requireAdmin, async (req, res) => {
+  try { const ok = await deleteContractById(+req.params.cid); res.json({ ok }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
