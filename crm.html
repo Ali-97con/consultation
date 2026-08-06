@@ -4718,6 +4718,7 @@ function renderInsights(){
     };
     body=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button class="btn btn-g" style="padding:6px 12px" onclick="setInsMember('')">← ${LANG==='ar'?'رجوع للقائمة':'Back to list'}</button>
       <div class="av" style="background:${col(members.indexOf(_insMember))};width:40px;height:40px;font-size:15px">${ini(_insMember)}</div>
       <div style="font-size:17px;font-weight:800">${esc(_insMember)}</div>
     </div>
