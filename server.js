@@ -83,7 +83,7 @@ function sanitizeClientBody(body) {
   const b = body || {};
   const out = {};
   const fields = { name:200, phone:50, email:200, plan:100, paymentType:50, payMethod:50,
-    status:50, closer:100, setter:100, channel:20, regDate:30, lastPayDate:30, notes:undefined,
+    status:50, closer:100, setter:100, channel:20, sex:10, regDate:30, contractEnd:30, lastPayDate:30, notes:undefined,
     p1:undefined, p2:undefined, p3:undefined, p4:undefined,
     p1d:30, p2d:30, p3d:30, p4d:30,
     customTotal:undefined, discountType:50, discountValue:undefined, discountAmount:undefined,

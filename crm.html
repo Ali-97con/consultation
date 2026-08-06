@@ -614,8 +614,8 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <button class="mcls" onclick="closeModal()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
     </div>
     <div class="m-tabs">
-      <div class="m-tab on" onclick="switchTab(0)">📋 بيانات العميل</div>
-      <div class="m-tab" onclick="switchTab(1)">💳 الدفعات</div>
+      <div class="m-tab on" onclick="switchTab(0)">👤 الملف الشخصي</div>
+      <div class="m-tab" onclick="switchTab(1)">📄 العقد</div>
       <div class="m-tab" onclick="switchTab(2)">👥 فريق المبيعات</div>
     </div>
     <!-- Tab 0: Client Info -->
@@ -630,15 +630,22 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         <option value="churned">توقف</option>
         <option value="refunded">💸 تم ارجاع المبلغ</option>
       </select></div></div>
-      <div class="fg"><label>تاريخ التسجيل</label><input class="inp" id="m-reg" type="date"/></div>
-      <div class="fg" style="margin-top:10px">
-        <label>📄 العقد / مستند (PDF أو صورة)</label>
+      <div class="fr"><div class="fg"><label>الجنس</label><select class="inp" id="m-sex">
+        <option value="">— اختر —</option>
+        <option value="male">♂ ذكر</option>
+        <option value="female">♀ أنثى</option>
+      </select></div>
+      <div class="fg"><label>بداية العقد / التسجيل</label><input class="inp" id="m-reg" type="date"/></div></div>
+    </div>
+    <!-- Tab 1: Contract -->
+    <div class="m-tp" id="mt-1">
+      <div class="fr"><div class="fg"><label>📅 نهاية العقد</label><input class="inp" id="m-contract-end" type="date"/></div>
+      <div class="fg"></div></div>
+      <div class="fg" style="margin-bottom:10px">
+        <label>📎 مستند العقد (PDF أو صورة)</label>
         <input type="file" id="m-contract-file" accept="application/pdf,image/*" style="display:none" onchange="onModalContractPick(this)"/>
         <div id="m-contract-box" style="display:flex;align-items:center;gap:8px"></div>
       </div>
-    </div>
-    <!-- Tab 1: Payments -->
-    <div class="m-tp" id="mt-1">
       <div class="fr"><div class="fg"><label>خطة العرض</label><select class="inp" id="m-plan" onchange="updatePlanPrice()">
         <option value="CORE">CORE — $2,500</option>
         <option value="CORE+">CORE+ — $3,000</option>
@@ -1416,6 +1423,16 @@ const netFx = s => s.status === 'refunded' ? -fx(s) : fx(s);
 const nc = s  => PCNT[s.paymentType]||1;
 const ini = n => n.trim().split(' ').slice(0,2).map(w=>w[0]).join('');
 const col = i => COLORS[i % COLORS.length];
+// Client avatar: gendered emoji (👨/👩) when sex is set, else colored initials.
+function clientAv(c, cls, extraStyle, fontSize){
+  cls = cls || 'av';
+  if (c.sex === 'male' || c.sex === 'female') {
+    const bg = c.sex === 'male' ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'linear-gradient(135deg,#ec4899,#db2777)';
+    const emo = c.sex === 'male' ? '👨' : '👩';
+    return `<div class="${cls}" style="background:${bg};${fontSize?`font-size:${fontSize};`:''}${extraStyle||''}">${emo}</div>`;
+  }
+  return `<div class="${cls}" style="background:${col(c.ci)};${extraStyle||''}">${ini(c.name)}</div>`;
+}
 
 function isOverdue(s) {
   if (fr(s) <= 0 || s.status === 'lead' || s.status === 'refunded') return false;
@@ -1766,7 +1783,7 @@ function renderOverview() {
     ? `<div class="empty">${t('no_overdue')}</div>`
     : odList.slice(0,8).map(c=>`
     <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${c.id})">
-      <div class="av" style="background:${col(c.ci)}">${ini(c.name)}</div>
+      ${clientAv(c)}
       <div style="flex:1;min-width:0">
         <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
         <div style="font-size:11px;color:var(--t3)">${fmtMoney(fr(c))} ${t('remaining')}</div>
@@ -3587,10 +3604,10 @@ function openDetail(id) {
   $('dp-body').innerHTML = `
   <!-- ── HEADER ── -->
   <div class="dp-hd">
-    <div class="dp-av" style="background:${col(c.ci)}">${ini(c.name)}</div>
+    ${clientAv(c,'dp-av',null,'30px')}
     <div style="flex:1;min-width:0">
       <div class="dp-nm">${esc(c.name)}</div>
-      <div class="dp-ph">${esc(c.phone)}</div>
+      <div class="dp-ph">${esc(c.phone)}${c.sex?` · ${c.sex==='male'?(LANG==='ar'?'ذكر':'M'):(LANG==='ar'?'أنثى':'F')}`:''}</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
         <span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span>
         ${planBadge(c.plan)}
@@ -3607,84 +3624,20 @@ function openDetail(id) {
     <button class="btn btn-r" style="flex:1;justify-content:center" onclick="dpQuickAction(${c.id},'call')">${t('dp_call')}</button>
   </div>
 
-  <!-- ── INFO GRID (contact + team) ── -->
-  ${!isCoach() ? `
+  <!-- ── PROFILE: contact + contract dates ── -->
   <div class="dp2-grid">
     <div class="dp2-col">
       <div class="dp-st">📞 ${t('dp_contact')}</div>
       <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${esc(c.email)||'—'}</span></div>
-      <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
       <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.callsDone||0, c.callsTotal||0)}</span></div>
     </div>
     <div class="dp2-col">
-      <div class="dp-st">👥 ${t('dp_team')}</div>
-      <div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${esc(c.closer)||'—'}</span></div>
-      <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${esc(c.setter)||'—'}</span></div>
+      <div class="dp-st">📅 ${LANG==='ar'?'العقد':'Contract'}</div>
+      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'بداية العقد':'Start'}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
+      <div class="dp-row"><span class="dp-k">${LANG==='ar'?'نهاية العقد':'End'}</span><span class="dp-v">${c.contractEnd?fmtDate(c.contractEnd):'—'}</span></div>
+      ${!isCoach()?`<div class="dp-row"><span class="dp-k">${t('dp_closer')}</span><span class="dp-v" style="color:var(--p2)">${esc(c.closer)||'—'}</span></div>
+      <div class="dp-row"><span class="dp-k">${t('dp_setter')}</span><span class="dp-v" style="color:var(--g)">${esc(c.setter)||'—'}</span></div>`:''}
     </div>
-  </div>` : `
-  <div class="dp-sc">
-    <div class="dp-st">📞 ${t('dp_contact')}</div>
-    <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px">${esc(c.email)||'—'}</span></div>
-    <div class="dp-row"><span class="dp-k">${t('dp_reg_date')}</span><span class="dp-v">${fmtDate(c.regDate)}</span></div>
-    <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.callsDone||0, c.callsTotal||0)}</span></div>
-  </div>`}
-
-  <!-- ── PAYMENT (admin only) ── -->
-  ${!isCoach() ? `
-  <div class="dp-sc">
-    <div class="dp-st">💳 ${t('dp_pay_details')} — <span style="color:var(--p2);font-size:11px">${c.paymentType}</span></div>
-    ${c.status === 'refunded' ? `<div style="margin-bottom:12px;padding:10px 14px;background:var(--rbg);border:1px dashed rgba(239,68,68,.4);border-radius:9px;color:var(--r);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="font-size:18px">💸</span><div><div>تم ارجاع المبلغ</div><div style="font-weight:400;color:var(--t2);font-size:11px;margin-top:2px">المبلغ المُسترجع: ${fmtMoney(fx(c))}</div></div></div>` : ''}
-    <div class="dp2-stats">
-      <div class="dp2-stat">
-        <div class="dp2-stat-val">${fmtMoney(c.customTotal||PLANS[c.plan]||0)}</div>
-        <div class="dp2-stat-lbl">${t('dp_plan_total')}</div>
-      </div>
-      <div class="dp2-stat">
-        <div class="dp2-stat-val" style="color:${c.status==='refunded'?'var(--r)':'var(--g)'}">${fmtMoney(fx(c))}</div>
-        <div class="dp2-stat-lbl">${t('dp_collected')}</div>
-      </div>
-      <div class="dp2-stat">
-        <div class="dp2-stat-val" style="color:${c.status==='refunded'?'var(--t3)':fr(c)===0?'var(--g)':isOverdue(c)?'var(--r)':'var(--y)'}">${c.status==='refunded'?'—':fr(c)===0?'✓':fmtMoney(fr(c))}</div>
-        <div class="dp2-stat-lbl">${fr(c)===0&&c.status!=='refunded'?t('dp_fully_paid'):t('dp_remaining')}</div>
-      </div>
-    </div>
-    <div class="dp-row" style="margin-top:4px"><span class="dp-k">${t('dp_pay_method')}</span><span class="dp-v">${pmBadge(c.payMethod||'—')}</span></div>
-    ${c.discountType && c.discountType !== 'none' ? `<div class="dp-row"><span class="dp-k">السعر الأصلي</span><span class="dp-v" style="text-decoration:line-through;color:var(--t3)">${fmtMoney(PLANS[c.plan]||0)}</span></div><div class="dp-row"><span class="dp-k">التخفيض</span><span class="dp-v" style="color:var(--y)">−${c.discountType==='pct'?c.discountValue+'%':fmtMoney(c.discountValue)} (${fmtMoney(c.discountAmount||0)})</span></div>` : ''}
-    <div style="margin-top:18px">
-      <div style="display:flex">
-        ${Array.from({length:n},(_,i)=>{
-          const paid=!!pDates[i];
-          const isNext=!paid&&pAmts.slice(0,i).every((_,j)=>!!pDates[j]);
-          const clr=paid?'var(--g)':isNext&&isOverdue(c)?'var(--r)':isNext?'var(--y)':'var(--b3)';
-          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative">
-            ${i>0?`<div style="position:absolute;top:15px;right:50%;left:-50%;height:2px;background:${paid?'var(--g)':'var(--b2)'}"></div>`:''}
-            <div style="width:30px;height:30px;border-radius:50%;background:${clr};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;position:relative;z-index:1;border:2px solid var(--sf);box-shadow:0 2px 8px rgba(0,0,0,.3)">${paid?'✓':(i+1)}</div>
-            <div style="font-size:11px;font-weight:600;margin-top:7px;color:${clr}">${fmtMoney(pAmts[i]||instAmt)}</div>
-            <div style="font-size:10px;color:var(--t3);margin-top:2px">${pDates[i]?fmtDate(pDates[i]):(isNext?'⏳ التالي':'—')}</div>
-          </div>`;
-        }).join('')}
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:11.5px;padding:10px 14px;background:var(--hv);border-radius:10px;border:1px solid var(--b1);margin-top:16px">
-        <span>مدفوع: <strong style="color:var(--g)">${fmtMoney(fx(c))}</strong></span>
-        <span>المتبقي: <strong style="color:${fr(c)>0?'var(--r)':'var(--g)'}">${fr(c)>0?fmtMoney(fr(c)):t('dp_fully_paid')}</strong></span>
-        <span>التقدم: <strong style="color:var(--p2)">${(c.customTotal||PLANS[c.plan]||0)?Math.round(fx(c)/(c.customTotal||PLANS[c.plan])*100):0}%</strong></span>
-      </div>
-    </div>
-  </div>` : ''}
-
-  <!-- ── CONTRACT (PDF) ── -->
-  <div class="dp-sc">
-    <div class="dp-st">📄 ${LANG==='ar'?'العقد':'Contract'}</div>
-    ${c.hasContract ? `
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--t2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(c.contractName||'contract.pdf')}</span>
-        <button class="btn btn-p" onclick="downloadContract(${id})">⬇️ ${LANG==='ar'?'تحميل':'Download'}</button>
-        ${!isCoach()?`<button class="btn btn-r" onclick="deleteContract(${id})">🗑️ ${LANG==='ar'?'حذف':'Delete'}</button>`:''}
-      </div>
-    ` : (!isCoach() ? `
-      <input type="file" id="contract-inp-${id}" accept="application/pdf,image/*" style="display:none" onchange="uploadContract(${id},this)"/>
-      <button class="btn btn-g" style="width:100%;justify-content:center" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة ملف (PDF / صورة)':'Add file (PDF / image)'}</button>
-    ` : `<div style="color:var(--t3);font-size:12px">${LANG==='ar'?'لا يوجد عقد':'No contract'}</div>`)}
   </div>
 
   <!-- ── NOTES ── -->
@@ -3695,7 +3648,50 @@ function openDetail(id) {
       <button class="btn btn-p" onclick="addNote(${id})" style="align-self:flex-end">${t('dp_note_add')}</button>
     </div>
     <div id="notes-list-${id}">${renderNotes(id)}</div>
-  </div>`;
+  </div>
+
+  <!-- ── FINANCIAL & CONTRACT (admin, collapsible) ── -->
+  ${!isCoach() ? `<div class="dp-sc">
+    <button class="btn btn-g" id="fin-toggle-${id}" style="width:100%;justify-content:center" onclick="toggleFinDetail(${id})">💳 ${LANG==='ar'?'عرض التفاصيل المالية والعقد':'Show financial & contract details'}</button>
+    <div id="fin-detail-${id}" style="display:none;margin-top:14px">
+      <div class="dp-st">💳 ${t('dp_pay_details')} — <span style="color:var(--p2);font-size:11px">${c.paymentType}</span></div>
+      ${c.status === 'refunded' ? `<div style="margin-bottom:12px;padding:10px 14px;background:var(--rbg);border:1px dashed rgba(239,68,68,.4);border-radius:9px;color:var(--r);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="font-size:18px">💸</span><div><div>تم ارجاع المبلغ</div><div style="font-weight:400;color:var(--t2);font-size:11px;margin-top:2px">المبلغ المُسترجع: ${fmtMoney(fx(c))}</div></div></div>` : ''}
+      <div class="dp2-stats">
+        <div class="dp2-stat"><div class="dp2-stat-val">${fmtMoney(c.customTotal||PLANS[c.plan]||0)}</div><div class="dp2-stat-lbl">${t('dp_plan_total')}</div></div>
+        <div class="dp2-stat"><div class="dp2-stat-val" style="color:${c.status==='refunded'?'var(--r)':'var(--g)'}">${fmtMoney(fx(c))}</div><div class="dp2-stat-lbl">${t('dp_collected')}</div></div>
+        <div class="dp2-stat"><div class="dp2-stat-val" style="color:${c.status==='refunded'?'var(--t3)':fr(c)===0?'var(--g)':isOverdue(c)?'var(--r)':'var(--y)'}">${c.status==='refunded'?'—':fr(c)===0?'✓':fmtMoney(fr(c))}</div><div class="dp2-stat-lbl">${fr(c)===0&&c.status!=='refunded'?t('dp_fully_paid'):t('dp_remaining')}</div></div>
+      </div>
+      <div class="dp-row" style="margin-top:4px"><span class="dp-k">${t('dp_pay_method')}</span><span class="dp-v">${pmBadge(c.payMethod||'—')}</span></div>
+      ${c.discountType && c.discountType !== 'none' ? `<div class="dp-row"><span class="dp-k">السعر الأصلي</span><span class="dp-v" style="text-decoration:line-through;color:var(--t3)">${fmtMoney(PLANS[c.plan]||0)}</span></div><div class="dp-row"><span class="dp-k">التخفيض</span><span class="dp-v" style="color:var(--y)">−${c.discountType==='pct'?c.discountValue+'%':fmtMoney(c.discountValue)} (${fmtMoney(c.discountAmount||0)})</span></div>` : ''}
+      <div style="margin-top:18px">
+        <div style="display:flex">
+          ${Array.from({length:n},(_,i)=>{
+            const paid=!!pDates[i];
+            const isNext=!paid&&pAmts.slice(0,i).every((_,j)=>!!pDates[j]);
+            const clr=paid?'var(--g)':isNext&&isOverdue(c)?'var(--r)':isNext?'var(--y)':'var(--b3)';
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative">
+              ${i>0?`<div style="position:absolute;top:15px;right:50%;left:-50%;height:2px;background:${paid?'var(--g)':'var(--b2)'}"></div>`:''}
+              <div style="width:30px;height:30px;border-radius:50%;background:${clr};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;position:relative;z-index:1;border:2px solid var(--sf);box-shadow:0 2px 8px rgba(0,0,0,.3)">${paid?'✓':(i+1)}</div>
+              <div style="font-size:11px;font-weight:600;margin-top:7px;color:${clr}">${fmtMoney(pAmts[i]||instAmt)}</div>
+              <div style="font-size:10px;color:var(--t3);margin-top:2px">${pDates[i]?fmtDate(pDates[i]):(isNext?'⏳ التالي':'—')}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;padding:10px 14px;background:var(--hv);border-radius:10px;border:1px solid var(--b1);margin-top:16px">
+          <span>مدفوع: <strong style="color:var(--g)">${fmtMoney(fx(c))}</strong></span>
+          <span>المتبقي: <strong style="color:${fr(c)>0?'var(--r)':'var(--g)'}">${fr(c)>0?fmtMoney(fr(c)):t('dp_fully_paid')}</strong></span>
+          <span>التقدم: <strong style="color:var(--p2)">${(c.customTotal||PLANS[c.plan]||0)?Math.round(fx(c)/(c.customTotal||PLANS[c.plan])*100):0}%</strong></span>
+        </div>
+      </div>
+      <div class="dp-st" style="margin-top:20px">📎 ${LANG==='ar'?'مستند العقد':'Contract document'}</div>
+      ${c.hasContract ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:12px;color:var(--t2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(c.contractName||'file')}</span>
+          <button class="btn btn-p" onclick="downloadContract(${id})">⬇️ ${LANG==='ar'?'فتح':'Open'}</button>
+          <button class="btn btn-r" onclick="deleteContract(${id})">🗑️ ${LANG==='ar'?'حذف':'Delete'}</button>
+        </div>` : `<input type="file" id="contract-inp-${id}" accept="application/pdf,image/*" style="display:none" onchange="uploadContract(${id},this)"/>
+        <button class="btn btn-g" style="width:100%;justify-content:center" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة ملف (PDF / صورة)':'Add file (PDF / image)'}</button>`}
+    </div>
+  </div>` : ''}`;
 
   $('dp').classList.add('on');
   $('dov').classList.add('on');
@@ -3840,6 +3836,16 @@ function saveEditNote() {
 }
 
 function closeDetail() { $('dp').classList.remove('on'); $('dov').classList.remove('on'); }
+
+function toggleFinDetail(id){
+  const d = document.getElementById('fin-detail-'+id), b = document.getElementById('fin-toggle-'+id);
+  if (!d) return;
+  const open = d.style.display === 'none';
+  d.style.display = open ? 'block' : 'none';
+  if (b) b.textContent = (open ? '▲ ' : '💳 ') + (LANG==='ar'
+    ? (open ? 'إخفاء التفاصيل المالية والعقد' : 'عرض التفاصيل المالية والعقد')
+    : (open ? 'Hide financial & contract details' : 'Show financial & contract details'));
+}
 
 // ═══════════════ MODAL ═══════════════
 function switchTab(i) {
@@ -4165,11 +4171,15 @@ function openModal(id=null) {
     }
     $('m-closer').value=c.closer; $('m-setter').value=c.setter;
     if($('m-channel')) $('m-channel').value=c.channel||'outbound';
+    if($('m-sex')) $('m-sex').value=c.sex||'';
+    if($('m-contract-end')) $('m-contract-end').value=c.contractEnd||'';
     $('m-notes').value=c.notes.map(n=>n.txt).join('\n');
   } else {
     ['m-name','m-phone','m-email','m-notes'].forEach(id=>{if($(id))$(id).value='';});
     $('m-status').value='lead'; $('m-plan').value='CORE'; $('m-paytype').value='دفعة واحدة';
     if($('m-channel')) $('m-channel').value='outbound';
+    if($('m-sex')) $('m-sex').value='';
+    if($('m-contract-end')) $('m-contract-end').value='';
     $('m-reg').value=new Date().toISOString().split('T')[0];
     const cpr=$('custom-plan-row'); if(cpr) cpr.style.display='none';
     // Reset total field and discount on new client
@@ -4216,6 +4226,8 @@ async function saveClient() {
     p1:pv[0],p1d:pd[0],p2:pv[1],p2d:pd[1],p3:pv[2],p3d:pd[2],p4:pv[3],p4d:pd[3],
     closer:$('m-closer').value, setter:$('m-setter').value,
     channel:$('m-channel')?$('m-channel').value:'outbound',
+    sex:$('m-sex')?$('m-sex').value:'',
+    contractEnd:$('m-contract-end')?$('m-contract-end').value:'',
     regDate:$('m-reg').value||new Date().toISOString().split('T')[0],
     lastPayDate:pd.filter(Boolean).slice(-1)[0]||'',
   };
