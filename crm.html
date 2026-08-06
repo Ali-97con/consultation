@@ -261,6 +261,21 @@ tbody tr.overdue-row td{border-right:2px solid var(--r)}
 /* MODAL */
 .mo{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(5px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px}
 .mo.on{display:flex}
+#print-area{display:none}
+@media print{
+  body.printing *{visibility:hidden!important}
+  body.printing #print-area,body.printing #print-area *{visibility:visible!important}
+  #print-area{display:block!important;position:absolute;inset:0;padding:26px;color:#000;background:#fff;direction:rtl;font-family:'Segoe UI',Tahoma,sans-serif}
+  #print-area h1{font-size:22px;margin:0 0 2px}
+  #print-area .psub{color:#666;font-size:12px;margin-bottom:16px}
+  #print-area h3{font-size:15px;border-bottom:2px solid #333;padding-bottom:4px;margin:18px 0 9px}
+  #print-area .pt{width:100%;border-collapse:collapse}
+  #print-area .pt td{border:1px solid #ccc;padding:5px 9px;font-size:12px}
+  #print-area .pt td:first-child{background:#f3f3f3;font-weight:bold;width:130px}
+  #print-area .pn{border:1px solid #ddd;border-radius:6px;padding:9px 11px;margin-bottom:8px;font-size:12px;line-height:1.6}
+  #print-area .pa{color:#666;font-size:11px;margin-top:5px}
+  #print-area .pe{color:#999;font-size:12px}
+}
 .mbox{background:var(--sf);border:1px solid var(--b2);border-radius:var(--rd2);width:560px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:mIn .2s ease}
 @keyframes mIn{from{opacity:0;transform:scale(.96) translateY(-10px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .mh{padding:16px 18px;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--sf);z-index:1}
@@ -413,6 +428,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
       العمولات
     </div>
+    <div class="ns" id="ns-csm">نجاح العملاء</div>
+    <div class="nl" data-v="csm" id="nl-csm">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      متابعة العملاء
+    </div>
     <div class="ns" id="ns-sys">النظام</div>
     <div class="nl" data-v="users" id="nl-users">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
@@ -562,6 +582,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   <div class="pg" id="pg-analytics"></div>
   <div class="pg" id="pg-team"></div>
   <div class="pg" id="pg-commissions"></div>
+  <div class="pg" id="pg-csm"></div>
   <div class="pg" id="pg-users"></div>
   <div class="pg" id="pg-trash"></div>
 </main>
@@ -587,6 +608,32 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     </div>
   </div>
 </div>
+<!-- CSM CLIENT FOLLOW-UP MODAL -->
+<div class="mo" id="csm-mo" onclick="if(event.target===this)closeCsmDetail()">
+  <div class="mbox" style="max-width:640px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="15" height="15" fill="none" stroke="var(--p2)" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+      <h3 id="csm-title">متابعة العميل</h3>
+      <button class="mcls" onclick="closeCsmDetail()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="csm-body" style="padding:18px;max-height:78vh;overflow-y:auto"></div>
+  </div>
+</div>
+<!-- CSM OPTIONS MODAL -->
+<div class="mo" id="csm-opts-mo" onclick="if(event.target===this)closeCsmOpts()">
+  <div class="mbox" style="max-width:440px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">⚙️</div>
+      <h3>إدارة القوائم</h3>
+      <button class="mcls" onclick="closeCsmOpts()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="csm-opts-body" style="padding:18px;max-height:76vh;overflow-y:auto"></div>
+  </div>
+</div>
+<!-- PRINT REPORT (hidden; used for CSM PDF export via browser print) -->
+<div id="print-area"></div>
 <!-- COMMISSION DETAIL MODAL -->
 <div class="mo" id="comm-modal" onclick="if(event.target===this)closeCommDetail()">
   <div class="mbox" style="max-width:680px;width:100%">
@@ -1034,8 +1081,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',commissions:'عمولات الفريق',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',commissions:'Team Commissions',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171' };
@@ -1320,6 +1367,33 @@ const S = { view:'overview', sortK:'name', sortD:1, sel:new Set(), page:1, pp:10
 function isCoach() {
   try { return sessionStorage.getItem('ah97_role') === 'coach'; } catch(_) { return false; }
 }
+function isCsm() {
+  try { return sessionStorage.getItem('ah97_role') === 'csm'; } catch(_) { return false; }
+}
+function isAdmin() {
+  try { return sessionStorage.getItem('ah97_role') === 'admin'; } catch(_) { return false; }
+}
+// CSM option lists, loaded from the server (admin + csm)
+let CSM_OPTS = { conditions: [], follows: [] };
+
+function applyCsmRestrictions() {
+  if (!isCsm()) return;
+  // CSM sees only the follow-up section (can still open client profiles from it)
+  ['overview','clients','analytics','team','commissions','users','trash'].forEach(v => {
+    const el = document.querySelector(`.nl[data-v="${v}"]`);
+    if (el) el.style.display = 'none';
+  });
+  ['ns-team','ns-sys','ns-main'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  document.querySelectorAll('button').forEach(btn => {
+    const oc = btn.getAttribute('onclick') || '';
+    if (oc === 'openModal()' || oc === 'window.print()' || oc === 'exportCSV()') btn.style.display = 'none';
+  });
+  const username = sessionStorage.getItem('ah97_user') || 'CSM';
+  const uNm = document.querySelector('.u-nm'), uRl = document.querySelector('.u-rl'), uAv = document.querySelector('.u-av');
+  if (uNm) uNm.textContent = username;
+  if (uRl) uRl.textContent = 'CSM · AH97';
+  if (uAv) uAv.textContent = (username[0] || 'C').toUpperCase();
+}
 
 function toggleMobMenu() {
   document.getElementById('sb').classList.toggle('mob-open');
@@ -1333,11 +1407,11 @@ function closeMobMenu() {
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, users, trash + orphaned section headers
-  ['overview','analytics','team','commissions','users','trash'].forEach(v => {
+  ['overview','analytics','team','commissions','csm','users','trash'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
-  ['ns-team','ns-sys'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  ['ns-team','ns-csm','ns-sys'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
   // Hide topbar action buttons (add client, print, export)
   document.querySelectorAll('button').forEach(btn => {
     const oc = btn.getAttribute('onclick') || '';
@@ -1383,13 +1457,14 @@ async function api(method, url, body) {
 
 async function initApp() {
   try {
-    const _isCoach = isCoach();
-    const [clientsData, trashData, teamData, plansData, teamTrashData] = await Promise.all([
+    const _isCoach = isCoach(), _isCsm = isCsm(), _limited = _isCoach || _isCsm;
+    const [clientsData, trashData, teamData, plansData, teamTrashData, csmOpts] = await Promise.all([
       api('GET', '/api/clients'),
-      _isCoach ? Promise.resolve([]) : api('GET', '/api/trash'),
+      _limited ? Promise.resolve([]) : api('GET', '/api/trash'),
       api('GET', '/api/team'),
       api('GET', '/api/plans'),
-      _isCoach ? Promise.resolve([]) : api('GET', '/api/team/trash'),
+      _limited ? Promise.resolve([]) : api('GET', '/api/team/trash'),
+      _isCoach ? Promise.resolve(null) : api('GET', '/api/csm/options').catch(()=>null),
     ]);
     clients   = clientsData;
     trash     = trashData;
@@ -1400,12 +1475,14 @@ async function initApp() {
     // DB plans add to / override them, so custom plans show up and edits persist.
     // Deleting a DB plan removes it on next load; deleting a default is in-memory only.
     plansData.forEach(p => { PLANS[p.name] = p.price; });
+    if (csmOpts) CSM_OPTS = csmOpts;
     updateTrashBadge();
     $('cnt-badge').textContent = clients.length;
     const ldr = $('app-loader');
     if (ldr) { ldr.classList.add('hide'); setTimeout(()=>ldr.remove(), 500); }
     applyCoachRestrictions();
-    if (isCoach()) nav('clients'); else renderOverview();
+    applyCsmRestrictions();
+    if (_isCsm) nav('csm'); else if (_isCoach) nav('clients'); else renderOverview();
   } catch(e) {
     console.error(e);
     const msg = 'فشل الاتصال بالخادم — تأكد من تشغيل: <b>node server.js</b>';
@@ -1576,7 +1653,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, commissions:renderCommissions, users:renderUsers, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, team:renderTeam, commissions:renderCommissions, csm:renderCsm, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -4279,6 +4356,210 @@ async function saveClient() {
   $('cnt-badge').textContent=clients.length;
 }
 
+// ═══════════════ CSM — CUSTOMER SUCCESS ═══════════════
+let _csmSearch = '';
+function setCsmSearch(v){ _csmSearch = v; renderCsm(); }
+
+function csmLatest(c){
+  const ns = c.csmNotes || [];
+  if (!ns.length) return null;
+  return ns.slice().sort((a,b)=>(b.date||b.createdAt||'').localeCompare(a.date||a.createdAt||''))[0];
+}
+function daysUntil(dateStr){
+  if (!dateStr) return null;
+  const d = new Date(dateStr); if (isNaN(d)) return null;
+  return Math.ceil((d - new Date())/86400000);
+}
+function condColor(cond){
+  return cond==='يرد'?'var(--g)':cond==='مايرد'?'var(--r)':cond==='موقف'?'var(--y)':cond==='طلع'?'var(--r)':cond==='لسا ما بلش'?'var(--t3)':'var(--p2)';
+}
+function condBadge(cond){
+  if (!cond) return `<span style="font-size:10.5px;color:var(--t3)">—</span>`;
+  const c = condColor(cond);
+  return `<span style="font-size:10.5px;font-weight:600;color:${c};background:${c}22;padding:2px 8px;border-radius:20px;white-space:nowrap">${esc(cond)}</span>`;
+}
+
+function renderCsm(){
+  const list = clients.filter(c=>!c.deleted);
+  const has = (c,f)=>{ const l=csmLatest(c); return l && (l.follow||[]).includes(f); };
+  const noResp    = list.filter(c=>{const l=csmLatest(c); return l && l.condition==='مايرد';}).length;
+  const noFollow  = list.filter(c=>!(c.csmNotes||[]).length).length;
+  const finished  = list.filter(c=>has(c,'خلص الدورة')).length;
+  const profit    = list.filter(c=>has(c,'طلع ارباح')).length;
+  const unhappy   = list.filter(c=>has(c,'مو راضي عن البرنامج')).length;
+  const endingSoon= list.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;}).length;
+  const kpis = [
+    {l:'عملاء متابَعون', v:list.length, c:'#6366f1'},
+    {l:'لا يردّون', v:noResp, c:'#ef4444'},
+    {l:'بدون متابعة', v:noFollow, c:'#f59e0b'},
+    {l:'عقود تنتهي ≤ 30 يوم', v:endingSoon, c:'#f59e0b'},
+    {l:'أنهوا الدورة', v:finished, c:'#8b5cf6'},
+    {l:'طلع أرباح', v:profit, c:'#10b981'},
+    {l:'غير راضين', v:unhappy, c:'#ef4444'},
+  ];
+  const q = _csmSearch.trim().toLowerCase();
+  const rows = list.filter(c=>!q || (c.name||'').toLowerCase().includes(q))
+    .sort((a,b)=>{
+      const da=daysUntil(a.contractEnd), db=daysUntil(b.contractEnd);
+      if (da===null && db===null) return (a.name||'').localeCompare(b.name||'');
+      if (da===null) return 1; if (db===null) return -1;
+      return da-db;
+    });
+
+  $('pg-csm').innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px">
+    ${kpis.map(k=>`<div class="kpi" style="border-bottom:2px solid ${k.c}55"><div style="font-size:22px;font-weight:800;color:${k.c}">${k.v}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${k.l}</div></div>`).join('')}
+  </div>
+  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <input class="inp" style="max-width:280px" placeholder="🔍 بحث بالاسم..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
+    <span style="font-size:12px;color:var(--t3)">${rows.length} عميل</span>
+    <button class="btn btn-g" style="margin-right:auto" onclick="openCsmOpts()">⚙️ إدارة القوائم</button>
+  </div>
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;min-width:560px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+        <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:right">العميل</th>
+        <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:right">بداية العقد</th>
+        <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:right">نهاية العقد</th>
+        <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:right">آخر حالة</th>
+        <th style="padding:11px 14px;font-size:11px;color:var(--t3);text-align:center">متابعات</th>
+      </tr></thead>
+      <tbody>${rows.map(c=>{
+        const l=csmLatest(c), d=daysUntil(c.contractEnd);
+        const soon = d!==null && d>=0 && d<=30, expired = d!==null && d<0;
+        return `<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openCsmDetail(${c.id})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
+          <td style="padding:11px 14px"><div style="display:flex;align-items:center;gap:10px">${clientAv(c)}<span style="font-weight:600;font-size:13px">${esc(c.name)}</span></div></td>
+          <td style="padding:11px 14px;font-size:12px;color:var(--t2)">${c.regDate?fmtDate(c.regDate):'—'}</td>
+          <td style="padding:11px 14px;font-size:12px;color:${expired?'var(--r)':soon?'var(--y)':'var(--t2)'};font-weight:${soon||expired?'700':'400'}">${c.contractEnd?fmtDate(c.contractEnd)+(soon?` · ${d}ي`:expired?' · منتهٍ':''):'—'}</td>
+          <td style="padding:11px 14px">${condBadge(l&&l.condition)}</td>
+          <td style="padding:11px 14px;text-align:center;font-size:12px;color:var(--t3)">${(c.csmNotes||[]).length||'—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+function csmEntryHtml(id,n){
+  return `<div style="border:1px solid var(--b1);border-radius:10px;padding:11px 13px;margin-bottom:9px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--t3)">📅 ${esc(n.date||'')}</span>
+      ${condBadge(n.condition)}
+      <span style="font-size:10.5px;color:var(--t3);margin-right:auto">${esc(n.author||'')}</span>
+      <button class="btn btn-r" style="padding:3px 8px;font-size:11px" onclick="delCsmEntry(${id},${n.id})">🗑️</button>
+    </div>
+    ${(n.follow||[]).length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">${n.follow.map(f=>`<span style="font-size:10px;background:var(--pbg);color:var(--p2);padding:2px 7px;border-radius:6px">${esc(f)}</span>`).join('')}</div>`:''}
+    ${n.text?`<div style="font-size:13px;color:var(--t1);white-space:pre-wrap">${esc(n.text)}</div>`:''}
+  </div>`;
+}
+
+function openCsmDetail(id){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  const notes=(c.csmNotes||[]).slice().sort((a,b)=>(b.date||b.createdAt||'').localeCompare(a.date||a.createdAt||''));
+  const today=new Date().toISOString().split('T')[0];
+  $('csm-title').textContent = c.name;
+  $('csm-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      ${clientAv(c,'dp-av',null,'30px')}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:16px;font-weight:700">${esc(c.name)}</div>
+        <div style="font-size:12px;color:var(--t3)">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
+      </div>
+      <button class="btn btn-g" onclick="exportCsmPdf(${id})">🖨️ ${LANG==='ar'?'تصدير PDF':'Export PDF'}</button>
+    </div>
+    <div class="card" style="padding:14px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:10px">➕ إضافة متابعة</div>
+      <div class="fr"><div class="fg"><label>التاريخ</label><input class="inp" id="csm-f-date" type="date" value="${today}"/></div>
+      <div class="fg"><label>الحالة</label><select class="inp" id="csm-f-cond"><option value="">—</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div></div>
+      <div class="fg" style="margin-top:10px"><label>المتابعة (يمكن اختيار أكثر من واحد)</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${CSM_OPTS.follows.map(o=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;background:var(--hv);border:1px solid var(--b1);padding:5px 9px;border-radius:8px;cursor:pointer"><input type="checkbox" class="csm-f-follow" value="${esc(o)}"/> ${esc(o)}</label>`).join('')}</div>
+      </div>
+      <div class="fg" style="margin-top:10px"><label>ملاحظة</label><textarea class="inp" id="csm-f-note" rows="3" placeholder="ماذا قال / ما رأينا..."></textarea></div>
+      <button class="btn btn-p" style="margin-top:12px" onclick="addCsmEntry(${id})">💾 حفظ المتابعة</button>
+    </div>
+    <div style="font-size:12px;font-weight:700;margin-bottom:8px">📋 سجل المتابعة (${notes.length})</div>
+    <div id="csm-hist">${notes.length?notes.map(n=>csmEntryHtml(id,n)).join(''):`<div style="color:var(--t3);font-size:12px;padding:10px 0">لا توجد متابعات بعد</div>`}</div>
+    ${(c.notes||[]).length?`<div style="font-size:12px;font-weight:700;margin:18px 0 8px">📝 ملاحظات الفريق (${c.notes.length})</div>
+      ${c.notes.slice().sort((a,b)=>b.id-a.id).map(n=>`<div style="background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:10px 12px;margin-bottom:8px"><div style="font-size:11px;color:var(--t3);margin-bottom:4px">${esc(n.author||'')} · ${esc(n.date||'')}</div><div style="font-size:13px;white-space:pre-wrap">${esc(n.txt)}</div></div>`).join('')}`:''}`;
+  $('csm-mo').classList.add('on');
+}
+
+function addCsmEntry(id){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  const date=$('csm-f-date').value, cond=$('csm-f-cond').value;
+  const follow=[...document.querySelectorAll('.csm-f-follow:checked')].map(el=>el.value);
+  const text=($('csm-f-note').value||'').trim();
+  if(!date && !cond && !follow.length && !text){ toast('أدخل بيانات المتابعة','⚠️'); return; }
+  const entry={ id:Date.now(), date, condition:cond, follow, text, author:sessionStorage.getItem('ah97_user')||'', createdAt:new Date().toISOString() };
+  c.csmNotes=[...(c.csmNotes||[]), entry];
+  api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
+  openCsmDetail(id);
+  toast('تم حفظ المتابعة','✅');
+}
+function delCsmEntry(id,entryId){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  if(!confirm('حذف هذه المتابعة؟')) return;
+  c.csmNotes=(c.csmNotes||[]).filter(n=>n.id!==entryId);
+  api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>console.error(e));
+  openCsmDetail(id);
+}
+function closeCsmDetail(){ $('csm-mo').classList.remove('on'); if(S.view==='csm') renderCsm(); }
+
+// CSM option lists management
+function openCsmOpts(){
+  const block=(kind,title,arr)=>`
+    <div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px">${title}</div>
+      ${arr.map(o=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)"><span style="flex:1;font-size:13px">${esc(o)}</span><button class="btn btn-r" style="padding:3px 8px;font-size:11px" onclick="delCsmOpt('${kind}','${esc(o)}')">🗑️</button></div>`).join('')||'<div style="color:var(--t3);font-size:12px">—</div>'}
+      <div style="display:flex;gap:6px;margin-top:8px"><input class="inp" id="csm-opt-new-${kind}" placeholder="إضافة..." style="flex:1" onkeydown="if(event.key==='Enter')addCsmOpt('${kind}')"/><button class="btn btn-p" onclick="addCsmOpt('${kind}')">➕</button></div>
+    </div>`;
+  $('csm-opts-body').innerHTML = block('condition','الحالات (Conditions)',CSM_OPTS.conditions)+block('follow','أنواع المتابعة (Follow types)',CSM_OPTS.follows);
+  $('csm-opts-mo').classList.add('on');
+}
+function addCsmOpt(kind){
+  const inp=$('csm-opt-new-'+kind); const label=(inp&&inp.value||'').trim();
+  if(!label) return;
+  const arr = kind==='follow'?CSM_OPTS.follows:CSM_OPTS.conditions;
+  if(arr.includes(label)){ toast('موجود مسبقاً','⚠️'); return; }
+  arr.push(label);
+  api('POST','/api/csm/options',{kind,label}).catch(e=>console.error(e));
+  openCsmOpts();
+}
+function delCsmOpt(kind,label){
+  const arr = kind==='follow'?CSM_OPTS.follows:CSM_OPTS.conditions;
+  const i=arr.indexOf(label); if(i>-1) arr.splice(i,1);
+  api('DELETE',`/api/csm/options/${kind}/${encodeURIComponent(label)}`).catch(e=>console.error(e));
+  openCsmOpts();
+}
+function closeCsmOpts(){ $('csm-opts-mo').classList.remove('on'); }
+
+// PDF export via browser print (reliable Arabic RTL)
+function exportCsmPdf(id){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  const notes=(c.csmNotes||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const teamNotes=(c.notes||[]).slice().sort((a,b)=>b.id-a.id);
+  const sexLbl=c.sex==='male'?'ذكر':c.sex==='female'?'أنثى':'—';
+  $('print-area').innerHTML=`
+    <h1>${esc(c.name)}</h1>
+    <div class="psub">تقرير متابعة العميل — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
+    <h3>الملف الشخصي</h3>
+    <table class="pt"><tbody>
+      <tr><td>الاسم</td><td>${esc(c.name)}</td></tr>
+      <tr><td>الهاتف</td><td>${esc(c.phone||'—')}</td></tr>
+      <tr><td>البريد</td><td>${esc(c.email||'—')}</td></tr>
+      <tr><td>الجنس</td><td>${sexLbl}</td></tr>
+      <tr><td>الباقة</td><td>${esc(c.plan||'—')}</td></tr>
+      <tr><td>بداية العقد</td><td>${c.regDate?fmtDate(c.regDate):'—'}</td></tr>
+      <tr><td>نهاية العقد</td><td>${c.contractEnd?fmtDate(c.contractEnd):'—'}</td></tr>
+    </tbody></table>
+    <h3>سجل متابعة نجاح العملاء (${notes.length})</h3>
+    ${notes.length?notes.map(n=>`<div class="pn"><b>📅 ${esc(n.date||'')}</b>${n.condition?' — '+esc(n.condition):''}${(n.follow||[]).length?' · '+n.follow.map(esc).join('، '):''}${n.text?'<br>'+esc(n.text):''}<div class="pa">— ${esc(n.author||'')}</div></div>`).join(''):'<div class="pe">لا توجد متابعات</div>'}
+    <h3>ملاحظات الفريق (${teamNotes.length})</h3>
+    ${teamNotes.length?teamNotes.map(n=>`<div class="pn">${esc(n.txt)}<div class="pa">— ${esc(n.author||'')} · ${esc(n.date||'')}</div></div>`).join(''):'<div class="pe">لا توجد ملاحظات</div>'}`;
+  document.body.classList.add('printing');
+  window.print();
+  setTimeout(()=>document.body.classList.remove('printing'),400);
+}
+
 // ═══════════════ USERS ═══════════════
 async function renderUsers() {
   const pg = $('pg-users');
@@ -4287,7 +4568,11 @@ async function renderUsers() {
   try { users = await api('GET', '/api/users'); } catch(e) { pg.innerHTML = `<div style="padding:40px;color:var(--r)">${esc(e.message)}</div>`; return; }
   if (!users) return;
 
-  const roleLabel = r => r === 'admin' ? `<span style="background:var(--pbg);color:var(--p2);padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">مشرف</span>` : `<span style="background:var(--gbg);color:var(--g);padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">Coach</span>`;
+  const roleLabel = r => r === 'admin'
+    ? `<span style="background:var(--pbg);color:var(--p2);padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">مشرف</span>`
+    : r === 'csm'
+    ? `<span style="background:var(--ybg);color:var(--y);padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">CSM</span>`
+    : `<span style="background:var(--gbg);color:var(--g);padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600">Coach</span>`;
   const currentUser = (()=>{ try{return sessionStorage.getItem('ah97_user');}catch(_){return '';} })();
 
   const rows = users.map(u => `
@@ -4346,6 +4631,7 @@ async function renderUsers() {
             <label style="font-size:11px;color:var(--t3);display:block;margin-bottom:5px">الدور</label>
             <select id="u-role" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--b2);border-radius:8px;padding:9px 12px;color:var(--t1);font-size:13px">
               <option value="coach">Coach — يرى العملاء والملاحظات فقط</option>
+              <option value="csm">CSM — متابعة نجاح العملاء</option>
               <option value="admin">مشرف — صلاحيات كاملة</option>
             </select>
           </div>

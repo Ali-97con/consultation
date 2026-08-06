@@ -69,6 +69,17 @@ async function ensureSchema() {
       expires_at timestamptz not null
     );
     create index if not exists sessions_expires_idx on sessions(expires_at);
+
+    create table if not exists csm_options (
+      kind  text not null,          -- 'condition' | 'follow'
+      label text not null,
+      sort  int  not null default 0,
+      primary key (kind, label)
+    );
+    insert into csm_options(kind,label,sort) values
+      ('condition','يرد',1),('condition','مايرد',2),('condition','لسا ما بلش',3),('condition','موقف',4),('condition','طلع',5),
+      ('follow','مابدأ الدورة',1),('follow','لسا ما خلص الدورة',2),('follow','خلص الدورة',3),('follow','لسا ما بدآ التطبيق',4),('follow','بدآ التطبيق',5),('follow','لسا ما طلع ارباح',6),('follow','طلع ارباح',7),('follow','راضي عن البرنامج',8),('follow','مو راضي عن البرنامج',9)
+    on conflict (kind,label) do nothing;
   `);
 }
 function schemaReady() { if (!schemaPromise) schemaPromise = ensureSchema(); return schemaPromise; }
@@ -223,10 +234,39 @@ async function updateClient(id, patch) {
   await ready();
   const { rows } = await q('select data from clients where id = $1', [id]);
   if (!rows.length) return null;
-  const { notes, ...safePatch } = patch;          // never overwrite notes via this path
+  const { notes, csmNotes, ...safePatch } = patch;  // notes + CSM notes have dedicated endpoints
   const updated = { ...rows[0].data, ...safePatch, id };
   await q('update clients set data = $2 where id = $1', [id, j(updated)]);
   return updated;
+}
+
+async function updateCsmNotes(id, csmNotes) {
+  await ready();
+  const r = await q(`update clients set data = jsonb_set(data, '{csmNotes}', $2::jsonb) where id = $1`,
+    [id, j(csmNotes)]);
+  return r.rowCount > 0;
+}
+
+// ─── CSM option lists (condition / follow), editable at runtime ────────────────
+async function getCsmOptions() {
+  await schemaReady();
+  const { rows } = await q('select kind, label from csm_options order by kind, sort, label');
+  return {
+    conditions: rows.filter(r => r.kind === 'condition').map(r => r.label),
+    follows:    rows.filter(r => r.kind === 'follow').map(r => r.label),
+  };
+}
+async function addCsmOption(kind, label) {
+  await schemaReady();
+  const { rows } = await q('select coalesce(max(sort),0)+1 as s from csm_options where kind=$1', [kind]);
+  await q('insert into csm_options(kind,label,sort) values($1,$2,$3) on conflict (kind,label) do nothing',
+    [kind, label, rows[0].s]);
+  return true;
+}
+async function deleteCsmOption(kind, label) {
+  await schemaReady();
+  await q('delete from csm_options where kind=$1 and label=$2', [kind, label]);
+  return true;
 }
 
 async function updateNotes(id, notes) {
@@ -677,6 +717,8 @@ module.exports = {
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan,
   // Contracts (PDF in Postgres)
   saveContract, getContract, deleteContract,
+  // CSM (customer success) follow-up
+  updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption,
   // Sessions (Postgres-backed, serverless-safe)
   createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)

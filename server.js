@@ -9,6 +9,7 @@ const {
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan, importData,
   saveContract, getContract, deleteContract,
+  updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
@@ -55,6 +56,19 @@ function requireAdmin(req, res, next) {
     .then(session => {
       if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
       if (session.role !== 'admin') return res.status(403).json({ error: 'هذه الميزة للمشرف فقط' });
+      req.user = { username: session.username, role: session.role };
+      next();
+    })
+    .catch(() => res.status(500).json({ error: 'خطأ في التحقق من الجلسة' }));
+}
+
+function requireCsmOrAdmin(req, res, next) {
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  getSessionDB(token)
+    .then(session => {
+      if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
+      if (session.role !== 'admin' && session.role !== 'csm')
+        return res.status(403).json({ error: 'هذه الميزة لمدير نجاح العملاء والمشرف فقط' });
       req.user = { username: session.username, role: session.role };
       next();
     })
@@ -162,6 +176,46 @@ app.put('/api/clients/:id/notes', requireAuth, async (req, res) => {
       date: str(n.date, 50),
     }));
     await updateNotes(+req.params.id, notes);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── CSM (customer success) follow-up notes + option lists ────────────────────
+app.put('/api/clients/:id/csm-notes', requireCsmOrAdmin, async (req, res) => {
+  try {
+    const notes = (req.body.notes || []).slice(0, 1000).map(n => ({
+      id:        n.id,
+      date:      str(n.date, 30),
+      condition: str(n.condition, 80),
+      follow:    Array.isArray(n.follow) ? n.follow.slice(0, 30).map(f => str(f, 80)) : [],
+      text:      str(n.text, 5000),
+      author:    str(n.author, 100),
+      createdAt: str(n.createdAt, 40),
+    }));
+    await updateCsmNotes(+req.params.id, notes);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/csm/options', requireCsmOrAdmin, async (_req, res) => {
+  try { res.json(await getCsmOptions()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/csm/options', requireCsmOrAdmin, async (req, res) => {
+  try {
+    const kind = req.body.kind === 'follow' ? 'follow' : 'condition';
+    const label = str(req.body.label, 80);
+    if (!label) return res.status(400).json({ error: 'القيمة مطلوبة' });
+    await addCsmOption(kind, label);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/csm/options/:kind/:label', requireCsmOrAdmin, async (req, res) => {
+  try {
+    const kind = req.params.kind === 'follow' ? 'follow' : 'condition';
+    await deleteCsmOption(kind, decodeURIComponent(req.params.label));
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -332,7 +386,7 @@ app.post('/api/users', requireAdmin, async (req, res) => {
   try {
     const { username, password, role } = req.body || {};
     if (!username || !password) return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
-    if (!['admin', 'coach'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
+    if (!['admin', 'coach', 'csm'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
     const ok = await createUser(str(username, 50), str(password, 200), role);
     if (!ok) return res.status(409).json({ error: 'اسم المستخدم موجود مسبقاً' });
     res.status(201).json({ ok: true });
@@ -342,7 +396,7 @@ app.post('/api/users', requireAdmin, async (req, res) => {
 app.put('/api/users/:username', requireAdmin, async (req, res) => {
   try {
     const { password, role } = req.body || {};
-    if (role && !['admin', 'coach'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
+    if (role && !['admin', 'coach', 'csm'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
     const ok = await updateUser(req.params.username, {
       password: password ? str(password, 200) : undefined,
       role,
