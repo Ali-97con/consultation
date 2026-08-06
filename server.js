@@ -288,14 +288,17 @@ app.delete('/api/plans/:name', requireAdmin, async (req, res) => {
 // ─── Client contract (PDF) ────────────────────────────────────────────────────
 app.post('/api/clients/:id/contract',
   requireAdmin,
-  express.raw({ type: ['application/pdf', 'application/octet-stream'], limit: '8mb' }),
+  express.raw({ type: () => true, limit: '8mb' }),   // accept any content-type (PDF or image)
   async (req, res) => {
     try {
       const buf = req.body;
       if (!Buffer.isBuffer(buf) || buf.length === 0)
         return res.status(400).json({ error: 'ملف غير صالح' });
-      const filename = str(req.query.name, 200) || 'contract.pdf';
-      await saveContract(+req.params.id, filename, 'application/pdf', buf);
+      const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      if (mime !== 'application/pdf' && !mime.startsWith('image/'))
+        return res.status(415).json({ error: 'نوع الملف غير مدعوم — PDF أو صورة فقط' });
+      const filename = str(req.query.name, 200) || 'file';
+      await saveContract(+req.params.id, filename, mime, buf);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -303,9 +306,9 @@ app.post('/api/clients/:id/contract',
 app.get('/api/clients/:id/contract', requireAuth, async (req, res) => {
   try {
     const c = await getContract(+req.params.id);
-    if (!c) return res.status(404).json({ error: 'لا يوجد عقد' });
-    res.setHeader('Content-Type', c.mime || 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="contract-${+req.params.id}.pdf"`);
+    if (!c) return res.status(404).json({ error: 'لا يوجد ملف' });
+    res.setHeader('Content-Type', c.mime || 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'inline');   // let the browser preview; front-end names the download
     res.send(c.data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

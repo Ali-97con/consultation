@@ -632,8 +632,8 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       </select></div></div>
       <div class="fg"><label>تاريخ التسجيل</label><input class="inp" id="m-reg" type="date"/></div>
       <div class="fg" style="margin-top:10px">
-        <label>📄 العقد (PDF)</label>
-        <input type="file" id="m-contract-file" accept="application/pdf,.pdf" style="display:none" onchange="onModalContractPick(this)"/>
+        <label>📄 العقد / مستند (PDF أو صورة)</label>
+        <input type="file" id="m-contract-file" accept="application/pdf,image/*" style="display:none" onchange="onModalContractPick(this)"/>
         <div id="m-contract-box" style="display:flex;align-items:center;gap:8px"></div>
       </div>
     </div>
@@ -3682,8 +3682,8 @@ function openDetail(id) {
         ${!isCoach()?`<button class="btn btn-r" onclick="deleteContract(${id})">🗑️ ${LANG==='ar'?'حذف':'Delete'}</button>`:''}
       </div>
     ` : (!isCoach() ? `
-      <input type="file" id="contract-inp-${id}" accept="application/pdf,.pdf" style="display:none" onchange="uploadContract(${id},this)"/>
-      <button class="btn btn-g" style="width:100%;justify-content:center" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة عقد (PDF)':'Add contract (PDF)'}</button>
+      <input type="file" id="contract-inp-${id}" accept="application/pdf,image/*" style="display:none" onchange="uploadContract(${id},this)"/>
+      <button class="btn btn-g" style="width:100%;justify-content:center" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة ملف (PDF / صورة)':'Add file (PDF / image)'}</button>
     ` : `<div style="color:var(--t3);font-size:12px">${LANG==='ar'?'لا يوجد عقد':'No contract'}</div>`)}
   </div>
 
@@ -3702,16 +3702,20 @@ function openDetail(id) {
 }
 
 // ─── Contract (PDF) upload / download / delete ───
+// Accepted document types: PDF + images (jpeg, png, webp, …)
+function contractFileOk(file){
+  const t=(file.type||'').toLowerCase();
+  return t==='application/pdf' || t.startsWith('image/') || /\.(pdf|jpe?g|png|webp|gif|heic|heif)$/i.test(file.name||'');
+}
 function uploadContract(id, inputEl){
   const file = inputEl.files && inputEl.files[0];
   if(!file) return;
-  const isPdf = file.type==='application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-  if(!isPdf){ toast(LANG==='ar'?'يجب أن يكون الملف PDF':'File must be a PDF','⚠️'); inputEl.value=''; return; }
+  if(!contractFileOk(file)){ toast(LANG==='ar'?'يجب أن يكون الملف PDF أو صورة':'File must be a PDF or image','⚠️'); inputEl.value=''; return; }
   if(file.size > 4*1024*1024){ toast(LANG==='ar'?'الحد الأقصى 4 ميغابايت':'Max size 4 MB','⚠️'); inputEl.value=''; return; }
-  toast(LANG==='ar'?'جارٍ رفع العقد...':'Uploading…','⏳');
+  toast(LANG==='ar'?'جارٍ الرفع...':'Uploading…','⏳');
   fetch(`/api/clients/${id}/contract?name=${encodeURIComponent(file.name)}`,{
     method:'POST',
-    headers:{'Content-Type':'application/pdf','Authorization':'Bearer '+getToken()},
+    headers:{'Content-Type':file.type||'application/octet-stream','Authorization':'Bearer '+getToken()},
     body:file
   }).then(r=>{ if(!r.ok) throw new Error(); return r.json(); })
     .then(()=>{ const c=clients.find(x=>x.id===id); if(c){c.hasContract=true;c.contractName=file.name;} openDetail(id); toast(LANG==='ar'?'تم حفظ العقد':'Contract saved','✅'); })
@@ -3961,8 +3965,7 @@ function resetModalContract(c) {
 function onModalContractPick(input) {
   const file = input.files && input.files[0];
   if (!file) return;
-  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-  if (!isPdf) { toast(LANG==='ar'?'يجب أن يكون الملف PDF':'File must be a PDF', '⚠️'); input.value=''; return; }
+  if (!contractFileOk(file)) { toast(LANG==='ar'?'يجب أن يكون الملف PDF أو صورة':'File must be a PDF or image', '⚠️'); input.value=''; return; }
   if (file.size > 4*1024*1024) { toast(LANG==='ar'?'الحد الأقصى 4 ميغابايت':'Max size 4 MB', '⚠️'); input.value=''; return; }
   if (!_modalContract) _modalContract = { file:null, existingName:null, remove:false };
   _modalContract.file = file; _modalContract.remove = false;
@@ -3978,7 +3981,7 @@ function modalContractRemove() {
 }
 function renderModalContractBox() {
   const box = $('m-contract-box'); if (!box || !_modalContract) return;
-  const pickBtn = `<button type="button" class="btn btn-g" style="flex:1;justify-content:center" onclick="document.getElementById('m-contract-file').click()">⬆️ ${LANG==='ar'?'اختر ملف PDF':'Choose PDF'}</button>`;
+  const pickBtn = `<button type="button" class="btn btn-g" style="flex:1;justify-content:center" onclick="document.getElementById('m-contract-file').click()">⬆️ ${LANG==='ar'?'اختر ملف (PDF / صورة)':'Choose file'}</button>`;
   if (_modalContract.file) {
     box.innerHTML = `<span style="flex:1;min-width:0;font-size:12px;color:var(--g);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(_modalContract.file.name)}</span><button type="button" class="btn btn-r" style="padding:6px 12px" onclick="modalContractRemove()">✕</button>`;
   } else if (_modalContract.existingName) {
@@ -3989,7 +3992,7 @@ function renderModalContractBox() {
 }
 function _contractUpload(id, file) {
   return fetch(`/api/clients/${id}/contract?name=${encodeURIComponent(file.name)}`, {
-    method:'POST', headers:{'Content-Type':'application/pdf','Authorization':'Bearer '+getToken()}, body:file
+    method:'POST', headers:{'Content-Type':file.type||'application/octet-stream','Authorization':'Bearer '+getToken()}, body:file
   }).then(r => { if (!r.ok) throw new Error(); return r.json(); });
 }
 function _contractDelete(id) {
