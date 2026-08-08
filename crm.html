@@ -4440,7 +4440,10 @@ async function saveClient() {
 
 // ═══════════════ CSM — CUSTOMER SUCCESS ═══════════════
 let _csmSearch = '';
+let _csmTab = 'active'; // 'active' = contract not finished, 'done' = contract ended
 function setCsmSearch(v){ _csmSearch = v; renderCsm(); }
+function setCsmTab(v){ _csmTab = v; renderCsm(); }
+function csmIsDone(c){ const d = daysUntil(c.contractEnd); return d !== null && d < 0; } // contract ended
 
 function csmLatest(c){
   const ns = c.csmNotes || [];
@@ -4485,21 +4488,28 @@ function renderCsm(){
     {l:'طلع أرباح', v:profit, c:'#10b981'},
     {l:'غير راضين', v:unhappy, c:'#ef4444'},
   ];
+  const doneCount = list.filter(csmIsDone).length;
+  const activeCount = list.length - doneCount;
   const q = _csmSearch.trim().toLowerCase();
-  const rows = list.filter(c=>!q || (c.name||'').toLowerCase().includes(q))
+  const rows = list
+    .filter(c => _csmTab==='done' ? csmIsDone(c) : !csmIsDone(c))
+    .filter(c=>!q || (c.name||'').toLowerCase().includes(q))
     .sort((a,b)=>{
       const da=daysUntil(a.contractEnd), db=daysUntil(b.contractEnd);
       if (da===null && db===null) return (a.name||'').localeCompare(b.name||'');
       if (da===null) return 1; if (db===null) return -1;
-      return da-db;
+      return _csmTab==='done' ? db-da : da-db;   // finished: most-recently-ended first
     });
+  const tabBtn = (id,label,count)=>`<button class="btn ${_csmTab===id?'btn-p':'btn-g'}" onclick="setCsmTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
 
   $('pg-csm').innerHTML = `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px">
     ${kpis.map(k=>`<div class="kpi" style="border-bottom:2px solid ${k.c}55"><div style="font-size:22px;font-weight:800;color:${k.c}">${k.v}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${k.l}</div></div>`).join('')}
   </div>
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <input class="inp" style="max-width:280px" placeholder="🔍 بحث بالاسم..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
+    ${tabBtn('active','⏳ قيد المتابعة',activeCount)}
+    ${tabBtn('done','✅ منتهية',doneCount)}
+    <input class="inp" style="max-width:240px" placeholder="🔍 بحث بالاسم..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
     <span style="font-size:12px;color:var(--t3)">${rows.length} عميل</span>
     <button class="btn btn-g" style="margin-right:auto" onclick="openCsmOpts()">⚙️ إدارة القوائم</button>
   </div>
