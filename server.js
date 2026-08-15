@@ -9,7 +9,7 @@ const {
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan, importData,
   addContract, getContractById, deleteContractById,
-  updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption,
+  updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
@@ -97,7 +97,7 @@ function sanitizeClientBody(body) {
   const b = body || {};
   const out = {};
   const fields = { name:200, phone:50, email:200, plan:100, paymentType:50, payMethod:50,
-    status:50, closer:100, setter:100, channel:20, sex:10, regDate:30, contractEnd:30, lastPayDate:30, notes:undefined,
+    status:50, closer:100, setter:100, channel:20, sex:10, regDate:30, contractEnd:30, csmStart:30, lastPayDate:30, notes:undefined,
     p1:undefined, p2:undefined, p3:undefined, p4:undefined,
     p1d:30, p2d:30, p3d:30, p4d:30,
     customTotal:undefined, discountType:50, discountValue:undefined, discountAmount:undefined,
@@ -210,6 +210,11 @@ app.post('/api/csm/options', requireCsmOrAdmin, async (req, res) => {
     await addCsmOption(kind, label);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/csm/ensure-follow-start', requireAdmin, async (_req, res) => {
+  try { res.json({ ok: true, updated: await ensureFollowStart() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/csm/options/:kind/:label', requireCsmOrAdmin, async (req, res) => {

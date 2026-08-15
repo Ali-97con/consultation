@@ -1510,6 +1510,7 @@ async function initApp() {
     applyCoachRestrictions();
     applyCsmRestrictions();
     if (_isCsm) nav('csm'); else if (_isCoach) nav('clients'); else renderOverview();
+    if (!_isCoach && !_isCsm) api('POST','/api/csm/ensure-follow-start').catch(()=>{}); // seed follow-up counters
     updateNotifBadge();
     if (!_isCoach) setTimeout(showNotifPopup, 400);
   } catch(e) {
@@ -4381,6 +4382,11 @@ async function saveClient() {
     regDate:$('m-reg').value||new Date().toISOString().split('T')[0],
     lastPayDate:pd.filter(Boolean).slice(-1)[0]||'',
   };
+  // Follow-up reminder counter starts when the client becomes active
+  if (data.status === 'active') {
+    const existing = S.editId ? clients.find(x=>x.id===S.editId) : null;
+    if (!(existing && existing.csmStart)) data.csmStart = new Date().toISOString().split('T')[0];
+  }
   let savedId = null, savedObj = null;
   try {
     if (S.editId) {
@@ -4441,8 +4447,10 @@ async function saveClient() {
 // ═══════════════ CSM — CUSTOMER SUCCESS ═══════════════
 let _csmSearch = '';
 let _csmTab = 'active'; // 'active' = contract not finished, 'done' = contract ended
-function setCsmSearch(v){ _csmSearch = v; renderCsm(); }
+let _csmCond = '';      // filter by latest condition
+function setCsmSearch(v){ _csmSearch = v; renderCsm(); const el=$('csm-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
 function setCsmTab(v){ _csmTab = v; renderCsm(); }
+function setCsmCond(v){ _csmCond = v; renderCsm(); }
 function csmIsDone(c){ const d = daysUntil(c.contractEnd); return d !== null && d < 0; } // contract ended
 
 function csmLatest(c){
@@ -4493,6 +4501,7 @@ function renderCsm(){
   const q = _csmSearch.trim().toLowerCase();
   const rows = list
     .filter(c => _csmTab==='done' ? csmIsDone(c) : !csmIsDone(c))
+    .filter(c => !_csmCond || (csmLatest(c) && csmLatest(c).condition===_csmCond))
     .filter(c=>!q || (c.name||'').toLowerCase().includes(q))
     .sort((a,b)=>{
       const da=daysUntil(a.contractEnd), db=daysUntil(b.contractEnd);
@@ -4509,7 +4518,8 @@ function renderCsm(){
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     ${tabBtn('active','⏳ قيد المتابعة',activeCount)}
     ${tabBtn('done','✅ منتهية',doneCount)}
-    <input class="inp" style="max-width:240px" placeholder="🔍 بحث بالاسم..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
+    <input class="inp" id="csm-search" style="max-width:220px" placeholder="🔍 بحث بالاسم..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
+    <select class="fsl" onchange="setCsmCond(this.value)" style="min-width:130px"><option value="">كل الحالات</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}"${o===_csmCond?' selected':''}>${esc(o)}</option>`).join('')}</select>
     <span style="font-size:12px;color:var(--t3)">${rows.length} عميل</span>
     <button class="btn btn-g" style="margin-right:auto" onclick="openCsmOpts()">⚙️ إدارة القوائم</button>
   </div>
@@ -4545,6 +4555,7 @@ function csmEntryHtml(id,n){
       <span style="font-size:11px;color:var(--t3)">📅 ${esc(n.date||'')}</span>
       ${condBadge(n.condition)}
       <span style="font-size:10.5px;color:var(--t3);margin-right:auto">${esc(n.author||'')}</span>
+      <button class="btn btn-g" style="padding:3px 8px;font-size:11px" onclick="startEditCsm(${id},${n.id})">✏️</button>
       <button class="btn btn-r" style="padding:3px 8px;font-size:11px" onclick="delCsmEntry(${id},${n.id})">🗑️</button>
     </div>
     ${(n.follow||[]).length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">${n.follow.map(f=>`<span style="font-size:10px;background:var(--pbg);color:var(--p2);padding:2px 7px;border-radius:6px">${esc(f)}</span>`).join('')}</div>`:''}
@@ -4552,8 +4563,10 @@ function csmEntryHtml(id,n){
   </div>`;
 }
 
+let _editingCsm = null; // entry id currently being edited
 function openCsmDetail(id){
   const c=clients.find(x=>x.id===id); if(!c) return;
+  _editingCsm = null;
   const notes=(c.csmNotes||[]).slice().sort((a,b)=>(b.date||b.createdAt||'').localeCompare(a.date||a.createdAt||''));
   const today=new Date().toISOString().split('T')[0];
   $('csm-title').textContent = c.name;
@@ -4574,7 +4587,10 @@ function openCsmDetail(id){
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${CSM_OPTS.follows.map(o=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;background:var(--hv);border:1px solid var(--b1);padding:5px 9px;border-radius:8px;cursor:pointer"><input type="checkbox" class="csm-f-follow" value="${esc(o)}"/> ${esc(o)}</label>`).join('')}</div>
       </div>
       <div class="fg" style="margin-top:10px"><label>ملاحظة</label><textarea class="inp" id="csm-f-note" rows="3" placeholder="ماذا قال / ما رأينا..."></textarea></div>
-      <button class="btn btn-p" style="margin-top:12px" onclick="addCsmEntry(${id})">💾 حفظ المتابعة</button>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-p" id="csm-save-btn" onclick="addCsmEntry(${id})">💾 حفظ المتابعة</button>
+        <button class="btn btn-g" id="csm-cancel-btn" style="display:none" onclick="cancelEditCsm(${id})">إلغاء التعديل</button>
+      </div>
     </div>
     <div style="font-size:12px;font-weight:700;margin-bottom:8px">📋 سجل المتابعة (${notes.length})</div>
     <div id="csm-hist">${notes.length?notes.map(n=>csmEntryHtml(id,n)).join(''):`<div style="color:var(--t3);font-size:12px;padding:10px 0">لا توجد متابعات بعد</div>`}</div>
@@ -4583,12 +4599,35 @@ function openCsmDetail(id){
   $('csm-mo').classList.add('on');
 }
 
+function startEditCsm(id, entryId){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  const n=(c.csmNotes||[]).find(x=>x.id===entryId); if(!n) return;
+  _editingCsm = entryId;
+  if($('csm-f-date')) $('csm-f-date').value = n.date||'';
+  if($('csm-f-cond')) $('csm-f-cond').value = n.condition||'';
+  document.querySelectorAll('.csm-f-follow').forEach(chk=>{ chk.checked=(n.follow||[]).includes(chk.value); });
+  if($('csm-f-note')) $('csm-f-note').value = n.text||'';
+  const b=$('csm-save-btn'); if(b) b.textContent='✏️ '+(LANG==='ar'?'تحديث المتابعة':'Update');
+  const cb=$('csm-cancel-btn'); if(cb) cb.style.display='';
+  const f=$('csm-f-date'); if(f) f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function cancelEditCsm(id){ _editingCsm=null; openCsmDetail(id); }
+
 function addCsmEntry(id){
   const c=clients.find(x=>x.id===id); if(!c) return;
   const date=$('csm-f-date').value, cond=$('csm-f-cond').value;
   const follow=[...document.querySelectorAll('.csm-f-follow:checked')].map(el=>el.value);
   const text=($('csm-f-note').value||'').trim();
   if(!date && !cond && !follow.length && !text){ toast('أدخل بيانات المتابعة','⚠️'); return; }
+  if(_editingCsm){
+    const n=(c.csmNotes||[]).find(x=>x.id===_editingCsm);
+    if(n){ n.date=date; n.condition=cond; n.follow=follow; n.text=text; }
+    _editingCsm=null;
+    api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
+    openCsmDetail(id);
+    toast('تم تحديث المتابعة','✅');
+    return;
+  }
   const entry={ id:Date.now(), date, condition:cond, follow, text, author:sessionStorage.getItem('ah97_user')||'', createdAt:new Date().toISOString() };
   c.csmNotes=[...(c.csmNotes||[]), entry];
   api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
@@ -4761,6 +4800,17 @@ function renderInsights(){
 }
 
 // ═══════════════ NOTIFICATIONS (contract end reminders) ═══════════════
+function planFollowDays(plan){
+  const p=(plan||'').toUpperCase();
+  if(p.startsWith('CORE')) return 5;
+  if(p.startsWith('PREMIUM')) return 8;
+  if(p.includes('INNER')) return 10;
+  return 7;
+}
+function lastCsmDate(c){
+  const ns=c.csmNotes||[]; if(!ns.length) return null;
+  return ns.map(n=>n.date||n.createdAt||'').filter(Boolean).sort().reverse()[0] || null;
+}
 function computeNotifs(){
   const out = [];
   clients.filter(c=>!c.deleted && c.contractEnd).forEach(c=>{
@@ -4769,14 +4819,25 @@ function computeNotifs(){
     if (d < 0) type='ended'; else if (d <= 3) type='3d'; else if (d <= 15) type='15d';
     if (type) out.push({ key:c.id+':'+type, cid:c.id, type, name:c.name, plan:c.plan, end:c.contractEnd, days:d });
   });
-  const order = { ended:0, '3d':1, '15d':2 };
-  return out.sort((a,b)=>(order[a.type]-order[b.type]) || (a.days-b.days));
+  // Follow-up reminders: active clients with an ongoing contract, cadence by plan (from last contact / start counter)
+  clients.filter(c=>!c.deleted && c.status==='active').forEach(c=>{
+    const end=daysUntil(c.contractEnd); if(end!==null && end<0) return;          // contract ended → skip
+    const anchor=[c.csmStart, lastCsmDate(c)].filter(Boolean).sort().reverse()[0]; // latest of counter-start / last follow-up
+    if(!anchor) return;
+    const N=planFollowDays(c.plan), since=daysSince(anchor);
+    if(since!==null && since>=N){
+      out.push({ key:`${c.id}:fu:${Math.floor(since/N)}`, cid:c.id, type:'followup', name:c.name, plan:c.plan, days:since, every:N });
+    }
+  });
+  const order = { followup:0, ended:1, '3d':2, '15d':3 };
+  return out.sort((a,b)=>(order[a.type]-order[b.type]) || (b.days-a.days));
 }
 function getSeenNotifs(){ try{ return new Set(JSON.parse(localStorage.getItem('notif_seen')||'[]')); }catch(_){ return new Set(); } }
 function saveSeenNotifs(set){ try{ localStorage.setItem('notif_seen', JSON.stringify([...set])); }catch(_){} }
 function markNotifsSeen(keys){ const s=getSeenNotifs(); keys.forEach(k=>s.add(k)); saveSeenNotifs(s); updateNotifBadge(); }
 function unseenNotifs(){ const s=getSeenNotifs(); return computeNotifs().filter(n=>!s.has(n.key)); }
 function notifMeta(n){
+  if (n.type==='followup') return { ic:'🔔', clr:'var(--p2)', txt:(LANG==='ar'?`متابعة مطلوبة (كل ${n.every} يوم — آخر تواصل منذ ${n.days} يوم)`:`Follow-up due (every ${n.every}d — ${n.days}d since last)`) };
   if (n.type==='ended') return { ic:'🔴', clr:'var(--r)', txt:(LANG==='ar'?`انتهى منذ ${-n.days} يوم`:`ended ${-n.days}d ago`) };
   if (n.type==='3d')    return { ic:'🟠', clr:'var(--y)', txt:(LANG==='ar'?`ينتهي خلال ${n.days} يوم`:`ends in ${n.days}d`) };
   return { ic:'🟡', clr:'#f59e0b', txt:(LANG==='ar'?`ينتهي خلال ${n.days} يوم`:`ends in ${n.days}d`) };
@@ -4794,13 +4855,14 @@ function openClientFromNotif(cid){ if(isCsm()) openCsmDetail(cid); else openDeta
 function renderNotifs(){
   const all=computeNotifs(), seen=getSeenNotifs();
   const groups=[
+    {type:'followup', title:'🔔 متابعات مطلوبة (حسب الخطة)'},
     {type:'ended', title:'🔴 عقود منتهية'},
     {type:'3d',    title:'🟠 تنتهي خلال 3 أيام'},
     {type:'15d',   title:'🟡 تنتهي خلال 15 يوم'},
   ];
   $('pg-notifs').innerHTML = `
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span style="font-size:13px;font-weight:600">🔔 تنبيهات نهاية العقود</span>
+    <span style="font-size:13px;font-weight:600">🔔 التنبيهات</span>
     <span style="font-size:12px;color:var(--t3)">${all.length} تنبيه</span>
     <button class="btn btn-g" style="margin-right:auto" onclick="markNotifsSeen(computeNotifs().map(n=>n.key));renderNotifs()">✓ تحديد الكل كمقروء</button>
   </div>
@@ -4814,9 +4876,9 @@ function renderNotifs(){
           ${c?clientAv(c):''}
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600">${esc(n.name)}${isNew?' <span style="font-size:9px;background:var(--rbg);color:var(--r);padding:1px 6px;border-radius:10px">جديد</span>':''}</div>
-            <div style="font-size:11px;color:var(--t3);margin-top:2px;display:flex;align-items:center;gap:6px">${planBadge(n.plan)} · ينتهي ${fmtDate(n.end)}</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:2px;display:flex;align-items:center;gap:6px">${planBadge(n.plan)} · ${g.type==='followup'?`كل ${n.every} يوم`:`ينتهي ${fmtDate(n.end)}`}</div>
           </div>
-          <div style="font-size:12px;font-weight:700;color:${g.type==='ended'?'var(--r)':'var(--y)'}">${g.type==='ended'?`منذ ${-n.days} يوم`:`${n.days} يوم`}</div>
+          <div style="font-size:12px;font-weight:700;color:${g.type==='ended'?'var(--r)':g.type==='followup'?'var(--p2)':'var(--y)'}">${g.type==='ended'?`منذ ${-n.days} يوم`:g.type==='followup'?`منذ ${n.days} يوم`:`${n.days} يوم`}</div>
         </div>`; }).join('')}
     </div>`;
   }).join('') || `<div class="card" style="padding:44px;text-align:center;color:var(--t3)">لا توجد تنبيهات حالياً</div>`}`;

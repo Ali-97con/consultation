@@ -287,6 +287,16 @@ async function deleteCsmOption(kind, label) {
   return true;
 }
 
+// Set the follow-up reminder anchor (csmStart) = today for active clients that don't have it yet.
+// Old clients get "today" on first run; new active clients get it the next time this runs.
+async function ensureFollowStart() {
+  await ready();
+  const r = await q(`update clients
+    set data = jsonb_set(data, '{csmStart}', to_jsonb(to_char(current_date,'YYYY-MM-DD')))
+    where deleted = false and data->>'status' = 'active' and (data->>'csmStart') is null`);
+  return r.rowCount;
+}
+
 async function updateNotes(id, notes) {
   await ready();
   const r = await q(`update clients set data = jsonb_set(data, '{notes}', $2::jsonb) where id = $1`,
@@ -733,7 +743,7 @@ module.exports = {
   // Contracts (files in Postgres, many per client)
   addContract, getContractById, deleteContractById,
   // CSM (customer success) follow-up
-  updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption,
+  updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   // Sessions (Postgres-backed, serverless-safe)
   createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)
