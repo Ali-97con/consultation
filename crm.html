@@ -4448,9 +4448,11 @@ async function saveClient() {
 let _csmSearch = '';
 let _csmTab = 'active'; // 'active' = contract not finished, 'done' = contract ended
 let _csmCond = '';      // filter by latest condition
+let _csmFollow = '';    // filter by latest follow-up type
 function setCsmSearch(v){ _csmSearch = v; renderCsm(); const el=$('csm-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
 function setCsmTab(v){ _csmTab = v; renderCsm(); }
 function setCsmCond(v){ _csmCond = v; renderCsm(); }
+function setCsmFollow(v){ _csmFollow = v; renderCsm(); }
 function csmIsDone(c){ const d = daysUntil(c.contractEnd); return d !== null && d < 0; } // contract ended
 
 function csmLatest(c){
@@ -4502,6 +4504,7 @@ function renderCsm(){
   const rows = list
     .filter(c => _csmTab==='done' ? csmIsDone(c) : !csmIsDone(c))
     .filter(c => !_csmCond || (csmLatest(c) && csmLatest(c).condition===_csmCond))
+    .filter(c => !_csmFollow || (csmLatest(c) && (csmLatest(c).follow||[]).includes(_csmFollow)))
     .filter(c=>!q || (c.name||'').toLowerCase().includes(q))
     .sort((a,b)=>{
       const da=daysUntil(a.contractEnd), db=daysUntil(b.contractEnd);
@@ -4519,7 +4522,8 @@ function renderCsm(){
     ${tabBtn('active','⏳ قيد المتابعة',activeCount)}
     ${tabBtn('done','✅ منتهية',doneCount)}
     <input class="inp" id="csm-search" style="max-width:220px" placeholder="🔍 بحث بالاسم..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
-    <select class="fsl" onchange="setCsmCond(this.value)" style="min-width:130px"><option value="">كل الحالات</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}"${o===_csmCond?' selected':''}>${esc(o)}</option>`).join('')}</select>
+    <select class="fsl" onchange="setCsmCond(this.value)" style="min-width:120px"><option value="">كل الحالات</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}"${o===_csmCond?' selected':''}>${esc(o)}</option>`).join('')}</select>
+    <select class="fsl" onchange="setCsmFollow(this.value)" style="min-width:140px"><option value="">كل المتابعات</option>${CSM_OPTS.follows.map(o=>`<option value="${esc(o)}"${o===_csmFollow?' selected':''}>${esc(o)}</option>`).join('')}</select>
     <span style="font-size:12px;color:var(--t3)">${rows.length} عميل</span>
     <button class="btn btn-g" style="margin-right:auto" onclick="openCsmOpts()">⚙️ إدارة القوائم</button>
   </div>
@@ -4632,6 +4636,7 @@ function addCsmEntry(id){
   c.csmNotes=[...(c.csmNotes||[]), entry];
   api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
   openCsmDetail(id);
+  updateNotifBadge();   // follow-up reminder anchor moved → its notification clears
   toast('تم حفظ المتابعة','✅');
 }
 function delCsmEntry(id,entryId){
@@ -4641,7 +4646,7 @@ function delCsmEntry(id,entryId){
   api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>console.error(e));
   openCsmDetail(id);
 }
-function closeCsmDetail(){ $('csm-mo').classList.remove('on'); if(S.view==='csm') renderCsm(); }
+function closeCsmDetail(){ $('csm-mo').classList.remove('on'); updateNotifBadge(); if(S.view==='csm') renderCsm(); else if(S.view==='notifs') renderNotifs(); }
 
 // CSM option lists management
 function openCsmOpts(){
@@ -4850,21 +4855,28 @@ function updateNotifBadge(){
   if(badge){ badge.textContent=n; badge.style.display=n>0?'flex':'none'; }
   if(navBadge){ navBadge.textContent=n; navBadge.style.display=n>0?'inline-flex':'none'; }
 }
-function openClientFromNotif(cid){ if(isCsm()) openCsmDetail(cid); else openDetail(cid); }
+function openClientFromNotif(cid){ openCsmDetail(cid); }
 
+let _notifTab = 'followup'; // 'followup' | 'contracts'
+function setNotifTab(v){ _notifTab=v; renderNotifs(); }
+function hideNotif(key){ markNotifsSeen([key]); renderNotifs(); }
+function markTabSeen(){
+  const keys=computeNotifs().filter(n=> _notifTab==='contracts' ? n.type!=='followup' : n.type==='followup').map(n=>n.key);
+  markNotifsSeen(keys); renderNotifs();
+}
 function renderNotifs(){
   const all=computeNotifs(), seen=getSeenNotifs();
-  const groups=[
-    {type:'followup', title:'🔔 متابعات مطلوبة (حسب الخطة)'},
-    {type:'ended', title:'🔴 عقود منتهية'},
-    {type:'3d',    title:'🟠 تنتهي خلال 3 أيام'},
-    {type:'15d',   title:'🟡 تنتهي خلال 15 يوم'},
-  ];
+  const followCount   = all.filter(n=>n.type==='followup').length;
+  const contractCount = all.filter(n=>n.type!=='followup').length;
+  const groups = _notifTab==='contracts'
+    ? [{type:'ended', title:'🔴 عقود منتهية'},{type:'3d', title:'🟠 تنتهي خلال 3 أيام'},{type:'15d', title:'🟡 تنتهي خلال 15 يوم'}]
+    : [{type:'followup', title:'🔔 متابعات مطلوبة (حسب الخطة)'}];
+  const tabBtn=(id,label,count)=>`<button class="btn ${_notifTab===id?'btn-p':'btn-g'}" onclick="setNotifTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
   $('pg-notifs').innerHTML = `
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span style="font-size:13px;font-weight:600">🔔 التنبيهات</span>
-    <span style="font-size:12px;color:var(--t3)">${all.length} تنبيه</span>
-    <button class="btn btn-g" style="margin-right:auto" onclick="markNotifsSeen(computeNotifs().map(n=>n.key));renderNotifs()">✓ تحديد الكل كمقروء</button>
+    ${tabBtn('followup','🔔 متابعات مطلوبة',followCount)}
+    ${tabBtn('contracts','📅 نهاية العقود',contractCount)}
+    <button class="btn btn-g" style="margin-right:auto" onclick="markTabSeen()">✓ تحديد المعروض كمقروء</button>
   </div>
   ${groups.map(g=>{
     const items=all.filter(n=>n.type===g.type);
@@ -4878,10 +4890,11 @@ function renderNotifs(){
             <div style="font-size:13px;font-weight:600">${esc(n.name)}${isNew?' <span style="font-size:9px;background:var(--rbg);color:var(--r);padding:1px 6px;border-radius:10px">جديد</span>':''}</div>
             <div style="font-size:11px;color:var(--t3);margin-top:2px;display:flex;align-items:center;gap:6px">${planBadge(n.plan)} · ${g.type==='followup'?`كل ${n.every} يوم`:`ينتهي ${fmtDate(n.end)}`}</div>
           </div>
-          <div style="font-size:12px;font-weight:700;color:${g.type==='ended'?'var(--r)':g.type==='followup'?'var(--p2)':'var(--y)'}">${g.type==='ended'?`منذ ${-n.days} يوم`:g.type==='followup'?`منذ ${n.days} يوم`:`${n.days} يوم`}</div>
+          <div style="font-size:12px;font-weight:700;color:${g.type==='ended'?'var(--r)':g.type==='followup'?'var(--p2)':'var(--y)'};white-space:nowrap">${g.type==='ended'?`منذ ${-n.days} يوم`:g.type==='followup'?`منذ ${n.days} يوم`:`${n.days} يوم`}</div>
+          <button class="btn btn-g" style="padding:4px 9px;font-size:11px;flex-shrink:0" title="${LANG==='ar'?'إخفاء':'Hide'}" onclick="event.stopPropagation();hideNotif('${n.key}')">🔕</button>
         </div>`; }).join('')}
     </div>`;
-  }).join('') || `<div class="card" style="padding:44px;text-align:center;color:var(--t3)">لا توجد تنبيهات حالياً</div>`}`;
+  }).join('') || `<div class="card" style="padding:44px;text-align:center;color:var(--t3)">لا توجد تنبيهات في هذا القسم</div>`}`;
 }
 
 function showNotifPopup(){
