@@ -4898,17 +4898,30 @@ function renderInsights(){
       ${insInsights(cur,pr).map(i=>`<div style="padding:7px 0;border-bottom:1px solid var(--b1);font-size:13px;color:${i.t==='good'?'var(--g)':i.t==='bad'?'var(--r)':'var(--t2)'}">${i.x}</div>`).join('')}
     </div>`;
   } else {
-    const rows=members.map(m=>({m,s:insMemberStats(m,month)})).filter(r=>r.s.collected>0||r.s.newClients>0).sort((a,b)=>b.s.collected-a.s.collected);
-    body=`<div class="card" style="padding:0;overflow:hidden">
-      <div style="padding:11px 16px;font-size:12.5px;font-weight:700;background:var(--hv);border-bottom:1px solid var(--b1)">🏆 ترتيب المندوبين — ${monthLabel(month)}</div>
-      ${rows.length?rows.map((r,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="setInsMember('${esc(r.m)}')" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
-        <span style="width:22px;font-weight:700;color:var(--t3)">${i+1}</span>
-        <span style="flex:1;font-weight:600;font-size:13px">${esc(r.m)}</span>
-        <span style="font-size:12px;color:var(--t3)">${r.s.newClients} عميل</span>
-        <span style="font-size:13px;font-weight:700;color:var(--g)">${fmtMoney(r.s.collected)}</span>
-      </div>`).join(''):`<div style="padding:30px;text-align:center;color:var(--t3)">لا توجد بيانات لهذا الشهر</div>`}
-    </div>
-    <div style="font-size:12px;color:var(--t3);margin-top:12px;text-align:center">اختر مندوباً من الأعلى لعرض مقارنة أدائه بالشهر الماضي والتوصيات</div>`;
+    const rows=members.map(m=>({m, cur:insMemberStats(m,month), pr:insMemberStats(m,prev)}))
+      .filter(r=>r.cur.collected>0||r.cur.newClients>0||r.pr.collected>0||r.pr.newClients>0)
+      .sort((a,b)=>b.cur.collected-a.cur.collected);
+    const dcell=(cur,pr,money)=>{
+      const pc=pr>0?Math.round((cur-pr)/pr*100):(cur>0?100:0); const up=cur>=pr; const f=v=>money?fmtMoney(v):v;
+      return `<div style="font-weight:700;font-size:12.5px">${f(cur)}</div><div style="font-size:10px;color:${cur===pr?'var(--t3)':up?'var(--g)':'var(--r)'}">${cur===pr?'—':(up?'▲':'▼')+' '+Math.abs(pc)+'%'}</div>`;
+    };
+    body=`
+    <div style="font-size:12.5px;color:var(--t2);margin-bottom:10px">📊 تقرير الشهر — مقارنة كل مندوب بالشهر الماضي (${monthLabel(month)} مقابل ${monthLabel(prev)})</div>
+    <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:560px">
+      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">
+        <th style="padding:10px 14px;font-size:11px;color:var(--t3);text-align:right">المندوب</th>
+        <th style="padding:10px 14px;font-size:11px;color:var(--t3);text-align:center">عملاء جدد</th>
+        <th style="padding:10px 14px;font-size:11px;color:var(--t3);text-align:center">المحصّل</th>
+        <th style="padding:10px 14px;font-size:11px;color:var(--t3);text-align:center">العمولة</th>
+      </tr></thead><tbody>
+      ${rows.length?rows.map(r=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="setInsMember('${esc(r.m)}')" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
+        <td style="padding:10px 14px;font-weight:600;font-size:13px">${esc(r.m)}</td>
+        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.newClients,r.pr.newClients,false)}</td>
+        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.collected,r.pr.collected,true)}</td>
+        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.commission,r.pr.commission,true)}</td>
+      </tr>`).join(''):`<tr><td colspan="4" style="padding:30px;text-align:center;color:var(--t3)">لا توجد بيانات لهذا الشهر</td></tr>`}
+      </tbody></table></div>
+    <div style="font-size:11.5px;color:var(--t3);margin-top:10px;text-align:center">اضغط على أي مندوب لعرض تفاصيله والتوصيات</div>`;
   }
   $('pg-insights').innerHTML = controls + body;
 }
@@ -4946,12 +4959,13 @@ function computeNotifs(){
     if(!c.contractEnd) return;                          // no contract end date → not in follow-up notifs
     if(daysUntil(c.contractEnd) < 0) return;            // contract ended → skip
     const last=lastCsmDate(c), N=planFollowDays(c.plan), tier=planTier(c.plan);
+    const contacted = !!c.contactedAt && (!last || c.contactedAt.slice(0,10) >= last); // reached out since last observation
     if(!last){
-      out.push({ key:`${c.id}:fu0`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:null, every:N, noFollow:true });
+      out.push({ key:`${c.id}:fu0`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:null, every:N, noFollow:true, contacted });
     } else {
       const since=daysSince(last);
       if(since!==null && since>=N)
-        out.push({ key:`${c.id}:fu:${Math.floor(since/N)}`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:since, every:N, noFollow:false });
+        out.push({ key:`${c.id}:fu:${Math.floor(since/N)}`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:since, every:N, noFollow:false, contacted });
     }
   });
   const order = { followup:0, ended:1, '3d':2, '15d':3 };
@@ -4976,6 +4990,15 @@ function updateNotifBadge(){
   if(navBadge){ navBadge.textContent=n; navBadge.style.display=n>0?'inline-flex':'none'; }
 }
 function openClientFromNotif(cid){ openCsmDetail(cid); }
+function markContacted(cid){
+  const c=clients.find(x=>x.id===cid); if(!c) return;
+  c.contactedAt=new Date().toISOString();
+  api('PUT',`/api/clients/${cid}`,{contactedAt:c.contactedAt}).catch(e=>console.error(e));
+  const n=computeNotifs().find(x=>x.cid===cid && x.type==='followup'); // stop this reminder from nagging
+  if(n) markNotifsSeen([n.key]);
+  renderNotifs();
+  toast(LANG==='ar'?'تم التواصل — بانتظار الرد':'Marked contacted','📞');
+}
 
 let _notifTab = 'CORE'; // 'CORE' | 'PREMIUM' | 'INNER' | 'OTHER' | 'contracts'
 function setNotifTab(v){ _notifTab=v; renderNotifs(); }
@@ -5004,13 +5027,17 @@ function renderNotifs(){
       : n.type==='followup' ? (n.noFollow ? {t:'لم تبدأ المتابعة',clr:'var(--r)'} : {t:`منذ ${n.days} يوم`,clr:'var(--p2)'})
       : {t:`${n.days} يوم`,clr:'var(--y)'};
     const sub = n.type==='followup' ? `${planBadge(n.plan)} · كل ${n.every} يوم` : `${planBadge(n.plan)} · ينتهي ${fmtDate(n.end)}`;
-    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openClientFromNotif(${n.cid})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
+    const contactBtn = n.type!=='followup' ? '' : (n.contacted
+      ? `<span style="font-size:10px;color:var(--g);background:var(--gbg);padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0">✅ بانتظار الرد</span>`
+      : `<button class="btn btn-g" style="padding:4px 9px;font-size:11px;flex-shrink:0" title="${LANG==='ar'?'تم التواصل':'Contacted'}" onclick="event.stopPropagation();markContacted(${n.cid})">📞</button>`);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openClientFromNotif(${n.cid})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
       ${c?clientAv(c):''}
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600">${esc(n.name)}${isNew?' <span style="font-size:9px;background:var(--rbg);color:var(--r);padding:1px 6px;border-radius:10px">جديد</span>':''}</div>
         <div style="font-size:11px;color:var(--t3);margin-top:2px;display:flex;align-items:center;gap:6px">${sub}</div>
       </div>
       <div style="font-size:12px;font-weight:700;color:${right.clr};white-space:nowrap">${right.t}</div>
+      ${contactBtn}
       <button class="btn btn-g" style="padding:4px 9px;font-size:11px;flex-shrink:0" title="${LANG==='ar'?'إخفاء':'Hide'}" onclick="event.stopPropagation();hideNotif('${n.key}')">🔕</button>
     </div>`;
   };
