@@ -4807,15 +4807,15 @@ function renderInsights(){
 // ═══════════════ NOTIFICATIONS (contract end reminders) ═══════════════
 function planFollowDays(plan){
   const p=(plan||'').toUpperCase();
-  if(p.startsWith('CORE')) return 5;
-  if(p.startsWith('PREMIUM')) return 8;
+  if(p.includes('CORE')) return 5;
+  if(p.includes('PREMIUM')) return 8;
   if(p.includes('INNER')) return 10;
   return 7;
 }
 function planTier(plan){
   const p=(plan||'').toUpperCase();
-  if(p.startsWith('CORE')) return 'CORE';
-  if(p.startsWith('PREMIUM')) return 'PREMIUM';
+  if(p.includes('CORE')) return 'CORE';
+  if(p.includes('PREMIUM')) return 'PREMIUM';
   if(p.includes('INNER')) return 'INNER';
   return 'OTHER';
 }
@@ -4831,17 +4831,18 @@ function computeNotifs(){
     if (d < 0) type='ended'; else if (d <= 3) type='3d'; else if (d <= 15) type='15d';
     if (type) out.push({ key:c.id+':'+type, cid:c.id, type, name:c.name, plan:c.plan, end:c.contractEnd, days:d });
   });
-  // Follow-up reminders: active clients with an ongoing contract, cadence by plan.
-  // Clients with NO follow-up yet are flagged immediately; those with follow-ups every N days since the last one.
+  // Follow-up reminders: active clients WITH a contract end date that hasn't passed, cadence by plan.
+  // No follow-up yet → flagged immediately. Otherwise → every N days counted from the LAST follow-up.
   clients.filter(c=>!c.deleted && c.status==='active').forEach(c=>{
-    const end=daysUntil(c.contractEnd); if(end!==null && end<0) return;          // contract ended → skip
-    const last=lastCsmDate(c);
-    const anchor=[c.csmStart, last].filter(Boolean).sort().reverse()[0];          // latest of counter-start / last follow-up
-    if(!anchor) return;
-    const N=planFollowDays(c.plan), since=daysSince(anchor), noFollow=!last;
-    if(noFollow || (since!==null && since>=N)){
-      const cycle = since!==null ? Math.floor(since/N) : 0;
-      out.push({ key:`${c.id}:fu:${cycle}`, cid:c.id, type:'followup', tier:planTier(c.plan), name:c.name, plan:c.plan, days:since, every:N, noFollow });
+    if(!c.contractEnd) return;                          // no contract end date → not in follow-up notifs
+    if(daysUntil(c.contractEnd) < 0) return;            // contract ended → skip
+    const last=lastCsmDate(c), N=planFollowDays(c.plan), tier=planTier(c.plan);
+    if(!last){
+      out.push({ key:`${c.id}:fu0`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:null, every:N, noFollow:true });
+    } else {
+      const since=daysSince(last);
+      if(since!==null && since>=N)
+        out.push({ key:`${c.id}:fu:${Math.floor(since/N)}`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:since, every:N, noFollow:false });
     }
   });
   const order = { followup:0, ended:1, '3d':2, '15d':3 };
@@ -4867,11 +4868,11 @@ function updateNotifBadge(){
 }
 function openClientFromNotif(cid){ openCsmDetail(cid); }
 
-let _notifTab = 'followup'; // 'followup' | 'contracts'
+let _notifTab = 'CORE'; // 'CORE' | 'PREMIUM' | 'INNER' | 'OTHER' | 'contracts'
 function setNotifTab(v){ _notifTab=v; renderNotifs(); }
 function hideNotif(key){ markNotifsSeen([key]); renderNotifs(); }
 function markTabSeen(){
-  const keys=computeNotifs().filter(n=> _notifTab==='contracts' ? n.type!=='followup' : n.type==='followup').map(n=>n.key);
+  const keys=computeNotifs().filter(n=> _notifTab==='contracts' ? n.type!=='followup' : (n.type==='followup' && n.tier===_notifTab)).map(n=>n.key);
   markNotifsSeen(keys); renderNotifs();
 }
 function renderNotifs(){
@@ -4879,18 +4880,15 @@ function renderNotifs(){
   const followAll   = all.filter(n=>n.type==='followup');
   const contractAll = all.filter(n=>n.type!=='followup');
   const tabBtn=(id,label,count)=>`<button class="btn ${_notifTab===id?'btn-p':'btn-g'}" onclick="setNotifTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
+  const tierCount=t=>followAll.filter(n=>n.tier===t).length;
+  const tierTitle={CORE:'🔵 CORE — متابعة كل 5 أيام',PREMIUM:'🟣 PREMIUM — متابعة كل 8 أيام',INNER:'🟠 INNER — متابعة كل 10 أيام',OTHER:'⚪ أخرى — متابعة كل 7 أيام'};
   const sections = _notifTab==='contracts'
     ? [
         {items:contractAll.filter(n=>n.type==='ended'), title:'🔴 عقود منتهية'},
         {items:contractAll.filter(n=>n.type==='3d'),    title:'🟠 تنتهي خلال 3 أيام'},
         {items:contractAll.filter(n=>n.type==='15d'),   title:'🟡 تنتهي خلال 15 يوم'},
       ]
-    : [
-        {items:followAll.filter(n=>n.tier==='CORE'),    title:'🔵 CORE — متابعة كل 5 أيام'},
-        {items:followAll.filter(n=>n.tier==='PREMIUM'), title:'🟣 PREMIUM — متابعة كل 8 أيام'},
-        {items:followAll.filter(n=>n.tier==='INNER'),   title:'🟠 INNER — متابعة كل 10 أيام'},
-        {items:followAll.filter(n=>n.tier==='OTHER'),   title:'⚪ أخرى — متابعة كل 7 أيام'},
-      ];
+    : [ {items:followAll.filter(n=>n.tier===_notifTab), title:tierTitle[_notifTab]||''} ];
   const itemHtml=(n)=>{
     const c=clients.find(x=>x.id===n.cid), isNew=!seen.has(n.key);
     const right = n.type==='ended' ? {t:`منذ ${-n.days} يوم`,clr:'var(--r)'}
@@ -4908,8 +4906,11 @@ function renderNotifs(){
     </div>`;
   };
   $('pg-notifs').innerHTML = `
-  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    ${tabBtn('followup','🔔 متابعات مطلوبة',followAll.length)}
+  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    ${tabBtn('CORE','🔵 CORE',tierCount('CORE'))}
+    ${tabBtn('PREMIUM','🟣 PREMIUM',tierCount('PREMIUM'))}
+    ${tabBtn('INNER','🟠 INNER',tierCount('INNER'))}
+    ${tabBtn('OTHER','⚪ أخرى',tierCount('OTHER'))}
     ${tabBtn('contracts','📅 نهاية العقود',contractAll.length)}
     <button class="btn btn-g" style="margin-right:auto" onclick="markTabSeen()">✓ تحديد المعروض كمقروء</button>
   </div>
