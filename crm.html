@@ -275,6 +275,9 @@ tbody tr.overdue-row td{border-right:2px solid var(--r)}
   #print-area .pn{border:1px solid #ddd;border-radius:6px;padding:9px 11px;margin-bottom:8px;font-size:12px;line-height:1.6}
   #print-area .pa{color:#666;font-size:11px;margin-top:5px}
   #print-area .pe{color:#999;font-size:12px}
+  #print-area .pt2{width:100%;border-collapse:collapse;margin-bottom:6px}
+  #print-area .pt2 td,#print-area .pt2 th{border:1px solid #ccc;padding:5px 8px;font-size:11px;text-align:right}
+  #print-area .pt2 th{background:#f3f3f3;font-weight:bold}
 }
 .mbox{background:var(--sf);border:1px solid var(--b2);border-radius:var(--rd2);width:560px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:mIn .2s ease}
 @keyframes mIn{from{opacity:0;transform:scale(.96) translateY(-10px)}to{opacity:1;transform:scale(1) translateY(0)}}
@@ -645,6 +648,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <button class="mcls" onclick="closeCsmOpts()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
     </div>
     <div id="csm-opts-body" style="padding:18px;max-height:76vh;overflow-y:auto"></div>
+  </div>
+</div>
+<!-- CSM MONTHLY REPORT MODAL -->
+<div class="mo" id="csm-report-mo" onclick="if(event.target===this)closeCsmReport()">
+  <div class="mbox" style="max-width:760px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">📊</div>
+      <h3>تقرير المتابعة الشهري</h3>
+      <button class="mcls" onclick="closeCsmReport()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="csm-report-body" style="padding:18px;max-height:80vh;overflow-y:auto"></div>
   </div>
 </div>
 <!-- PRINT REPORT (hidden; used for CSM PDF export via browser print) -->
@@ -4525,7 +4539,8 @@ function renderCsm(){
     <select class="fsl" onchange="setCsmCond(this.value)" style="min-width:120px"><option value="">كل الحالات</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}"${o===_csmCond?' selected':''}>${esc(o)}</option>`).join('')}</select>
     <select class="fsl" onchange="setCsmFollow(this.value)" style="min-width:140px"><option value="">كل المتابعات</option>${CSM_OPTS.follows.map(o=>`<option value="${esc(o)}"${o===_csmFollow?' selected':''}>${esc(o)}</option>`).join('')}</select>
     <span style="font-size:12px;color:var(--t3)">${rows.length} عميل</span>
-    <button class="btn btn-g" style="margin-right:auto" onclick="openCsmOpts()">⚙️ إدارة القوائم</button>
+    <button class="btn btn-g" style="margin-right:auto" onclick="openCsmReport()">📊 تقرير الشهر</button>
+    <button class="btn btn-g" onclick="openCsmOpts()">⚙️ إدارة القوائم</button>
   </div>
   <div class="card" style="padding:0;overflow-x:auto">
     <table style="width:100%;border-collapse:collapse;min-width:560px">
@@ -4675,6 +4690,100 @@ function delCsmOpt(kind,label){
   openCsmOpts();
 }
 function closeCsmOpts(){ $('csm-opts-mo').classList.remove('on'); }
+
+// ─── Monthly follow-up report (grouped by CSM agent = note author) ───
+let _reportMonth = null;
+function setReportMonth(v){ _reportMonth=v; renderCsmReportBody(); }
+function _topEntries(obj,n){ return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([k,v])=>`${esc(k)} (${v})`).join('، ')||'—'; }
+function computeCsmReport(month){
+  const active=clients.filter(c=>!c.deleted && c.status==='active');
+  const activeSet=new Set(active.map(c=>c.id));
+  const byAuthor={}, handled=new Set(), perClient={};
+  clients.filter(c=>!c.deleted).forEach(c=>{
+    (c.csmNotes||[]).forEach(n=>{
+      if(!(n.date||'').startsWith(month)) return;             // "handled" = observation dated in the month
+      handled.add(c.id);
+      const a=n.author||'—';
+      const ba=byAuthor[a]||(byAuthor[a]={author:a,count:0,clients:new Set(),cond:{},follow:{}});
+      ba.count++; ba.clients.add(c.id);
+      if(n.condition) ba.cond[n.condition]=(ba.cond[n.condition]||0)+1;
+      (n.follow||[]).forEach(f=>ba.follow[f]=(ba.follow[f]||0)+1);
+      const pc=perClient[c.id]||(perClient[c.id]={c,count:0,last:n});
+      pc.count++; if((n.date||'')>=(pc.last.date||'')) pc.last=n;
+    });
+  });
+  return {
+    active, handledActive:[...handled].filter(id=>activeSet.has(id)),
+    agents:Object.values(byAuthor).sort((a,b)=>b.count-a.count),
+    clientsList:Object.values(perClient).sort((a,b)=>b.count-a.count),
+    totalObs:Object.values(byAuthor).reduce((s,a)=>s+a.count,0),
+  };
+}
+function openCsmReport(){
+  if(_reportMonth===null){
+    const ms=[]; clients.forEach(c=>(c.csmNotes||[]).forEach(n=>{ if(n.date) ms.push(n.date.slice(0,7)); }));
+    _reportMonth = ms.sort().reverse()[0] || new Date().toISOString().slice(0,7);
+  }
+  renderCsmReportBody();
+  $('csm-report-mo').classList.add('on');
+}
+function closeCsmReport(){ $('csm-report-mo').classList.remove('on'); }
+function renderCsmReportBody(){
+  const month=_reportMonth, r=computeCsmReport(month);
+  const cov=r.active.length?Math.round(r.handledActive.length/r.active.length*100):0;
+  const notFollowed=r.active.length-r.handledActive.length;
+  const now=new Date(); const months=[]; for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  if(!months.includes(month)) months.unshift(month);
+  const kpi=(v,l,c)=>`<div class="kpi" style="padding:12px"><div style="font-size:19px;font-weight:800${c?`;color:${c}`:''}">${v}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${l}</div></div>`;
+  $('csm-report-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <select class="fsl" onchange="setReportMonth(this.value)" style="min-width:160px">${months.map(m=>`<option value="${m}"${m===month?' selected':''}>${monthLabel(m)}</option>`).join('')}</select>
+      <button class="btn btn-p" style="margin-right:auto" onclick="exportCsmReportPdf()">🖨️ تصدير PDF</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:10px;margin-bottom:16px">
+      ${kpi(r.active.length,'عملاء نشطون')}${kpi(r.handledActive.length,'تمت متابعتهم','var(--g)')}${kpi(notFollowed,'بدون متابعة','var(--r)')}${kpi(cov+'%','نسبة التغطية','var(--p2)')}${kpi(r.totalObs,'إجمالي الملاحظات')}
+    </div>
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">👤 حسب الوكيل</div>
+    <div class="card" style="padding:0;overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:520px">
+      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">
+        <th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:right">الوكيل</th><th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:center">ملاحظات</th><th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:center">عملاء</th><th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:right">أبرز الحالات</th><th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:right">أبرز المتابعات</th>
+      </tr></thead><tbody>
+      ${r.agents.length?r.agents.map(a=>`<tr style="border-bottom:1px solid var(--b1)"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(a.author)}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.count}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.clients.size}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${_topEntries(a.cond,3)}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${_topEntries(a.follow,3)}</td></tr>`).join(''):`<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--t3)">لا توجد متابعات هذا الشهر</td></tr>`}
+      </tbody></table></div>
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">📋 العملاء الذين تمت متابعتهم (${r.clientsList.length})</div>
+    <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:520px">
+      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">
+        <th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:right">العميل</th><th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:right">الباقة</th><th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:center">عدد</th><th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:right">آخر حالة</th><th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:right">آخر متابعة</th>
+      </tr></thead><tbody>
+      ${r.clientsList.length?r.clientsList.map(p=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="closeCsmReport();openCsmDetail(${p.c.id})"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(p.c.name)}</td><td style="padding:9px 12px;font-size:11px">${planBadge(p.c.plan)}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${p.count}</td><td style="padding:9px 12px">${condBadge(p.last.condition)}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${(p.last.follow||[]).map(esc).join('، ')||'—'}</td></tr>`).join(''):`<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--t3)">—</td></tr>`}
+      </tbody></table></div>`;
+}
+function exportCsmReportPdf(){
+  const month=_reportMonth, r=computeCsmReport(month);
+  const cov=r.active.length?Math.round(r.handledActive.length/r.active.length*100):0;
+  $('print-area').innerHTML=`
+    <h1>تقرير المتابعة الشهري</h1>
+    <div class="psub">${monthLabel(month)} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
+    <h3>ملخص التغطية</h3>
+    <table class="pt"><tbody>
+      <tr><td>عملاء نشطون</td><td>${r.active.length}</td></tr>
+      <tr><td>تمت متابعتهم</td><td>${r.handledActive.length}</td></tr>
+      <tr><td>بدون متابعة</td><td>${r.active.length-r.handledActive.length}</td></tr>
+      <tr><td>نسبة التغطية</td><td>${cov}%</td></tr>
+      <tr><td>إجمالي الملاحظات</td><td>${r.totalObs}</td></tr>
+    </tbody></table>
+    <h3>حسب الوكيل</h3>
+    <table class="pt2"><thead><tr><th>الوكيل</th><th>ملاحظات</th><th>عملاء</th><th>أبرز الحالات</th><th>أبرز المتابعات</th></tr></thead><tbody>
+    ${r.agents.map(a=>`<tr><td>${esc(a.author)}</td><td>${a.count}</td><td>${a.clients.size}</td><td>${_topEntries(a.cond,3)}</td><td>${_topEntries(a.follow,3)}</td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}
+    </tbody></table>
+    <h3>العملاء الذين تمت متابعتهم (${r.clientsList.length})</h3>
+    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>عدد</th><th>آخر حالة</th><th>آخر متابعة</th></tr></thead><tbody>
+    ${r.clientsList.map(p=>`<tr><td>${esc(p.c.name)}</td><td>${esc(p.c.plan||'—')}</td><td>${p.count}</td><td>${esc(p.last.condition||'—')}</td><td>${(p.last.follow||[]).map(esc).join('، ')||'—'}</td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}
+    </tbody></table>`;
+  document.body.classList.add('printing');
+  window.print();
+  setTimeout(()=>document.body.classList.remove('printing'),400);
+}
 
 // PDF export via browser print (reliable Arabic RTL)
 function exportCsmPdf(id){
