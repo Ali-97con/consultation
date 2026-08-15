@@ -4906,7 +4906,10 @@ function renderInsights(){
       return `<div style="font-weight:700;font-size:12.5px">${f(cur)}</div><div style="font-size:10px;color:${cur===pr?'var(--t3)':up?'var(--g)':'var(--r)'}">${cur===pr?'—':(up?'▲':'▼')+' '+Math.abs(pc)+'%'}</div>`;
     };
     body=`
-    <div style="font-size:12.5px;color:var(--t2);margin-bottom:10px">📊 تقرير الشهر — مقارنة كل مندوب بالشهر الماضي (${monthLabel(month)} مقابل ${monthLabel(prev)})</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <span style="font-size:12.5px;color:var(--t2)">📊 تقرير الشهر — مقارنة كل مندوب بالشهر الماضي (${monthLabel(month)} مقابل ${monthLabel(prev)})</span>
+      <button class="btn btn-p" style="margin-right:auto" onclick="exportInsightsPdf()">🖨️ تصدير PDF</button>
+    </div>
     <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:560px">
       <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">
         <th style="padding:10px 14px;font-size:11px;color:var(--t3);text-align:right">المندوب</th>
@@ -4924,6 +4927,25 @@ function renderInsights(){
     <div style="font-size:11.5px;color:var(--t3);margin-top:10px;text-align:center">اضغط على أي مندوب لعرض تفاصيله والتوصيات</div>`;
   }
   $('pg-insights').innerHTML = controls + body;
+}
+
+function exportInsightsPdf(){
+  const month=_insMonth||new Date().toISOString().slice(0,7), prev=prevMonth(month);
+  const members=[...new Set([...CLOSERS,...SETTERS])].filter(Boolean).sort();
+  const rows=members.map(m=>({m,cur:insMemberStats(m,month),pr:insMemberStats(m,prev)}))
+    .filter(r=>r.cur.collected>0||r.cur.newClients>0||r.pr.collected>0||r.pr.newClients>0)
+    .sort((a,b)=>b.cur.collected-a.cur.collected);
+  const d=(cur,pr,money)=>{ const pc=pr>0?Math.round((cur-pr)/pr*100):(cur>0?100:0); const f=v=>money?fmtMoney(v):v; return `${f(cur)} (${cur===pr?'—':(cur>=pr?'▲':'▼')+Math.abs(pc)+'%'})`; };
+  $('print-area').innerHTML=`
+    <h1>تقرير الأداء الشهري</h1>
+    <div class="psub">${monthLabel(month)} مقابل ${monthLabel(prev)} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
+    <table class="pt2"><thead><tr><th>المندوب</th><th>عملاء جدد</th><th>المحصّل</th><th>العمولة</th><th>قيمة العقود</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${esc(r.m)}</td><td>${d(r.cur.newClients,r.pr.newClients,false)}</td><td>${d(r.cur.collected,r.pr.collected,true)}</td><td>${d(r.cur.commission,r.pr.commission,true)}</td><td>${d(r.cur.contractValue,r.pr.contractValue,true)}</td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}
+    </tbody></table>
+    <div class="psub" style="margin-top:10px">القيم بين قوسين = التغير مقارنة بالشهر الماضي</div>`;
+  document.body.classList.add('printing');
+  window.print();
+  setTimeout(()=>document.body.classList.remove('printing'),400);
 }
 
 // ═══════════════ NOTIFICATIONS (contract end reminders) ═══════════════
