@@ -4472,6 +4472,12 @@ function setCsmFollow(v){ _csmFollow = v; renderCsm(); }
 function setCsmMonth(v){ _csmMonth = v; renderCsm(); }
 function setCsmMonthOnly(v){ _csmMonthOnly = (v==='none'); renderCsm(); }
 function csmContactedInMonth(c, month){ return (c.csmNotes||[]).some(n=>(n.date||'').startsWith(month)) || (c.contactedAt||'').startsWith(month); }
+function matchNamePhone(name, phone, q){
+  if(!q) return true;
+  if((name||'').toLowerCase().includes(q.toLowerCase())) return true;
+  const qd=q.replace(/\D/g,''); // digits only → search phone ignoring spaces/formatting
+  return !!qd && (phone||'').replace(/\D/g,'').includes(qd);
+}
 function csmIsDone(c){ const d = daysUntil(c.contractEnd); return d !== null && d < 0; } // contract ended
 
 function csmLatest(c){
@@ -4530,7 +4536,7 @@ function renderCsm(){
     .filter(c => !_csmMonthOnly || (c.status==='active' && c.contractEnd && !csmIsDone(c) && !csmContactedInMonth(c,_csmMonth)))
     .filter(c => !_csmCond || (csmLatest(c) && csmLatest(c).condition===_csmCond))
     .filter(c => !_csmFollow || (csmLatest(c) && (csmLatest(c).follow||[]).includes(_csmFollow)))
-    .filter(c=>!q || (c.name||'').toLowerCase().includes(q))
+    .filter(c=>matchNamePhone(c.name, c.phone, q))
     .sort((a,b)=>{
       const da=daysUntil(a.contractEnd), db=daysUntil(b.contractEnd);
       if (da===null && db===null) return (a.name||'').localeCompare(b.name||'');
@@ -4714,8 +4720,9 @@ function computeCsmReport(month){
   const activeSet=new Set(active.map(c=>c.id));
   const byAuthor={}, handled=new Set(), perClient={};
   clients.filter(c=>!c.deleted).forEach(c=>{
+    if((c.contactedAt||'').startsWith(month)) handled.add(c.id);   // 📞 "contacted this month" counts as handled (matches the CSM page)
     (c.csmNotes||[]).forEach(n=>{
-      if(!(n.date||'').startsWith(month)) return;             // "handled" = observation dated in the month
+      if(!(n.date||'').startsWith(month)) return;             // observation dated in the month
       handled.add(c.id);
       const a=n.author||'—';
       const ba=byAuthor[a]||(byAuthor[a]={author:a,count:0,clients:new Set(),cond:{},follow:{}});
@@ -5044,8 +5051,8 @@ function markTabSeen(){
   addHiddenNotifs(keys); renderNotifs();
 }
 function renderNotifs(){
-  const q=_notifSearch.trim().toLowerCase();
-  const all=notifVisible().filter(n=>!q || (n.name||'').toLowerCase().includes(q));
+  const q=_notifSearch.trim();
+  const all=notifVisible().filter(n=>matchNamePhone(n.name, (clients.find(c=>c.id===n.cid)||{}).phone, q));
   const followAll   = all.filter(n=>n.type==='followup');
   const contractAll = all.filter(n=>n.type!=='followup');
   const tabBtn=(id,label,count)=>`<button class="btn ${_notifTab===id?'btn-p':'btn-g'}" onclick="setNotifTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
