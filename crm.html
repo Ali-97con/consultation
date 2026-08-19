@@ -3804,8 +3804,8 @@ function openDetail(id) {
     <div id="notes-list-${id}">${renderNotes(id)}</div>
   </div>
 
-  <!-- ── FINANCIAL & CONTRACT (admin, collapsible) ── -->
-  ${!isCoach() ? `<div class="dp-sc">
+  <!-- ── FINANCIAL & CONTRACT (admin only, collapsible) ── -->
+  ${isAdmin() ? `<div class="dp-sc">
     <button class="btn btn-g" id="fin-toggle-${id}" style="padding:7px 14px;align-self:flex-start" onclick="toggleFinDetail(${id})">📋 ${LANG==='ar'?'التفاصيل الكاملة (العقد والدفعات)':'Full details (contract & payments)'}</button>
     <div id="fin-detail-${id}" style="display:none;margin-top:14px">
       <div class="dp-st">💳 ${t('dp_pay_details')} — <span style="color:var(--p2);font-size:11px">${c.paymentType}</span></div>
@@ -4501,8 +4501,8 @@ function condBadge(cond){
 
 function renderCsm(){
   const list = clients.filter(c=>!c.deleted);
-  // KPIs are computed on ACTIVE clients with an ONGOING (not-ended) contract only
-  const base = list.filter(c=>c.status==='active' && !csmIsDone(c));
+  // KPIs are computed on ACTIVE clients with an ONGOING contract (has an end date, not passed)
+  const base = list.filter(c=>c.status==='active' && c.contractEnd && !csmIsDone(c));
   const has = (c,f)=>{ const l=csmLatest(c); return l && (l.follow||[]).includes(f); };
   const contactedM = base.filter(c=>csmContactedInMonth(c,_csmMonth)).length;
   const noResp    = base.filter(c=>{const l=csmLatest(c); return l && l.condition==='مايرد';}).length;
@@ -4527,7 +4527,7 @@ function renderCsm(){
   const q = _csmSearch.trim().toLowerCase();
   const rows = list
     .filter(c => _csmTab==='done' ? csmIsDone(c) : !csmIsDone(c))
-    .filter(c => !_csmMonthOnly || (c.status==='active' && !csmIsDone(c) && !csmContactedInMonth(c,_csmMonth)))
+    .filter(c => !_csmMonthOnly || (c.status==='active' && c.contractEnd && !csmIsDone(c) && !csmContactedInMonth(c,_csmMonth)))
     .filter(c => !_csmCond || (csmLatest(c) && csmLatest(c).condition===_csmCond))
     .filter(c => !_csmFollow || (csmLatest(c) && (csmLatest(c).follow||[]).includes(_csmFollow)))
     .filter(c=>!q || (c.name||'').toLowerCase().includes(q))
@@ -4609,6 +4609,7 @@ function openCsmDetail(id){
         <div style="font-size:16px;font-weight:700">${esc(c.name)}</div>
         <div style="font-size:12px;color:var(--t3)">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
       </div>
+      <button class="btn btn-g" onclick="closeCsmDetail();openDetail(${id})">👤 ${LANG==='ar'?'الملف الشخصي':'Profile'}</button>
       <button class="btn btn-g" onclick="exportCsmPdf(${id})">🖨️ ${LANG==='ar'?'تصدير PDF':'Export PDF'}</button>
     </div>
     <div class="card" style="padding:14px;margin-bottom:16px">
@@ -5034,14 +5035,17 @@ function markContacted(cid){
 }
 
 let _notifTab = 'CORE'; // 'CORE' | 'PREMIUM' | 'INNER' | 'OTHER' | 'contracts'
+let _notifSearch = '';
 function setNotifTab(v){ _notifTab=v; renderNotifs(); }
+function setNotifSearch(v){ _notifSearch=v; renderNotifs(); const el=$('notif-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
 function hideNotif(key){ addHiddenNotifs([key]); renderNotifs(); }   // actually remove it from the page
 function markTabSeen(){
   const keys=notifVisible().filter(n=> _notifTab==='contracts' ? n.type!=='followup' : (n.type==='followup' && n.tier===_notifTab)).map(n=>n.key);
   addHiddenNotifs(keys); renderNotifs();
 }
 function renderNotifs(){
-  const all=notifVisible();
+  const q=_notifSearch.trim().toLowerCase();
+  const all=notifVisible().filter(n=>!q || (n.name||'').toLowerCase().includes(q));
   const followAll   = all.filter(n=>n.type==='followup');
   const contractAll = all.filter(n=>n.type!=='followup');
   const tabBtn=(id,label,count)=>`<button class="btn ${_notifTab===id?'btn-p':'btn-g'}" onclick="setNotifTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
@@ -5081,6 +5085,7 @@ function renderNotifs(){
     ${tabBtn('INNER','🟠 INNER',tierCount('INNER'))}
     ${tabBtn('OTHER','⚪ أخرى',tierCount('OTHER'))}
     ${tabBtn('contracts','📅 نهاية العقود',contractAll.length)}
+    <input class="inp" id="notif-search" style="max-width:200px" placeholder="🔍 بحث بالاسم..." value="${esc(_notifSearch)}" oninput="setNotifSearch(this.value)"/>
     <button class="btn btn-g" style="margin-right:auto" onclick="markTabSeen()">✓ تحديد المعروض كمقروء</button>
   </div>
   ${sections.filter(s=>s.items.length).map(s=>`<div class="card mb" style="padding:0;overflow:hidden">
