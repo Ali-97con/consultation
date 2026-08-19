@@ -4463,10 +4463,15 @@ let _csmSearch = '';
 let _csmTab = 'active'; // 'active' = contract not finished, 'done' = contract ended
 let _csmCond = '';      // filter by latest condition
 let _csmFollow = '';    // filter by latest follow-up type
+let _csmMonth = new Date().toISOString().slice(0,7);  // selected month for coverage
+let _csmMonthOnly = false;                            // show only "not contacted this month"
 function setCsmSearch(v){ _csmSearch = v; renderCsm(); const el=$('csm-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
 function setCsmTab(v){ _csmTab = v; renderCsm(); }
 function setCsmCond(v){ _csmCond = v; renderCsm(); }
 function setCsmFollow(v){ _csmFollow = v; renderCsm(); }
+function setCsmMonth(v){ _csmMonth = v; renderCsm(); }
+function setCsmMonthOnly(v){ _csmMonthOnly = (v==='none'); renderCsm(); }
+function csmContactedInMonth(c, month){ return (c.csmNotes||[]).some(n=>(n.date||'').startsWith(month)) || (c.contactedAt||'').startsWith(month); }
 function csmIsDone(c){ const d = daysUntil(c.contractEnd); return d !== null && d < 0; } // contract ended
 
 function csmLatest(c){
@@ -4496,27 +4501,33 @@ function condBadge(cond){
 
 function renderCsm(){
   const list = clients.filter(c=>!c.deleted);
+  // KPIs are computed on ACTIVE clients with an ONGOING (not-ended) contract only
+  const base = list.filter(c=>c.status==='active' && !csmIsDone(c));
   const has = (c,f)=>{ const l=csmLatest(c); return l && (l.follow||[]).includes(f); };
-  const noResp    = list.filter(c=>{const l=csmLatest(c); return l && l.condition==='مايرد';}).length;
-  const noFollow  = list.filter(c=>!(c.csmNotes||[]).length).length;
-  const finished  = list.filter(c=>has(c,'خلص الدورة')).length;
-  const profit    = list.filter(c=>has(c,'طلع ارباح')).length;
-  const unhappy   = list.filter(c=>has(c,'مو راضي عن البرنامج')).length;
-  const endingSoon= list.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;}).length;
+  const contactedM = base.filter(c=>csmContactedInMonth(c,_csmMonth)).length;
+  const noResp    = base.filter(c=>{const l=csmLatest(c); return l && l.condition==='مايرد';}).length;
+  const endingSoon= base.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;}).length;
+  const profit    = base.filter(c=>has(c,'طلع ارباح')).length;
+  const unhappy   = base.filter(c=>has(c,'مو راضي عن البرنامج')).length;
+  const cov = base.length ? Math.round(contactedM/base.length*100) : 0;
   const kpis = [
-    {l:'عملاء متابَعون', v:list.length, c:'#6366f1'},
+    {l:'عملاء نشطون (عقد جارٍ)', v:base.length, c:'#6366f1'},
+    {l:`تمت متابعتهم (${monthLabel(_csmMonth)})`, v:contactedM, c:'#10b981'},
+    {l:`بدون متابعة (${monthLabel(_csmMonth)})`, v:base.length-contactedM, c:'#f59e0b'},
+    {l:'نسبة التغطية', v:cov+'%', c:'#8b5cf6'},
     {l:'لا يردّون', v:noResp, c:'#ef4444'},
-    {l:'بدون متابعة', v:noFollow, c:'#f59e0b'},
     {l:'عقود تنتهي ≤ 30 يوم', v:endingSoon, c:'#f59e0b'},
-    {l:'أنهوا الدورة', v:finished, c:'#8b5cf6'},
     {l:'طلع أرباح', v:profit, c:'#10b981'},
     {l:'غير راضين', v:unhappy, c:'#ef4444'},
   ];
   const doneCount = list.filter(csmIsDone).length;
   const activeCount = list.length - doneCount;
+  const now=new Date(); const months=[]; for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  if(!months.includes(_csmMonth)) months.unshift(_csmMonth);
   const q = _csmSearch.trim().toLowerCase();
   const rows = list
     .filter(c => _csmTab==='done' ? csmIsDone(c) : !csmIsDone(c))
+    .filter(c => !_csmMonthOnly || (c.status==='active' && !csmIsDone(c) && !csmContactedInMonth(c,_csmMonth)))
     .filter(c => !_csmCond || (csmLatest(c) && csmLatest(c).condition===_csmCond))
     .filter(c => !_csmFollow || (csmLatest(c) && (csmLatest(c).follow||[]).includes(_csmFollow)))
     .filter(c=>!q || (c.name||'').toLowerCase().includes(q))
@@ -4535,9 +4546,11 @@ function renderCsm(){
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     ${tabBtn('active','⏳ قيد المتابعة',activeCount)}
     ${tabBtn('done','✅ منتهية',doneCount)}
-    <input class="inp" id="csm-search" style="max-width:220px" placeholder="🔍 بحث بالاسم..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
-    <select class="fsl" onchange="setCsmCond(this.value)" style="min-width:120px"><option value="">كل الحالات</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}"${o===_csmCond?' selected':''}>${esc(o)}</option>`).join('')}</select>
-    <select class="fsl" onchange="setCsmFollow(this.value)" style="min-width:140px"><option value="">كل المتابعات</option>${CSM_OPTS.follows.map(o=>`<option value="${esc(o)}"${o===_csmFollow?' selected':''}>${esc(o)}</option>`).join('')}</select>
+    <input class="inp" id="csm-search" style="max-width:200px" placeholder="🔍 بحث بالاسم..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
+    <select class="fsl" onchange="setCsmMonth(this.value)" style="min-width:120px" title="شهر التغطية">${months.map(m=>`<option value="${m}"${m===_csmMonth?' selected':''}>${monthLabel(m)}</option>`).join('')}</select>
+    <select class="fsl" onchange="setCsmMonthOnly(this.value)" style="min-width:150px"><option value="all"${!_csmMonthOnly?' selected':''}>كل العملاء</option><option value="none"${_csmMonthOnly?' selected':''}>بدون متابعة هذا الشهر</option></select>
+    <select class="fsl" onchange="setCsmCond(this.value)" style="min-width:110px"><option value="">كل الحالات</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}"${o===_csmCond?' selected':''}>${esc(o)}</option>`).join('')}</select>
+    <select class="fsl" onchange="setCsmFollow(this.value)" style="min-width:130px"><option value="">كل المتابعات</option>${CSM_OPTS.follows.map(o=>`<option value="${esc(o)}"${o===_csmFollow?' selected':''}>${esc(o)}</option>`).join('')}</select>
     <span style="font-size:12px;color:var(--t3)">${rows.length} عميل</span>
     <button class="btn btn-g" style="margin-right:auto" onclick="openCsmReport()">📊 تقرير الشهر</button>
     <button class="btn btn-g" onclick="openCsmOpts()">⚙️ إدارة القوائم</button>
@@ -4696,7 +4709,7 @@ let _reportMonth = null;
 function setReportMonth(v){ _reportMonth=v; renderCsmReportBody(); }
 function _topEntries(obj,n){ return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([k,v])=>`${esc(k)} (${v})`).join('، ')||'—'; }
 function computeCsmReport(month){
-  const active=clients.filter(c=>!c.deleted && c.status==='active');
+  const active=clients.filter(c=>!c.deleted && c.status==='active' && !csmIsDone(c)); // active + ongoing contract
   const activeSet=new Set(active.map(c=>c.id));
   const byAuthor={}, handled=new Set(), perClient={};
   clients.filter(c=>!c.deleted).forEach(c=>{
@@ -4993,10 +5006,10 @@ function computeNotifs(){
   const order = { followup:0, ended:1, '3d':2, '15d':3 };
   return out.sort((a,b)=>(order[a.type]-order[b.type]) || (b.days-a.days));
 }
-function getSeenNotifs(){ try{ return new Set(JSON.parse(localStorage.getItem('notif_seen')||'[]')); }catch(_){ return new Set(); } }
-function saveSeenNotifs(set){ try{ localStorage.setItem('notif_seen', JSON.stringify([...set])); }catch(_){} }
-function markNotifsSeen(keys){ const s=getSeenNotifs(); keys.forEach(k=>s.add(k)); saveSeenNotifs(s); updateNotifBadge(); }
-function unseenNotifs(){ const s=getSeenNotifs(); return computeNotifs().filter(n=>!s.has(n.key)); }
+function getHiddenNotifs(){ try{ return new Set(JSON.parse(localStorage.getItem('notif_hidden')||'[]')); }catch(_){ return new Set(); } }
+function addHiddenNotifs(keys){ try{ const s=getHiddenNotifs(); keys.forEach(k=>s.add(k)); localStorage.setItem('notif_hidden', JSON.stringify([...s])); }catch(_){} updateNotifBadge(); }
+function notifVisible(){ const h=getHiddenNotifs(); return computeNotifs().filter(n=>!h.has(n.key)); }   // shown on the page (incl. contacted)
+function notifPending(){ return notifVisible().filter(n=>!n.contacted); }                                // counted in badge + login pop-up
 function notifMeta(n){
   if (n.type==='followup') return { ic:'🔔', clr:'var(--p2)', txt:(LANG==='ar'?`متابعة مطلوبة (كل ${n.every} يوم — آخر تواصل منذ ${n.days} يوم)`:`Follow-up due (every ${n.every}d — ${n.days}d since last)`) };
   if (n.type==='ended') return { ic:'🔴', clr:'var(--r)', txt:(LANG==='ar'?`انتهى منذ ${-n.days} يوم`:`ended ${-n.days}d ago`) };
@@ -5006,7 +5019,7 @@ function notifMeta(n){
 function updateNotifBadge(){
   const btn=$('notif-btn'), badge=$('notif-badge'), navBadge=$('nl-notif-badge');
   if(isCoach()){ if(btn) btn.style.display='none'; return; }
-  const n=unseenNotifs().length;
+  const n=notifPending().length;
   if(btn) btn.style.display='flex';
   if(badge){ badge.textContent=n; badge.style.display=n>0?'flex':'none'; }
   if(navBadge){ navBadge.textContent=n; navBadge.style.display=n>0?'inline-flex':'none'; }
@@ -5016,21 +5029,19 @@ function markContacted(cid){
   const c=clients.find(x=>x.id===cid); if(!c) return;
   c.contactedAt=new Date().toISOString();
   api('PUT',`/api/clients/${cid}`,{contactedAt:c.contactedAt}).catch(e=>console.error(e));
-  const n=computeNotifs().find(x=>x.cid===cid && x.type==='followup'); // stop this reminder from nagging
-  if(n) markNotifsSeen([n.key]);
-  renderNotifs();
+  renderNotifs(); updateNotifBadge();   // 'contacted' flag stops it from nagging the badge/pop-up
   toast(LANG==='ar'?'تم التواصل — بانتظار الرد':'Marked contacted','📞');
 }
 
 let _notifTab = 'CORE'; // 'CORE' | 'PREMIUM' | 'INNER' | 'OTHER' | 'contracts'
 function setNotifTab(v){ _notifTab=v; renderNotifs(); }
-function hideNotif(key){ markNotifsSeen([key]); renderNotifs(); }
+function hideNotif(key){ addHiddenNotifs([key]); renderNotifs(); }   // actually remove it from the page
 function markTabSeen(){
-  const keys=computeNotifs().filter(n=> _notifTab==='contracts' ? n.type!=='followup' : (n.type==='followup' && n.tier===_notifTab)).map(n=>n.key);
-  markNotifsSeen(keys); renderNotifs();
+  const keys=notifVisible().filter(n=> _notifTab==='contracts' ? n.type!=='followup' : (n.type==='followup' && n.tier===_notifTab)).map(n=>n.key);
+  addHiddenNotifs(keys); renderNotifs();
 }
 function renderNotifs(){
-  const all=computeNotifs(), seen=getSeenNotifs();
+  const all=notifVisible();
   const followAll   = all.filter(n=>n.type==='followup');
   const contractAll = all.filter(n=>n.type!=='followup');
   const tabBtn=(id,label,count)=>`<button class="btn ${_notifTab===id?'btn-p':'btn-g'}" onclick="setNotifTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
@@ -5044,7 +5055,7 @@ function renderNotifs(){
       ]
     : [ {items:followAll.filter(n=>n.tier===_notifTab), title:tierTitle[_notifTab]||''} ];
   const itemHtml=(n)=>{
-    const c=clients.find(x=>x.id===n.cid), isNew=!seen.has(n.key);
+    const c=clients.find(x=>x.id===n.cid);
     const right = n.type==='ended' ? {t:`منذ ${-n.days} يوم`,clr:'var(--r)'}
       : n.type==='followup' ? (n.noFollow ? {t:'لم تبدأ المتابعة',clr:'var(--r)'} : {t:`منذ ${n.days} يوم`,clr:'var(--p2)'})
       : {t:`${n.days} يوم`,clr:'var(--y)'};
@@ -5055,7 +5066,7 @@ function renderNotifs(){
     return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openClientFromNotif(${n.cid})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
       ${c?clientAv(c):''}
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600">${esc(n.name)}${isNew?' <span style="font-size:9px;background:var(--rbg);color:var(--r);padding:1px 6px;border-radius:10px">جديد</span>':''}</div>
+        <div style="font-size:13px;font-weight:600">${esc(n.name)}</div>
         <div style="font-size:11px;color:var(--t3);margin-top:2px;display:flex;align-items:center;gap:6px">${sub}</div>
       </div>
       <div style="font-size:12px;font-weight:700;color:${right.clr};white-space:nowrap">${right.t}</div>
@@ -5080,7 +5091,7 @@ function renderNotifs(){
 
 function showNotifPopup(){
   if(isCoach()) return;
-  const unseen = unseenNotifs().filter(n=>n.type==='followup'); // login pop-up: follow-ups only (not contracts)
+  const unseen = notifPending().filter(n=>n.type==='followup'); // login pop-up: follow-ups only (not contracts)
   if(!unseen.length) return;
   window._popNotifKeys = unseen.map(n=>n.key);
   const byTier = {}; unseen.forEach(n=>byTier[n.tier]=(byTier[n.tier]||0)+1);
@@ -5101,7 +5112,7 @@ function showNotifPopup(){
 }
 function closeNotifPopup(){
   const chk=$('notif-seen-chk');
-  if(chk && chk.checked && window._popNotifKeys) markNotifsSeen(window._popNotifKeys);
+  if(chk && chk.checked && window._popNotifKeys) addHiddenNotifs(window._popNotifKeys);
   $('notif-pop').classList.remove('on');
 }
 
