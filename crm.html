@@ -4471,7 +4471,7 @@ function setCsmCond(v){ _csmCond = v; renderCsm(); }
 function setCsmFollow(v){ _csmFollow = v; renderCsm(); }
 function setCsmMonth(v){ _csmMonth = v; renderCsm(); }
 function setCsmMonthOnly(v){ _csmMonthOnly = (v==='none'); renderCsm(); }
-function csmContactedInMonth(c, month){ return (c.csmNotes||[]).some(n=>(n.date||'').startsWith(month)) || (c.contactedAt||'').startsWith(month); }
+function csmFollowedInMonth(c, month){ return (c.csmNotes||[]).some(n=>(n.date||'').startsWith(month)); } // real observation only (📞 alone doesn't count)
 function matchNamePhone(name, phone, q){
   if(!q) return true;
   if((name||'').toLowerCase().includes(q.toLowerCase())) return true;
@@ -4510,7 +4510,7 @@ function renderCsm(){
   // KPIs are computed on ACTIVE clients with an ONGOING contract (has an end date, not passed)
   const base = list.filter(c=>c.status==='active' && c.contractEnd && !csmIsDone(c));
   const has = (c,f)=>{ const l=csmLatest(c); return l && (l.follow||[]).includes(f); };
-  const contactedM = base.filter(c=>csmContactedInMonth(c,_csmMonth)).length;
+  const contactedM = base.filter(c=>csmFollowedInMonth(c,_csmMonth)).length;
   const noResp    = base.filter(c=>{const l=csmLatest(c); return l && l.condition==='مايرد';}).length;
   const endingSoon= base.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;}).length;
   const profit    = base.filter(c=>has(c,'طلع ارباح')).length;
@@ -4533,7 +4533,7 @@ function renderCsm(){
   const q = _csmSearch.trim().toLowerCase();
   const rows = list
     .filter(c => _csmTab==='done' ? csmIsDone(c) : !csmIsDone(c))
-    .filter(c => !_csmMonthOnly || (c.status==='active' && c.contractEnd && !csmIsDone(c) && !csmContactedInMonth(c,_csmMonth)))
+    .filter(c => !_csmMonthOnly || (c.status==='active' && c.contractEnd && !csmIsDone(c) && !csmFollowedInMonth(c,_csmMonth)))
     .filter(c => !_csmCond || (csmLatest(c) && csmLatest(c).condition===_csmCond))
     .filter(c => !_csmFollow || (csmLatest(c) && (csmLatest(c).follow||[]).includes(_csmFollow)))
     .filter(c=>matchNamePhone(c.name, c.phone, q))
@@ -4720,9 +4720,8 @@ function computeCsmReport(month){
   const activeSet=new Set(active.map(c=>c.id));
   const byAuthor={}, handled=new Set(), perClient={};
   clients.filter(c=>!c.deleted).forEach(c=>{
-    if((c.contactedAt||'').startsWith(month)) handled.add(c.id);   // 📞 "contacted this month" counts as handled (matches the CSM page)
     (c.csmNotes||[]).forEach(n=>{
-      if(!(n.date||'').startsWith(month)) return;             // observation dated in the month
+      if(!(n.date||'').startsWith(month)) return;             // "handled" = a real observation dated in the month (📞 alone doesn't count)
       handled.add(c.id);
       const a=n.author||'—';
       const ba=byAuthor[a]||(byAuthor[a]={author:a,count:0,clients:new Set(),cond:{},follow:{}});
