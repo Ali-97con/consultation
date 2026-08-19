@@ -4710,7 +4710,7 @@ let _reportMonth = null;
 function setReportMonth(v){ _reportMonth=v; renderCsmReportBody(); }
 function _topEntries(obj,n){ return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([k,v])=>`${esc(k)} (${v})`).join('، ')||'—'; }
 function computeCsmReport(month){
-  const active=clients.filter(c=>!c.deleted && c.status==='active' && !csmIsDone(c)); // active + ongoing contract
+  const active=clients.filter(c=>!c.deleted && c.status==='active' && c.contractEnd && !csmIsDone(c)); // active + ongoing contract (end date set, not passed)
   const activeSet=new Set(active.map(c=>c.id));
   const byAuthor={}, handled=new Set(), perClient={};
   clients.filter(c=>!c.deleted).forEach(c=>{
