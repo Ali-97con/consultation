@@ -4285,16 +4285,20 @@ function _payLabel(i){ return ['الدفعة الأولى','الدفعة الث�
 function updatePayFields() {
   const cntInp = $('m-paycount');
   if (cntInp) cntInp.style.display = ($('m-paymode') && $('m-paymode').value === 'multi') ? '' : 'none';
-  const price = _getModalPrice();
   const n = _modalN();
-  const inst = Math.round(price / n);
   const pf = $('pay-fields'); if (!pf) return;
+  // Preserve anything already typed so changing the count never wipes existing rows.
+  const prevA=[], prevD=[];
+  pf.querySelectorAll('input[id^="mp"]').forEach(el=>{
+    const mm=el.id.match(/^mp(\d+)(d?)$/); if(!mm) return;
+    const idx=+mm[1]-1; if(mm[2]==='d') prevD[idx]=el.value; else prevA[idx]=el.value;
+  });
   pf.innerHTML = Array.from({length:n}, (_, i) => `
     <div class="fr" style="margin-bottom:8px">
       <div class="fg"><label>${_payLabel(i)} (المبلغ)</label>
-        <input class="inp" id="mp${i+1}" type="number" value="${inst}" oninput="updateRemaining()"/></div>
+        <input class="inp" id="mp${i+1}" type="number" value="${prevA[i]!=null?prevA[i]:''}" oninput="updateRemaining()" placeholder="المبلغ"/></div>
       <div class="fg"><label>${_payLabel(i)} (التاريخ)</label>
-        <input class="inp" id="mp${i+1}d" type="date"/></div>
+        <input class="inp" id="mp${i+1}d" type="date" value="${prevD[i]!=null?prevD[i]:''}"/></div>
     </div>`).join('');
   updateRemaining();
 }
@@ -4314,6 +4318,7 @@ function openModal(id=null) {
   S.editId=id;
   $('modal-title').textContent = id ? t('modal_edit_title') : t('modal_add_title');
   switchTab(0);
+  if($('pay-fields')) $('pay-fields').innerHTML=''; // drop any leftover rows from a previous client
 
   // Populate closer/setter selects
   const mc=$('m-closer'), ms=$('m-setter');
