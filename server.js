@@ -98,6 +98,7 @@ function sanitizeClientBody(body) {
   const out = {};
   const fields = { name:200, phone:50, email:200, plan:100, paymentType:50, payMethod:50,
     status:50, closer:100, setter:100, channel:20, sex:10, regDate:30, contractEnd:30, csmStart:30, contactedAt:40, lastPayDate:30, notes:undefined,
+    payments:undefined,
     p1:undefined, p2:undefined, p3:undefined, p4:undefined,
     p1d:30, p2d:30, p3d:30, p4d:30,
     customTotal:undefined, discountType:50, discountValue:undefined, discountAmount:undefined,
@@ -105,6 +106,16 @@ function sanitizeClientBody(body) {
   for (const [k, maxLen] of Object.entries(fields)) {
     if (b[k] !== undefined) {
       if (k === 'notes') { out.notes = b.notes; continue; }
+      if (k === 'payments') {
+        // Array of installments [{amt,date}]; cap length and coerce each entry.
+        if (Array.isArray(b.payments)) {
+          out.payments = b.payments.slice(0, 60).map(p => ({
+            amt: Number(p && p.amt) || 0,
+            date: str((p && p.date) || '', 30) || '',
+          }));
+        }
+        continue;
+      }
       if (maxLen === undefined) { out[k] = b[k]; continue; }
       out[k] = str(b[k], maxLen);
     }

@@ -760,10 +760,14 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         </div>
         <div id="plan-manager"></div>
       </div>
-      <div class="fr"><div class="fg"><label>عدد الأقساط</label><select class="inp" id="m-paytype" onchange="updatePayFields()">
-        <option>دفعة واحدة</option><option>قسطين</option>
-        <option>3 أقساط</option><option>4 أقساط</option>
-      </select></div>
+      <div class="fr"><div class="fg"><label>عدد الأقساط</label>
+        <div style="display:flex;gap:8px">
+          <select class="inp" id="m-paymode" onchange="updatePayFields()" style="flex:1">
+            <option value="one">دفعة واحدة</option>
+            <option value="multi">أقساط متعددة</option>
+          </select>
+          <input class="inp" id="m-paycount" type="number" min="2" max="24" value="2" oninput="updatePayFields()" style="max-width:95px;display:none" title="عدد الأقساط" placeholder="العدد"/>
+        </div></div>
       <div class="fg">
         <label style="display:flex;align-items:center;justify-content:space-between">
           إجمالي المبلغ ($)
@@ -1536,11 +1540,17 @@ async function initApp() {
 
 // ═══════════════ UTILS ═══════════════
 const $  = id => document.getElementById(id);
-const fx = s  => s.p1 + s.p2 + s.p3 + s.p4;
+// Installments: new clients store an array `payments:[{amt,date},…]` (any length ≥1);
+// legacy clients still carry the flat p1..p4 fields. payList() normalises both to [[amt,date],…].
+function payList(s){
+  if(Array.isArray(s.payments)) return s.payments.map(p=>[+p.amt||0, p.date||'']);
+  return [[s.p1||0,s.p1d||''],[s.p2||0,s.p2d||''],[s.p3||0,s.p3d||''],[s.p4||0,s.p4d||'']];
+}
+const fx = s  => payList(s).reduce((t,[a])=>t+(+a||0),0);
 const fr = s  => s.status === 'refunded' ? 0 : Math.max(0, (s.customTotal||PLANS[s.plan]||0) - fx(s));
 // Net collected: refunded clients count as negative (their money was returned)
 const netFx = s => s.status === 'refunded' ? -fx(s) : fx(s);
-const nc = s  => PCNT[s.paymentType]||1;
+const nc = s  => Array.isArray(s.payments) ? Math.max(1, s.payments.length) : (PCNT[s.paymentType]||1);
 const ini = n => n.trim().split(' ').slice(0,2).map(w=>w[0]).join('');
 const col = i => COLORS[i % COLORS.length];
 // Client avatar: gendered emoji (👨/👩) when sex is set, else colored initials.
@@ -1613,7 +1623,7 @@ function pmBadge(m) {
 }
 
 function pdots(s) {
-  const n = nc(s), paid = [s.p1d,s.p2d,s.p3d,s.p4d];
+  const n = nc(s), paid = payList(s).map(p=>p[1]);
   const od = isOverdue(s);
   return Array.from({length:n},(_,i)=>
     `<div class="pd ${paid[i]?'pd-paid':od?'pd-od':'pd-pend'}" title="${paid[i]?t('dp_paid_badge'):t('dp_pending_badge')}"></div>`
@@ -1983,7 +1993,7 @@ function buildTrendChart(months) {
   const revData = slice.map(m => {
     let rev = 0;
     clients.forEach(c => {
-      [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([amt,dt]) => {
+      payList(c).forEach(([amt,dt]) => {
         if (dt && dt.startsWith(m.key)) rev += amt;
       });
     });
@@ -2326,7 +2336,7 @@ function renderIncomeDetail(month, sortKey, sortDir) {
   if (sel && sel.value !== month) sel.value = month;
   const payments = [];
   clients.filter(c => !c.deleted).forEach(c => {
-    const allDates = [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]];
+    const allDates = payList(c);
     allDates.forEach(([amt,date],i) => {
       if (amt > 0 && date && date.startsWith(month))
         payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates });
@@ -2431,7 +2441,7 @@ function renderTeamIncomeDetail(month) {
 
   const closerTotals = {}, setterTotals = {};
   clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
-    [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([amt,date]) => {
+    payList(c).forEach(([amt,date]) => {
       if (amt > 0 && date && date.startsWith(month)) {
         if (c.closer) closerTotals[c.closer] = (closerTotals[c.closer]||0) + amt;
         if (c.setter) setterTotals[c.setter] = (setterTotals[c.setter]||0) + amt;
@@ -2505,7 +2515,7 @@ function renderAnalytics() {
   });
 
   const months12 = getLast12Months();
-  const monthlyRev  = months12.map(m=>{ let r=0; aClients.forEach(c=>{ [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([a,d])=>{ if(d&&d.startsWith(m.key)) r+=a; }); }); return r; });
+  const monthlyRev  = months12.map(m=>{ let r=0; aClients.forEach(c=>{ payList(c).forEach(([a,d])=>{ if(d&&d.startsWith(m.key)) r+=a; }); }); return r; });
   const monthlyNew  = months12.map(m=>aClients.filter(c=>c.regDate&&c.regDate.startsWith(m.key)).length);
 
   const totalExp = aClients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+(c.customTotal||PLANS[c.plan]||0),0);
@@ -2935,7 +2945,7 @@ function buildCommMonthOptions(){
     months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
   }
   const payCount = {};
-  clients.forEach(c => [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([a,dt]) => {
+  clients.forEach(c => payList(c).forEach(([a,dt]) => {
     if (a > 0 && dt) { const ym = dt.slice(0,7); payCount[ym] = (payCount[ym]||0)+1; }
   }));
   return `<option value="">${LANG==='ar'?'كل الشهور':'All Months'}</option>`
@@ -2947,7 +2957,7 @@ function computeCommissions(month){
   const get = n => people[n] || (people[n] = { name:n, asSetter:0, asCloser:0, combined:0, cset:new Set() });
   // Only clients with an explicit channel (i.e. the new ones) count toward commissions.
   clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel === 'inbound' || c.channel === 'outbound')).forEach(c => {
-    const collected = [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]]
+    const collected = payList(c)
       .filter(([a,dt]) => a > 0 && dt && (!month || dt.startsWith(month)))
       .reduce((s,[a]) => s + a, 0);
     if (collected <= 0) return;
@@ -2966,7 +2976,7 @@ function computeCommissions(month){
 function renderCommissions(){
   if (_commMonth === null) {
     const ms = [];
-    clients.forEach(c => [c.p1d,c.p2d,c.p3d,c.p4d].forEach(dt => { if (dt) ms.push(dt.slice(0,7)); }));
+    clients.forEach(c => payList(c).forEach(([,dt]) => { if (dt) ms.push(dt.slice(0,7)); }));
     _commMonth = ms.length ? ms.sort().reverse()[0] : '';
   }
   const people = computeCommissions(_commMonth);
@@ -2978,7 +2988,7 @@ function renderCommissions(){
   // Gross team figures: cash collected in the month (by payment date) + total plan value sold (by registration month)
   let cashCollected = 0, expectedPlans = 0;
   clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel === 'inbound' || c.channel === 'outbound')).forEach(c => {
-    [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([a,d]) => {
+    payList(c).forEach(([a,d]) => {
       if (a > 0 && d && (!_commMonth || d.startsWith(_commMonth))) cashCollected += a;
     });
     if (c.status !== 'lead' && (!_commMonth || (c.regDate||'').startsWith(_commMonth))) {
@@ -3054,7 +3064,7 @@ function memberLineItems(name){
   clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel === 'inbound' || c.channel === 'outbound')).forEach(c => {
     const isSetter = c.setter === name, isCloser = c.closer === name;
     if (!isSetter && !isCloser) return;
-    const pays = [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].filter(([a,d]) => a > 0 && d);
+    const pays = payList(c).filter(([a,d]) => a > 0 && d);
     pays.forEach(([amt,date]) => {
       if (c.channel === 'inbound' && c.setter === c.closer && c.setter === name) {
         items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, role:'combined', rate:COMM_RATES.inbound.combined, comm:amt*COMM_RATES.inbound.combined });
@@ -3077,7 +3087,7 @@ function openCommDetail(name, month){
   let collected = 0;
   clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel==='inbound'||c.channel==='outbound')).forEach(c => {
     if (c.setter !== name && c.closer !== name) return;
-    [[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]].forEach(([a,d]) => {
+    payList(c).forEach(([a,d]) => {
       if (a > 0 && d && (!month || d.startsWith(month))) collected += a;
     });
   });
@@ -3717,7 +3727,7 @@ function quickSaveField(id, field, value){
 function openDetail(id) {
   const c = clients.find(x=>x.id===id);
   if (!c) return;
-  const n = nc(c), pAmts=[c.p1,c.p2,c.p3,c.p4], pDates=[c.p1d,c.p2d,c.p3d,c.p4d];
+  const _pl=payList(c), n = nc(c), pAmts=_pl.map(p=>p[0]), pDates=_pl.map(p=>p[1]);
   const instAmt = Math.round((c.customTotal||PLANS[c.plan]||0)/n);
 
   // Clean profile: unset fields show "غير محدد"; sex/dates are editable inline (admin/coach)
@@ -4264,17 +4274,26 @@ function toggleCustomPrice() {
   updatePayFields(); updateRemaining();
 }
 
+// Chosen installment count in the modal: 1 for "دفعة واحدة", else the typed number (2..24).
+function _modalN(){
+  const mode = $('m-paymode') ? $('m-paymode').value : 'one';
+  if (mode === 'one') return 1;
+  return Math.max(2, Math.min(24, Math.round(+($('m-paycount') && $('m-paycount').value) || 2)));
+}
+function _payLabel(i){ return ['الدفعة الأولى','الدفعة الثانية','الدفعة الثالثة','الدفعة الرابعة'][i] || `الدفعة ${i+1}`; }
+
 function updatePayFields() {
+  const cntInp = $('m-paycount');
+  if (cntInp) cntInp.style.display = ($('m-paymode') && $('m-paymode').value === 'multi') ? '' : 'none';
   const price = _getModalPrice();
-  const pt = $('m-paytype').value, n = PCNT[pt] || 1;
+  const n = _modalN();
   const inst = Math.round(price / n);
   const pf = $('pay-fields'); if (!pf) return;
-  const labels = ['الدفعة الأولى','الدفعة الثانية','الدفعة الثالثة','الدفعة الرابعة'];
   pf.innerHTML = Array.from({length:n}, (_, i) => `
     <div class="fr" style="margin-bottom:8px">
-      <div class="fg"><label>${labels[i]} (المبلغ)</label>
+      <div class="fg"><label>${_payLabel(i)} (المبلغ)</label>
         <input class="inp" id="mp${i+1}" type="number" value="${inst}" oninput="updateRemaining()"/></div>
-      <div class="fg"><label>${labels[i]} (التاريخ)</label>
+      <div class="fg"><label>${_payLabel(i)} (التاريخ)</label>
         <input class="inp" id="mp${i+1}d" type="date"/></div>
     </div>`).join('');
   updateRemaining();
@@ -4282,8 +4301,7 @@ function updatePayFields() {
 
 function updateRemaining() {
   const price = _getModalPrice();
-  const pt = $('m-paytype') ? $('m-paytype').value : 'دفعة واحدة';
-  const n = PCNT[pt] || 1;
+  const n = _modalN();
   let paid = 0;
   for (let i = 1; i <= n; i++) {
     const el = $(`mp${i}`);
@@ -4314,7 +4332,9 @@ function openModal(id=null) {
     // If client has a custom plan not in PLANS, re-add it so the select can show it
     if (c.plan && !PLANS[c.plan]) { PLANS[c.plan]=c.customTotal||0; rebuildPlanSelect(c.plan); }
     else $('m-plan').value=c.plan;
-    $('m-paytype').value=c.paymentType;
+    const _pl=payList(c), _n=nc(c);
+    if($('m-paymode')) $('m-paymode').value = _n>1 ? 'multi' : 'one';
+    if($('m-paycount')) $('m-paycount').value = _n>1 ? _n : 2;
     if($('m-paymethod')) $('m-paymethod').value=c.payMethod||'Zina';
     updatePlanPrice();
     // Restore discount fields
@@ -4328,11 +4348,9 @@ function openModal(id=null) {
       if(inp){inp.readOnly=false;inp.classList.remove('inp-ro');inp.value=c.customTotal;if(lbl)lbl.textContent='🔒 قفل السعر';}
     }
     updatePayFields();
-    const vals=[c.p1,c.p2,c.p3,c.p4], dates=[c.p1d,c.p2d,c.p3d,c.p4d];
-    const n=PCNT[c.paymentType]||1;
-    for(let i=1;i<=n;i++){
+    for(let i=1;i<=_n;i++){
       const va=document.getElementById(`mp${i}`), da=document.getElementById(`mp${i}d`);
-      if(va) va.value=vals[i-1]||0; if(da) da.value=dates[i-1]||'';
+      if(va) va.value=(_pl[i-1]&&_pl[i-1][0])||0; if(da) da.value=(_pl[i-1]&&_pl[i-1][1])||'';
     }
     $('m-closer').value=c.closer; $('m-setter').value=c.setter;
     if($('m-channel')) $('m-channel').value=c.channel||'outbound';
@@ -4341,7 +4359,8 @@ function openModal(id=null) {
     $('m-notes').value=c.notes.map(n=>n.txt).join('\n');
   } else {
     ['m-name','m-phone','m-email','m-notes'].forEach(id=>{if($(id))$(id).value='';});
-    $('m-status').value='lead'; $('m-plan').value='CORE'; $('m-paytype').value='دفعة واحدة';
+    $('m-status').value='lead'; $('m-plan').value='CORE';
+    if($('m-paymode')) $('m-paymode').value='one'; if($('m-paycount')) $('m-paycount').value=2;
     if($('m-channel')) $('m-channel').value='outbound';
     if($('m-sex')) $('m-sex').value='';
     if($('m-contract-end')) $('m-contract-end').value='';
@@ -4366,12 +4385,14 @@ function closeModal() { $('modal').classList.remove('on'); S.editId=null; }
 async function saveClient() {
   const name=$('m-name').value.trim(), phone=$('m-phone').value.trim();
   if(!name||!phone){toast(LANG==='ar'?'الاسم والهاتف مطلوبان':'Name and phone are required','⚠️');return;}
-  const plan=$('m-plan').value, pt=$('m-paytype').value, n=PCNT[pt]||1;
-  const pv=[0,0,0,0], pd=['','','',''];
+  const plan=$('m-plan').value, n=_modalN();
+  const pv=[], pd=[];
   for(let i=0;i<n;i++){
     const va=document.getElementById(`mp${i+1}`), da=document.getElementById(`mp${i+1}d`);
-    if(va) pv[i]=+va.value||0; if(da) pd[i]=da.value||'';
+    pv[i]=va?(+va.value||0):0; pd[i]=da?(da.value||''):'';
   }
+  const payments = pv.map((a,i)=>({amt:a, date:pd[i]||''}));
+  const pt = n===1?'دفعة واحدة':n===2?'قسطين':n===3?'3 أقساط':n===4?'4 أقساط':`${n} أقساط`;
   const customPrice = $('m-total') ? (+$('m-total').value || PLANS[plan] || 0) : (PLANS[plan] || 0);
   const discTypeEl = $('m-disc-type'), discValEl = $('m-disc-val');
   const discType = discTypeEl ? discTypeEl.value : 'none';
@@ -4388,7 +4409,8 @@ async function saveClient() {
     discountValue: discVal,
     discountAmount: discAmount,
     payMethod:$('m-paymethod')?$('m-paymethod').value:'Zina',
-    p1:pv[0],p1d:pd[0],p2:pv[1],p2d:pd[1],p3:pv[2],p3d:pd[2],p4:pv[3],p4d:pd[3],
+    payments,
+    p1:pv[0]||0,p1d:pd[0]||'',p2:pv[1]||0,p2d:pd[1]||'',p3:pv[2]||0,p3d:pd[2]||'',p4:pv[3]||0,p4d:pd[3]||'',
     closer:$('m-closer').value, setter:$('m-setter').value,
     channel:$('m-channel')?$('m-channel').value:'outbound',
     sex:$('m-sex')?$('m-sex').value:'',
@@ -4882,7 +4904,7 @@ function prevMonth(ym){ const [y,m]=ym.split('-').map(Number); const d=new Date(
 function insMemberStats(name, month){
   let collectedCloser=0, collectedSetter=0, newAsCloser=0, newAsSetter=0, contractClosed=0;
   clients.filter(c=>!c.deleted && c.status!=='refunded').forEach(c=>{
-    const col=[[c.p1,c.p1d],[c.p2,c.p2d],[c.p3,c.p3d],[c.p4,c.p4d]]
+    const col=payList(c)
       .filter(([a,d])=>a>0&&d&&d.startsWith(month)).reduce((s,[a])=>s+a,0);
     if(c.closer===name) collectedCloser+=col;
     if(c.setter===name) collectedSetter+=col;
