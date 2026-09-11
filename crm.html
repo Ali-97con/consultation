@@ -4503,15 +4503,19 @@ let _csmTab = 'active'; // 'active' = contract not finished, 'done' = contract e
 let _csmCond = '';      // filter by latest condition
 let _csmFollow = '';    // filter by latest follow-up type
 let _csmMonth = new Date().toISOString().slice(0,7);  // selected month for coverage
-let _csmMonthOnly = false;                            // show only "not contacted this month"
+let _csmMonthScope = '';                              // '' = all · 'none' = not followed this month · 'done' = followed this month
+let _csmPlan = '';                                    // '' = all plans · 'CORE' | 'PREMIUM' | 'INNER' (tier)
 function setCsmSearch(v){ _csmSearch = v; renderCsm(); const el=$('csm-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
 function setCsmTab(v){ _csmTab = v; renderCsm(); }
 function setCsmCond(v){ _csmCond = v; renderCsm(); }
 function setCsmFollow(v){ _csmFollow = v; renderCsm(); }
 let _csmKpi = ''; // active KPI quick-filter
 function setCsmMonth(v){ _csmMonth = v; renderCsm(); }
-function setCsmMonthOnly(v){ _csmMonthOnly = (v==='none'); renderCsm(); }
+function setCsmMonthScope(v){ _csmMonthScope = v; renderCsm(); }
+function setCsmPlan(v){ _csmPlan = v; renderCsm(); }
 function setCsmKpi(k){ _csmKpi = (_csmKpi===k ? '' : k); renderCsm(); }
+// Plan-tier match: '' = all; 'CORE' catches CORE/CORE+, 'PREMIUM' catches PREMIUM/4299/5000, 'INNER' catches INNER CIRCLE.
+function planTierMatch(plan, tier){ return !tier || (plan||'').toUpperCase().includes(tier); }
 function csmMonthLabel(m){ return m==='all' ? 'كل الشهور' : monthLabel(m); }
 function csmFollowedInMonth(c, month){                            // real observation only (📞 alone doesn't count)
   if(month==='all') return (c.csmNotes||[]).length>0;
@@ -4564,7 +4568,7 @@ function condBadge(cond){
 }
 
 function renderCsm(){
-  const list = clients.filter(c=>!c.deleted);
+  const list = clients.filter(c=>!c.deleted && planTierMatch(c.plan,_csmPlan));
   // KPIs are computed on ACTIVE clients with an ONGOING contract (has an end date, not passed)
   const base = list.filter(c=>c.status==='active' && c.contractEnd && !csmIsDone(c));
   const has = (c,f)=>{ const l=csmLatest(c); return l && (l.follow||[]).includes(f); };
@@ -4593,7 +4597,11 @@ function renderCsm(){
     ? base.filter(c=>csmKpiFilter(c,_csmKpi,_csmMonth)).filter(c=>matchNamePhone(c.name,c.phone,q))
     : list
         .filter(c => _csmTab==='done' ? csmIsDone(c) : !csmIsDone(c))
-        .filter(c => !_csmMonthOnly || (c.status==='active' && c.contractEnd && !csmIsDone(c) && !csmFollowedInMonth(c,_csmMonth)))
+        .filter(c => {
+          if(_csmMonthScope==='none') return c.status==='active' && c.contractEnd && !csmIsDone(c) && !csmFollowedInMonth(c,_csmMonth);
+          if(_csmMonthScope==='done') return csmFollowedInMonth(c,_csmMonth);
+          return true;
+        })
         .filter(c => !_csmCond || (csmLatest(c) && csmLatest(c).condition===_csmCond))
         .filter(c => !_csmFollow || (csmLatest(c) && (csmLatest(c).follow||[]).includes(_csmFollow)))
         .filter(c=>matchNamePhone(c.name, c.phone, q));
@@ -4615,7 +4623,8 @@ function renderCsm(){
     ${_csmKpi?`<span style="font-size:11.5px;background:var(--pbg);color:var(--p2);padding:4px 11px;border-radius:20px;cursor:pointer;font-weight:600" onclick="setCsmKpi('${_csmKpi}')">✕ فلتر: ${esc((kpis.find(k=>k.k===_csmKpi)||{}).l||'')}</span>`:''}
     <input class="inp" id="csm-search" style="max-width:200px" placeholder="🔍 بحث بالاسم أو الهاتف..." value="${esc(_csmSearch)}" oninput="setCsmSearch(this.value)"/>
     <select class="fsl" onchange="setCsmMonth(this.value)" style="min-width:120px" title="شهر التغطية">${months.map(m=>`<option value="${m}"${m===_csmMonth?' selected':''}>${csmMonthLabel(m)}</option>`).join('')}</select>
-    <select class="fsl" onchange="setCsmMonthOnly(this.value)" style="min-width:150px"><option value="all"${!_csmMonthOnly?' selected':''}>كل العملاء</option><option value="none"${_csmMonthOnly?' selected':''}>بدون متابعة هذا الشهر</option></select>
+    <select class="fsl" onchange="setCsmMonthScope(this.value)" style="min-width:170px" title="حسب متابعة الشهر المختار">${[['','كل العملاء'],['done','تمت متابعتهم هذا الشهر'],['none','بدون متابعة هذا الشهر']].map(([v,l])=>`<option value="${v}"${_csmMonthScope===v?' selected':''}>${l}</option>`).join('')}</select>
+    <select class="fsl" onchange="setCsmPlan(this.value)" style="min-width:120px" title="الباقة">${[['','كل الباقات'],['CORE','CORE'],['PREMIUM','PREMIUM'],['INNER','INNER']].map(([v,l])=>`<option value="${v}"${_csmPlan===v?' selected':''}>${l}</option>`).join('')}</select>
     <select class="fsl" onchange="setCsmCond(this.value)" style="min-width:110px"><option value="">كل الحالات</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}"${o===_csmCond?' selected':''}>${esc(o)}</option>`).join('')}</select>
     <select class="fsl" onchange="setCsmFollow(this.value)" style="min-width:130px"><option value="">كل المتابعات</option>${CSM_OPTS.follows.map(o=>`<option value="${esc(o)}"${o===_csmFollow?' selected':''}>${esc(o)}</option>`).join('')}</select>
     <span style="font-size:12px;color:var(--t3)">${rows.length} عميل</span>
