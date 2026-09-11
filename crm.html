@@ -1418,7 +1418,7 @@ function renderActivityFeed() {
 }
 
 // ═══════════════ STATE ═══════════════
-const S = { view:'overview', sortK:'name', sortD:1, sel:new Set(), page:1, pp:10, charts:{}, editId:null, activeTab:0, analyticsMonth:'', hiddenCols:new Set() };
+const S = { view:'overview', sortK:'name', sortD:1, sel:new Set(), page:1, pp:10, charts:{}, editId:null, activeTab:0, analyticsMonth:'', analyticsPlan:'', hiddenCols:new Set() };
 
 function isCoach() {
   try { return sessionStorage.getItem('ah97_role') === 'coach'; } catch(_) { return false; }
@@ -2337,6 +2337,9 @@ const STAGES=[
 
 // ═══════════════ ANALYTICS ═══════════════
 function setAnalyticsMonth(val) { S.analyticsMonth = val; renderAnalytics(); }
+function setAnalyticsPlan(val)  { S.analyticsPlan  = val; renderAnalytics(); }
+// Tier match: '' = all; 'CORE' catches CORE/CORE+, 'PREMIUM' catches PREMIUM/4299/5000, 'INNER' catches INNER CIRCLE.
+function planTierMatch(plan, tier){ return !tier || (plan||'').toUpperCase().includes(tier); }
 
 function renderIncomeDetail(month, sortKey, sortDir) {
   if (sortKey !== undefined) localStorage.setItem('income_sort_key', sortKey);
@@ -2346,7 +2349,7 @@ function renderIncomeDetail(month, sortKey, sortDir) {
   const sel = document.getElementById('income-month-sel');
   if (sel && sel.value !== month) sel.value = month;
   const payments = [];
-  clients.filter(c => !c.deleted).forEach(c => {
+  clients.filter(c => !c.deleted && planTierMatch(c.plan, S.analyticsPlan)).forEach(c => {
     const allDates = payList(c);
     allDates.forEach(([amt,date],i) => {
       if (amt > 0 && date && date.startsWith(month))
@@ -2451,7 +2454,7 @@ function renderTeamIncomeDetail(month) {
   if (!wrap) return;
 
   const closerTotals = {}, setterTotals = {};
-  clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
+  clients.filter(c => !c.deleted && c.status !== 'refunded' && planTierMatch(c.plan, S.analyticsPlan)).forEach(c => {
     payList(c).forEach(([amt,date]) => {
       if (amt > 0 && date && date.startsWith(month)) {
         if (c.closer) closerTotals[c.closer] = (closerTotals[c.closer]||0) + amt;
@@ -2495,8 +2498,8 @@ function renderTeamIncomeDetail(month) {
 }
 
 function renderAnalytics() {
-  const mo = S.analyticsMonth;
-  const aClients = mo ? clients.filter(c=>(c.regDate||'').startsWith(mo)) : clients;
+  const mo = S.analyticsMonth, pl = S.analyticsPlan;
+  const aClients = clients.filter(c=> (!mo || (c.regDate||'').startsWith(mo)) && planTierMatch(c.plan, pl));
 
   // ─── aggregations ───
   const planKeys = Object.keys(PLANS);
@@ -2538,6 +2541,9 @@ function renderAnalytics() {
 
   // ─── month selector options ───
   const now = new Date();
+  // The "names" lists (income received / team income) follow the main month filter;
+  // when "all months" is selected they default to the current month.
+  const incomeInitYm = mo || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const moOptions = Array.from({length:12},(_,i)=>{
     const d = new Date(now.getFullYear(), now.getMonth()-11+i, 1);
     const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -2560,6 +2566,10 @@ function renderAnalytics() {
       <select class="fsl" style="min-width:180px" onchange="setAnalyticsMonth(this.value)">
         <option value=""${!mo?' selected':''}>${LANG==='ar'?'كل الأشهر':'All Months'} (${clients.length})</option>
         ${moOptions}
+      </select>
+      <span style="font-size:13px;font-weight:600;color:var(--t1)">${LANG==='ar'?'الباقة:':'Plan:'}</span>
+      <select class="fsl" style="min-width:140px" onchange="setAnalyticsPlan(this.value)">
+        ${[['',LANG==='ar'?'كل الباقات':'All Plans'],['CORE','CORE'],['PREMIUM','PREMIUM'],['INNER','INNER']].map(([v,l])=>`<option value="${v}"${pl===v?' selected':''}>${l}</option>`).join('')}
       </select>
       ${mo?`<span style="font-size:12px;color:var(--p2);font-weight:600">● ${aClients.length} ${LANG==='ar'?'عميل في هذا الشهر':'clients this month'}</span>`:''}
       ${mo?`<button class="btn btn-g" style="padding:4px 12px;font-size:12px" onclick="setAnalyticsMonth('')">${LANG==='ar'?'↩ كل الأشهر':'↩ All Months'}</button>`:''}
@@ -2595,7 +2605,7 @@ function renderAnalytics() {
             const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
             const loc=LANG==='ar'?'ar-SA-u-nu-latn':'en-US';
             const lbl=d.toLocaleDateString(loc,{month:'long',year:'numeric'});
-            const sel=i===11?' selected':'';
+            const sel=ym===incomeInitYm?' selected':'';
             return `<option value="${ym}"${sel}>${lbl}</option>`;
           }).join('')}
         </select>
@@ -2662,7 +2672,7 @@ function renderAnalytics() {
           const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
           const loc=LANG==='ar'?'ar-SA-u-nu-latn':'en-US';
           const lbl=d.toLocaleDateString(loc,{month:'long',year:'numeric'});
-          return `<option value="${ym}"${i===11?' selected':''}>${lbl}</option>`;
+          return `<option value="${ym}"${ym===incomeInitYm?' selected':''}>${lbl}</option>`;
         }).join('')}
       </select>
     </div>
@@ -2678,9 +2688,8 @@ function renderAnalytics() {
   </div>`;
 
   // init income detail with current month
-  const initMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  renderIncomeDetail(initMonth);
-  renderTeamIncomeDetail(initMonth);
+  renderIncomeDetail(incomeInitYm);
+  renderTeamIncomeDetail(incomeInitYm);
 
   setTimeout(()=>{
     const mnLbls = months12.map(m=>m.label);
