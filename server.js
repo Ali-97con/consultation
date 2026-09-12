@@ -271,9 +271,10 @@ app.get('/api/csm/options', requireCsmOrAdmin, async (_req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+const CSM_OPT_KINDS = ['condition', 'follow', 'phone_condition', 'phone_follow'];
 app.post('/api/csm/options', requireCsmOrAdmin, async (req, res) => {
   try {
-    const kind = req.body.kind === 'follow' ? 'follow' : 'condition';
+    const kind = CSM_OPT_KINDS.includes(req.body.kind) ? req.body.kind : 'condition';
     const label = str(req.body.label, 80);
     if (!label) return res.status(400).json({ error: 'القيمة مطلوبة' });
     await addCsmOption(kind, label);
@@ -288,7 +289,7 @@ app.post('/api/csm/ensure-follow-start', requireAdmin, async (_req, res) => {
 
 app.delete('/api/csm/options/:kind/:label', requireCsmOrAdmin, async (req, res) => {
   try {
-    const kind = req.params.kind === 'follow' ? 'follow' : 'condition';
+    const kind = CSM_OPT_KINDS.includes(req.params.kind) ? req.params.kind : 'condition';
     await deleteCsmOption(kind, decodeURIComponent(req.params.label));
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }

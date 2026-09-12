@@ -1464,7 +1464,7 @@ async function reloadClients() {
   try { clients = await api('GET', '/api/clients'); if($('cnt-badge')) $('cnt-badge').textContent = clients.length; } catch(_) {}
 }
 // CSM option lists, loaded from the server (admin + csm)
-let CSM_OPTS = { conditions: [], follows: [] };
+let CSM_OPTS = { conditions: [], follows: [], phoneConditions: [], phoneFollows: [] };
 
 function applyCsmRestrictions() {
   if (!isCsm()) return;
@@ -4734,8 +4734,12 @@ function csmEntryHtml(id,n){
 }
 
 let _editingCsm = null; // entry id currently being edited
-function openCsmDetail(id){
+let _csmDetailPhone = false;   // whether the follow-up modal is in phone-CSM context (call/upgrade options)
+function openCsmDetail(id, phone=false){
   const c=clients.find(x=>x.id===id); if(!c) return;
+  _csmDetailPhone = !!phone;
+  const condOpts = _csmDetailPhone ? CSM_OPTS.phoneConditions : CSM_OPTS.conditions;
+  const followOpts = _csmDetailPhone ? CSM_OPTS.phoneFollows : CSM_OPTS.follows;
   _editingCsm = null;
   const notes=(c.csmNotes||[]).slice().sort((a,b)=>(b.date||b.createdAt||'').localeCompare(a.date||a.createdAt||''));
   const today=new Date().toISOString().split('T')[0];
@@ -4753,9 +4757,9 @@ function openCsmDetail(id){
     <div class="card" style="padding:14px;margin-bottom:16px">
       <div style="font-size:12px;font-weight:700;margin-bottom:10px">➕ إضافة متابعة</div>
       <div class="fr"><div class="fg"><label>التاريخ</label><input class="inp" id="csm-f-date" type="date" value="${today}"/></div>
-      <div class="fg"><label>الحالة</label><select class="inp" id="csm-f-cond"><option value="">—</option>${CSM_OPTS.conditions.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div></div>
-      <div class="fg" style="margin-top:10px"><label>المتابعة (يمكن اختيار أكثر من واحد)</label>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${CSM_OPTS.follows.map(o=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;background:var(--hv);border:1px solid var(--b1);padding:5px 9px;border-radius:8px;cursor:pointer"><input type="checkbox" class="csm-f-follow" value="${esc(o)}"/> ${esc(o)}</label>`).join('')}</div>
+      <div class="fg"><label>${_csmDetailPhone?'نتيجة الاتصال':'الحالة'}</label><select class="inp" id="csm-f-cond"><option value="">—</option>${condOpts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div></div>
+      <div class="fg" style="margin-top:10px"><label>${_csmDetailPhone?'النية / الترقية (يمكن اختيار أكثر من واحد)':'المتابعة (يمكن اختيار أكثر من واحد)'}</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${followOpts.map(o=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;background:var(--hv);border:1px solid var(--b1);padding:5px 9px;border-radius:8px;cursor:pointer"><input type="checkbox" class="csm-f-follow" value="${esc(o)}"/> ${esc(o)}</label>`).join('')}</div>
       </div>
       <div class="fg" style="margin-top:10px"><label>ملاحظة</label><textarea class="inp" id="csm-f-note" rows="3" placeholder="ماذا قال / ما رأينا..."></textarea></div>
       <div style="display:flex;gap:8px;margin-top:12px">
@@ -4782,7 +4786,7 @@ function startEditCsm(id, entryId){
   const cb=$('csm-cancel-btn'); if(cb) cb.style.display='';
   const f=$('csm-f-date'); if(f) f.scrollIntoView({behavior:'smooth',block:'center'});
 }
-function cancelEditCsm(id){ _editingCsm=null; openCsmDetail(id); }
+function cancelEditCsm(id){ _editingCsm=null; openCsmDetail(id, _csmDetailPhone); }
 
 function addCsmEntry(id){
   const c=clients.find(x=>x.id===id); if(!c) return;
@@ -4795,14 +4799,14 @@ function addCsmEntry(id){
     if(n){ n.date=date; n.condition=cond; n.follow=follow; n.text=text; }
     _editingCsm=null;
     api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
-    openCsmDetail(id);
+    openCsmDetail(id, _csmDetailPhone);
     toast('تم تحديث المتابعة','✅');
     return;
   }
   const entry={ id:Date.now(), date, condition:cond, follow, text, author:sessionStorage.getItem('ah97_user')||'', createdAt:new Date().toISOString() };
   c.csmNotes=[...(c.csmNotes||[]), entry];
   api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
-  openCsmDetail(id);
+  openCsmDetail(id, _csmDetailPhone);
   updateNotifBadge();   // follow-up reminder anchor moved → its notification clears
   toast('تم حفظ المتابعة','✅');
 }
@@ -4811,35 +4815,45 @@ function delCsmEntry(id,entryId){
   if(!confirm('حذف هذه المتابعة؟')) return;
   c.csmNotes=(c.csmNotes||[]).filter(n=>n.id!==entryId);
   api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>console.error(e));
-  openCsmDetail(id);
+  openCsmDetail(id, _csmDetailPhone);
 }
 function closeCsmDetail(){ $('csm-mo').classList.remove('on'); updateNotifBadge(); if(S.view==='csm') renderCsm(); else if(S.view==='notifs') renderNotifs(); }
 
 // CSM option lists management
-function openCsmOpts(){
+let _csmOptsPhone = false;
+function openCsmOpts(phone=false){
+  _csmOptsPhone = !!phone;
   const block=(kind,title,arr)=>`
     <div style="margin-bottom:18px">
       <div style="font-size:12px;font-weight:700;margin-bottom:8px">${title}</div>
       ${arr.map(o=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--b1)"><span style="flex:1;font-size:13px">${esc(o)}</span><button class="btn btn-r" style="padding:3px 8px;font-size:11px" onclick="delCsmOpt('${kind}','${esc(o)}')">🗑️</button></div>`).join('')||'<div style="color:var(--t3);font-size:12px">—</div>'}
       <div style="display:flex;gap:6px;margin-top:8px"><input class="inp" id="csm-opt-new-${kind}" placeholder="إضافة..." style="flex:1" onkeydown="if(event.key==='Enter')addCsmOpt('${kind}')"/><button class="btn btn-p" onclick="addCsmOpt('${kind}')">➕</button></div>
     </div>`;
-  $('csm-opts-body').innerHTML = block('condition','الحالات (Conditions)',CSM_OPTS.conditions)+block('follow','أنواع المتابعة (Follow types)',CSM_OPTS.follows);
+  $('csm-opts-body').innerHTML = _csmOptsPhone
+    ? block('phone_condition','نتيجة الاتصال',CSM_OPTS.phoneConditions)+block('phone_follow','النية / الترقية',CSM_OPTS.phoneFollows)
+    : block('condition','الحالات (Conditions)',CSM_OPTS.conditions)+block('follow','أنواع المتابعة (Follow types)',CSM_OPTS.follows);
   $('csm-opts-mo').classList.add('on');
+}
+function csmOptArr(kind){
+  return kind==='follow' ? CSM_OPTS.follows
+    : kind==='phone_condition' ? CSM_OPTS.phoneConditions
+    : kind==='phone_follow' ? CSM_OPTS.phoneFollows
+    : CSM_OPTS.conditions;
 }
 function addCsmOpt(kind){
   const inp=$('csm-opt-new-'+kind); const label=(inp&&inp.value||'').trim();
   if(!label) return;
-  const arr = kind==='follow'?CSM_OPTS.follows:CSM_OPTS.conditions;
+  const arr = csmOptArr(kind);
   if(arr.includes(label)){ toast('موجود مسبقاً','⚠️'); return; }
   arr.push(label);
   api('POST','/api/csm/options',{kind,label}).catch(e=>console.error(e));
-  openCsmOpts();
+  openCsmOpts(_csmOptsPhone);
 }
 function delCsmOpt(kind,label){
-  const arr = kind==='follow'?CSM_OPTS.follows:CSM_OPTS.conditions;
+  const arr = csmOptArr(kind);
   const i=arr.indexOf(label); if(i>-1) arr.splice(i,1);
   api('DELETE',`/api/csm/options/${kind}/${encodeURIComponent(label)}`).catch(e=>console.error(e));
-  openCsmOpts();
+  openCsmOpts(_csmOptsPhone);
 }
 function closeCsmOpts(){ $('csm-opts-mo').classList.remove('on'); }
 
@@ -4984,8 +4998,13 @@ function exportCsmPdf(id){
 }
 
 // ═══════════════ PHONE-CSM: broad client list ═══════════════
-let _pcSearch = '';
+let _pcSearch = '', _pcMonth = new Date().toISOString().slice(0,7), _pcPlan = '', _pcScope = '';
 function setPcSearch(v){ _pcSearch = v; renderPhoneClients(); const el=$('pc-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
+function setPcMonth(v){ _pcMonth = v; renderPhoneClients(); }
+function setPcPlan(v){ _pcPlan = (_pcPlan===v ? '' : v); renderPhoneClients(); }
+function setPcScope(v){ _pcScope = (_pcScope===v ? '' : v); renderPhoneClients(); }
+const PC_WANT_UPGRADE = 'يريد ترقية';
+function pcWantsUpgrade(c){ const l=csmLatest(c); return !!l && (l.follow||[]).includes(PC_WANT_UPGRADE); }
 function nextTierPlan(plan){
   const t = planTier(plan);
   if(t==='CORE') return 'PREMIUM';
@@ -4994,15 +5013,43 @@ function nextTierPlan(plan){
 }
 function renderPhoneClients(){
   const q = _pcSearch.trim().toLowerCase();
-  const list = clients.filter(c=>!c.deleted)
-    .filter(c => matchNamePhone(c.name, c.phone, q) || (c.email||'').toLowerCase().includes(q))
-    .sort((a,b)=> (a.name||'').localeCompare(b.name||''));
   const sexLbl = s => s==='male'?'ذكر':s==='female'?'أنثى':'—';
   const th = (x,extra='')=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'};${extra}">`;
-  const rows = list.length ? list.map(c=>{
+  // search-filtered set (plan KPIs count on this so they always show totals)
+  const searchList = clients.filter(c=>!c.deleted).filter(c => matchNamePhone(c.name, c.phone, q) || (c.email||'').toLowerCase().includes(q));
+  const base = searchList.filter(c => planTierMatch(c.plan, _pcPlan));
+  const followedM = base.filter(c => csmFollowedInMonth(c, _pcMonth)).length;
+  const kFig = {
+    all: base.length,
+    core: searchList.filter(c=>planTier(c.plan)==='CORE').length,
+    premium: searchList.filter(c=>planTier(c.plan)==='PREMIUM').length,
+    done: followedM,
+    none: base.length - followedM,
+    wantupgrade: base.filter(pcWantsUpgrade).length,
+  };
+  // apply scope, then sort by contract-start date (newest first)
+  let rowsData = base.filter(c=>{
+    if(_pcScope==='done') return csmFollowedInMonth(c,_pcMonth);
+    if(_pcScope==='none') return !csmFollowedInMonth(c,_pcMonth);
+    if(_pcScope==='wantupgrade') return pcWantsUpgrade(c);
+    return true;
+  }).sort((a,b)=>{
+    const da=a.regDate||'', db=b.regDate||'';
+    if(da===db) return (a.name||'').localeCompare(b.name||'');
+    return db.localeCompare(da);   // newest contract start first
+  });
+  const now=new Date(); const months=['all']; for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  if(!months.includes(_pcMonth)) months.push(_pcMonth);
+  const kpi=(fig,label,color,scopeKey,planKey)=>{
+    const active = (scopeKey!==undefined && _pcScope===scopeKey) || (planKey!==undefined && _pcPlan===planKey);
+    const click = scopeKey!==undefined ? `onclick="setPcScope('${scopeKey}')"` : planKey!==undefined ? `onclick="setPcPlan('${planKey}')"` : '';
+    return `<div class="kpi" style="padding:11px;${click?'cursor:pointer;':''}${active?`box-shadow:inset 0 0 0 2px ${color};`:''}" ${click}><div style="font-size:19px;font-weight:800;color:${color}">${fig}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${label}</div></div>`;
+  };
+  const rows = rowsData.length ? rowsData.map(c=>{
     const canUp = !!nextTierPlan(c.plan);
+    const nameCell = `<span style="font-weight:600;cursor:pointer;color:var(--p2)" onclick="openCsmDetail(${c.id}, true)" title="فتح صفحة المتابعة">${esc(c.name)||'—'}</span>`;
     return `<tr style="border-bottom:1px solid var(--b1)">
-      <td style="padding:10px 12px;font-size:12.5px;font-weight:600">${esc(c.name)||'—'}</td>
+      <td style="padding:10px 12px;font-size:12.5px">${nameCell}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap;direction:ltr">${esc(c.phone)||'—'}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--t2);direction:ltr">${esc(c.email)||'—'}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--t2)">${sexLbl(c.sex)}</td>
@@ -5010,23 +5057,34 @@ function renderPhoneClients(){
       <td style="padding:10px 12px;font-size:12px;color:var(--t2)">${esc(c.setter)||'—'}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${c.regDate?fmtDate(c.regDate):'—'}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${c.contractEnd?fmtDate(c.contractEnd):'—'}</td>
-      <td style="padding:10px 12px">${planBadge(c.plan)}</td>
+      <td style="padding:10px 12px">${planBadge(c.plan)}${pcWantsUpgrade(c)?` <span style="font-size:9.5px;background:var(--pbg);color:var(--p2);padding:1px 6px;border-radius:10px">يريد ترقية</span>`:''}</td>
       <td style="padding:10px 12px;text-align:center;white-space:nowrap">
         <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openDetail(${c.id})" title="الملف">👤</button>
-        <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openCsmDetail(${c.id})" title="متابعة">📝</button>
+        <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openCsmDetail(${c.id}, true)" title="متابعة">📝</button>
         ${canUp?`<button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpgrade(${c.id})" title="ترقية">⬆️</button>`:''}
       </td></tr>`;
   }).join('') : `<tr><td colspan="10" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء مطابقون</td></tr>`;
   $('pg-phoneclients').innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px;margin-bottom:14px">
+    ${kpi(kFig.all,'إجمالي العملاء','#6366f1','')}
+    ${kpi(kFig.core,'CORE','#0ea5e9',undefined,'CORE')}
+    ${kpi(kFig.premium,'PREMIUM','#8b5cf6',undefined,'PREMIUM')}
+    ${kpi(kFig.done,`تمت متابعتهم (${csmMonthLabel(_pcMonth)})`,'#10b981','done')}
+    ${kpi(kFig.none,`بدون متابعة (${csmMonthLabel(_pcMonth)})`,'#f59e0b','none')}
+    ${kpi(kFig.wantupgrade,'يريدون ترقية','var(--p2)','wantupgrade')}
+  </div>
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <input class="inp" id="pc-search" style="max-width:260px" placeholder="🔍 بحث بالاسم أو الهاتف أو البريد..." value="${esc(_pcSearch)}" oninput="setPcSearch(this.value)"/>
-    <span style="font-size:12px;color:var(--t3)">${list.length} عميل</span>
-    <span style="margin-right:auto;font-size:11px;color:var(--t3)">اضغط 📝 للمتابعة · ⬆️ لترقية الباقة (CORE→PREMIUM، PREMIUM→INNER)</span>
+    <input class="inp" id="pc-search" style="max-width:230px" placeholder="🔍 بحث بالاسم أو الهاتف أو البريد..." value="${esc(_pcSearch)}" oninput="setPcSearch(this.value)"/>
+    <select class="fsl" onchange="setPcMonth(this.value)" style="min-width:120px" title="شهر المتابعة">${months.map(m=>`<option value="${m}"${m===_pcMonth?' selected':''}>${csmMonthLabel(m)}</option>`).join('')}</select>
+    <select class="fsl" onchange="setPcPlan(this.value)" style="min-width:120px" title="الباقة">${[['','كل الباقات'],['CORE','CORE'],['PREMIUM','PREMIUM'],['INNER','INNER']].map(([v,l])=>`<option value="${v}"${_pcPlan===v?' selected':''}>${l}</option>`).join('')}</select>
+    <select class="fsl" onchange="setPcScope(this.value)" style="min-width:170px" title="حسب المتابعة">${[['','كل العملاء'],['done','تمت متابعتهم هذا الشهر'],['none','بدون متابعة هذا الشهر'],['wantupgrade','يريدون ترقية']].map(([v,l])=>`<option value="${v}"${_pcScope===v?' selected':''}>${l}</option>`).join('')}</select>
+    <span style="font-size:12px;color:var(--t3)">${rowsData.length} عميل</span>
+    <button class="btn btn-g" style="margin-right:auto" onclick="openCsmOpts(true)" title="إدارة قوائم الاتصال والترقية">⚙️ القوائم</button>
   </div>
   <div class="card" style="padding:0;overflow-x:auto">
     <table style="width:100%;border-collapse:collapse;min-width:900px">
       <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
-        ${th()}الاسم</th>${th()}الهاتف</th>${th()}البريد</th>${th('center')}الجنس</th>${th()}Closer</th>${th()}Setter</th>${th()}بداية العقد</th>${th()}نهاية العقد</th>${th()}الباقة</th>${th('center')}إجراءات</th>
+        ${th()}الاسم</th>${th()}الهاتف</th>${th()}البريد</th>${th('center')}الجنس</th>${th()}Closer</th>${th()}Setter</th>${th()}بداية العقد ▼</th>${th()}نهاية العقد</th>${th()}الباقة</th>${th('center')}إجراءات</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>

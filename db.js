@@ -95,7 +95,9 @@ async function ensureSchema() {
     );
     insert into csm_options(kind,label,sort) values
       ('condition','يرد',1),('condition','مايرد',2),('condition','لسا ما بلش',3),('condition','موقف',4),('condition','طلع',5),
-      ('follow','مابدأ الدورة',1),('follow','لسا ما خلص الدورة',2),('follow','خلص الدورة',3),('follow','لسا ما بدآ التطبيق',4),('follow','بدآ التطبيق',5),('follow','لسا ما طلع ارباح',6),('follow','طلع ارباح',7),('follow','راضي عن البرنامج',8),('follow','مو راضي عن البرنامج',9)
+      ('follow','مابدأ الدورة',1),('follow','لسا ما خلص الدورة',2),('follow','خلص الدورة',3),('follow','لسا ما بدآ التطبيق',4),('follow','بدآ التطبيق',5),('follow','لسا ما طلع ارباح',6),('follow','طلع ارباح',7),('follow','راضي عن البرنامج',8),('follow','مو راضي عن البرنامج',9),
+      ('phone_condition','رد',1),('phone_condition','ما رد',2),('phone_condition','مشغول',3),('phone_condition','موعد مجدول',4),('phone_condition','رقم خاطئ',5),('phone_condition','طلب معاودة الاتصال',6),
+      ('phone_follow','يريد ترقية',1),('phone_follow','لا يملك ميزانية حالياً',2),('phone_follow','مهتم',3),('phone_follow','غير مهتم',4),('phone_follow','قيد التفكير',5),('phone_follow','تمت الترقية',6)
     on conflict (kind,label) do nothing;
 
     create table if not exists audit_log (
@@ -320,9 +322,12 @@ async function updateCsmNotes(id, csmNotes) {
 async function getCsmOptions() {
   await schemaReady();
   const { rows } = await q('select kind, label from csm_options order by kind, sort, label');
+  const pick = k => rows.filter(r => r.kind === k).map(r => r.label);
   return {
-    conditions: rows.filter(r => r.kind === 'condition').map(r => r.label),
-    follows:    rows.filter(r => r.kind === 'follow').map(r => r.label),
+    conditions:      pick('condition'),
+    follows:         pick('follow'),
+    phoneConditions: pick('phone_condition'),   // call outcomes (phone CSM)
+    phoneFollows:    pick('phone_follow'),       // intent / upgrade (phone CSM)
   };
 }
 async function addCsmOption(kind, label) {
