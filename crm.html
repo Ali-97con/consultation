@@ -2946,6 +2946,8 @@ function buildTeamMonthOptions() {
 // If, on an inbound client, the setter and closer are the SAME person → 12% combined.
 // Commission is on the amount COLLECTED in the selected month (per-installment), not the contract total.
 const COMM_RATES = { outbound:{ setter:0.05, closer:0.10 }, inbound:{ setter:0.03, closer:0.10, combined:0.12 } };
+const VAT_RATE = 0.05;                       // commissions are computed on cash AFTER removing 5% VAT
+const exVat = amt => amt * (1 - VAT_RATE);   // ex-VAT base = cash × 0.95
 let _commMonth = null; // null = uninitialised, '' = all months, else 'YYYY-MM'
 
 function setCommMonth(val){ _commMonth = val; renderCommissions(); }
@@ -2973,13 +2975,14 @@ function computeCommissions(month){
       .filter(([a,dt]) => a > 0 && dt && (!month || dt.startsWith(month)))
       .reduce((s,[a]) => s + a, 0);
     if (collected <= 0) return;
+    const base = exVat(collected);   // ex-VAT base (cash − 5%) — commissions for everyone are on this
     const channel = c.channel === 'inbound' ? 'inbound' : 'outbound';
     const setter = c.setter, closer = c.closer;
     if (channel === 'inbound' && setter && closer && setter === closer) {
-      const p = get(setter); p.combined += collected * COMM_RATES.inbound.combined; p.cset.add(c.id);
+      const p = get(setter); p.combined += base * COMM_RATES.inbound.combined; p.cset.add(c.id);
     } else {
-      if (setter) { const p = get(setter); p.asSetter += collected * COMM_RATES[channel].setter; p.cset.add(c.id); }
-      if (closer) { const p = get(closer); p.asCloser += collected * COMM_RATES[channel].closer; p.cset.add(c.id); }
+      if (setter) { const p = get(setter); p.asSetter += base * COMM_RATES[channel].setter; p.cset.add(c.id); }
+      if (closer) { const p = get(closer); p.asCloser += base * COMM_RATES[channel].closer; p.cset.add(c.id); }
     }
   });
   return people;
@@ -3007,6 +3010,8 @@ function renderCommissions(){
       expectedPlans += (c.customTotal || PLANS[c.plan] || 0);
     }
   });
+  const cashVat  = exVat(cashCollected);                     // cash after removing 5% VAT
+  const closer10 = cashVat * COMM_RATES.outbound.closer;     // 10% of the ex-VAT sum
   const palette = ['#6366f1','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#f87171'];
 
   const body = rows.length ? rows.map((p,i) => `
@@ -3029,7 +3034,7 @@ function renderCommissions(){
     <span style="font-size:12.5px;font-weight:600;color:var(--t2)">${LANG==='ar'?'الشهر:':'Month:'}</span>
     <select class="fsl" onchange="setCommMonth(this.value)" style="min-width:180px">${buildCommMonthOptions()}</select>
     ${_commMonth?`<span style="font-size:11px;background:var(--pbg);color:var(--p2);border:1px solid var(--pbd);padding:3px 10px;border-radius:20px;font-weight:600">${monthLabel(_commMonth)}</span>`:''}
-    <span style="margin-right:auto;font-size:11px;color:var(--t3)">${LANG==='ar'?'خارجي: إعداد 5٪ · إغلاق 10٪ — داخلي: إعداد 3٪ · إغلاق 10٪ (نفس الشخص 12٪)':'Outbound: setter 5% · closer 10% — Inbound: setter 3% · closer 10% (same person 12%)'}</span>
+    <span style="margin-right:auto;font-size:11px;color:var(--t3)">${LANG==='ar'?'خارجي: إعداد 5٪ · إغلاق 10٪ — داخلي: إعداد 3٪ · إغلاق 10٪ (نفس الشخص 12٪) · العمولات تُحتسب على المبلغ بعد خصم 5٪ ضريبة':'Outbound: setter 5% · closer 10% — Inbound: setter 3% · closer 10% (same person 12%) · commissions computed on cash after −5% VAT'}</span>
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
@@ -3038,12 +3043,12 @@ function renderCommissions(){
       <div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'إجمالي المبلغ المحصّل':'Total cash collected'}</div>
     </div>
     <div class="kpi" style="border-bottom:2px solid #f59e0b55">
-      <div style="font-size:21px;font-weight:800;color:var(--y)">${fmtMoney(expectedPlans)}</div>
-      <div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'إجمالي الخطط (المتوقّع)':'Total plans (expected)'}</div>
+      <div style="font-size:21px;font-weight:800;color:var(--y)">${fmtMoney(cashVat)}</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'المبلغ المحصّل بعد الضريبة (−5٪)':'Cash collected (ex-VAT −5%)'}</div>
     </div>
     <div class="kpi" style="border-bottom:2px solid #6366f155">
-      <div style="font-size:21px;font-weight:800;color:var(--p2)">${fmtMoney(g.total)}</div>
-      <div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'إجمالي العمولات':'Total commissions'}</div>
+      <div style="font-size:21px;font-weight:800;color:var(--p2)">${fmtMoney(closer10)}</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:3px">${LANG==='ar'?'10٪ للكلوزر (من المبلغ بعد الضريبة)':'10% closer (of ex-VAT)'}</div>
     </div>
   </div>
 
@@ -3078,11 +3083,12 @@ function memberLineItems(name){
     if (!isSetter && !isCloser) return;
     const pays = payList(c).filter(([a,d]) => a > 0 && d);
     pays.forEach(([amt,date]) => {
+      const base = exVat(amt);   // ex-VAT base (amt − 5%)
       if (c.channel === 'inbound' && c.setter === c.closer && c.setter === name) {
-        items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, role:'combined', rate:COMM_RATES.inbound.combined, comm:amt*COMM_RATES.inbound.combined });
+        items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'combined', rate:COMM_RATES.inbound.combined, comm:base*COMM_RATES.inbound.combined });
       } else {
-        if (isSetter) { const r = COMM_RATES[c.channel].setter; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, role:'setter', rate:r, comm:amt*r }); }
-        if (isCloser) { const r = COMM_RATES[c.channel].closer; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, role:'closer', rate:r, comm:amt*r }); }
+        if (isSetter) { const r = COMM_RATES[c.channel].setter; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'setter', rate:r, comm:base*r }); }
+        if (isCloser) { const r = COMM_RATES[c.channel].closer; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'closer', rate:r, comm:base*r }); }
       }
     });
   });
@@ -3130,6 +3136,7 @@ function openCommDetail(name, month){
       <span style="font-size:12px;color:var(--t2);font-weight:600">${LANG==='ar'?'تصفية حسب الشهر:':'Filter by month:'}</span>
       <select class="fsl" onchange="openCommDetail('${esc(name)}', this.value)" style="min-width:170px">${monthOpts}</select>
       ${month?`<span style="font-size:11px;background:var(--pbg);color:var(--p2);border:1px solid var(--pbd);padding:3px 10px;border-radius:20px;font-weight:600">${monthLabel(month)}</span>`:''}
+      <span style="margin-right:auto;font-size:10.5px;color:var(--t3)">${LANG==='ar'?'العمولة = النسبة × المبلغ بعد خصم 5٪ ضريبة':'Commission = rate × payment after −5% VAT'}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:var(--y)">${fmtMoney(collected)}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'المبلغ المحصّل':'Cash collected'}</div></div>
@@ -5249,8 +5256,8 @@ function exportInsightsPdf(){
 // ═══════════════ NOTIFICATIONS (contract end reminders) ═══════════════
 function planFollowDays(plan){
   const p=(plan||'').toUpperCase();
-  if(p.includes('CORE')) return 5;
-  if(p.includes('PREMIUM')) return 8;
+  if(p.includes('CORE')) return 6;
+  if(p.includes('PREMIUM')) return 6;
   if(p.includes('INNER')) return 10;
   return 7;
 }
