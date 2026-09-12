@@ -100,6 +100,17 @@ async function ensureSchema() {
       ('phone_follow','يريد ترقية',1),('phone_follow','لا يملك ميزانية حالياً',2),('phone_follow','مهتم',3),('phone_follow','غير مهتم',4),('phone_follow','قيد التفكير',5),('phone_follow','تمت الترقية',6)
     on conflict (kind,label) do nothing;
 
+    create table if not exists upsell_services (
+      name  text primary key,
+      price numeric not null default 0,
+      sort  int not null default 0
+    );
+    insert into upsell_services(name,price,sort) values
+      ('Ali Stocks',300,1),('Ossooli',80,2),('Bull & Bearz Group',750,3),
+      ('Ali Stocks + Ossooli + Bull & Bearz',900,4),('Group Calls',1500,5),
+      ('Extra 1:1 Call with Ali',1500,6),('Extra 1:1 Call with Coach',500,7)
+    on conflict (name) do nothing;
+
     create table if not exists audit_log (
       id        bigserial   primary key,
       ts        timestamptz not null default now(),
@@ -275,7 +286,7 @@ async function updateClient(id, patch) {
 
 // Upgrade a client's plan: sets plan + customTotal and appends an entry to data.upgrades[].
 // `rec` is the upgrade record { from,to,oldPrice,newPrice,diff,discount,newTotal,date,by }.
-async function upgradeClient(id, newPlan, newTotal, rec) {
+async function upgradeClient(id, newPlan, newTotal, rec, payments) {
   await ready();
   const { rows } = await q('select data from clients where id = $1 and deleted = false', [id]);
   if (!rows.length) return null;
@@ -283,6 +294,13 @@ async function upgradeClient(id, newPlan, newTotal, rec) {
   const upgrades = Array.isArray(data.upgrades) ? data.upgrades : [];
   upgrades.push(rec);
   const updated = { ...data, id, plan: newPlan, customTotal: newTotal, upgrades };
+  if (Array.isArray(payments)) {                    // difference paid now / in installments → new schedule
+    updated.payments = payments;
+    updated.p1 = (payments[0] && payments[0].amt) || 0; updated.p1d = (payments[0] && payments[0].date) || '';
+    updated.p2 = (payments[1] && payments[1].amt) || 0; updated.p2d = (payments[1] && payments[1].date) || '';
+    updated.p3 = (payments[2] && payments[2].amt) || 0; updated.p3d = (payments[2] && payments[2].date) || '';
+    updated.p4 = (payments[3] && payments[3].amt) || 0; updated.p4d = (payments[3] && payments[3].date) || '';
+  }
   await q('update clients set data = $2 where id = $1', [id, j(updated)]);
   return updated;
 }
@@ -341,6 +359,40 @@ async function deleteCsmOption(kind, label) {
   await schemaReady();
   await q('delete from csm_options where kind=$1 and label=$2', [kind, label]);
   return true;
+}
+
+// ─── Upsell services (manageable list) + per-client upsell purchases ───────────
+async function getUpsellServices() {
+  await schemaReady();
+  const { rows } = await q('select name, price from upsell_services order by sort, name');
+  return rows.map(r => ({ name: r.name, price: Number(r.price) || 0 }));
+}
+async function addUpsellService(name, price) {
+  await schemaReady();
+  const { rows } = await q('select coalesce(max(sort),0)+1 as s from upsell_services');
+  const r = await q('insert into upsell_services(name,price,sort) values($1,$2,$3) on conflict (name) do nothing',
+    [name, Number(price) || 0, rows[0].s]);
+  return r.rowCount > 0;
+}
+async function updateUpsellService(oldName, newName, price) {
+  await schemaReady();
+  if (newName && newName !== oldName) {
+    const r = await q('update upsell_services set name=$2, price=$3 where name=$1', [oldName, newName, Number(price) || 0]);
+    return r.rowCount > 0;
+  }
+  const r = await q('update upsell_services set price=$2 where name=$1', [oldName, Number(price) || 0]);
+  return r.rowCount > 0;
+}
+async function deleteUpsellService(name) {
+  await schemaReady();
+  await q('delete from upsell_services where name=$1', [name]);
+  return true;
+}
+async function updateUpsells(id, upsells) {
+  await ready();
+  const r = await q(`update clients set data = jsonb_set(data, '{upsells}', $2::jsonb) where id = $1`,
+    [id, j(upsells)]);
+  return r.rowCount > 0;
 }
 
 // Set the follow-up reminder anchor (csmStart) = today for active clients that don't have it yet.
@@ -802,6 +854,8 @@ module.exports = {
   addContract, getContractById, deleteContractById,
   // CSM (customer success) follow-up
   updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
+  // Upsell services + purchases
+  getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   // Sessions (Postgres-backed, serverless-safe)
   createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)

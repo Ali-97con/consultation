@@ -11,6 +11,7 @@ const {
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan, importData,
   addContract, getContractById, deleteContractById,
   updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
+  getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
@@ -244,10 +245,14 @@ app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) =>
       from: str(b.from, 100) || '', to: plan,
       oldPrice: Number(b.oldPrice) || 0, newPrice: Number(b.newPrice) || 0,
       diff: Number(b.diff) || 0, discount: Number(b.discount) || 0, discountPct: Number(b.discountPct) || 0,
+      increment: Number(b.increment) || 0, payMode: str(b.payMode, 20) || '',
       newTotal, date: str(b.date, 30) || new Date().toISOString().slice(0, 10),
       by: req.user.username,
     };
-    const updated = await upgradeClient(id, plan, newTotal, rec);
+    const payments = Array.isArray(b.payments)
+      ? b.payments.slice(0, 60).map(p => ({ amt: Number(p && p.amt) || 0, date: str((p && p.date) || '', 30) || '' }))
+      : undefined;
+    const updated = await upgradeClient(id, plan, newTotal, rec, payments);
     if (!updated) return res.status(404).json({ error: 'العميل غير موجود' });
     audit(req, 'client.upgrade', 'client', id,
       `ترقية باقة «${updated.name || id}»: ${rec.from} → ${rec.to}`, rec);
@@ -269,6 +274,45 @@ app.get('/api/audit', requireCsmPhoneOrAdmin, async (req, res) => {
 app.get('/api/csm/options', requireCsmOrAdmin, async (_req, res) => {
   try { res.json(await getCsmOptions()); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Upsell services (list) + per-client upsell purchases ─────────────────────
+app.get('/api/upsell-services', requireAuth, async (_req, res) => {
+  try { res.json(await getUpsellServices()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/upsell-services', requireAdmin, async (req, res) => {
+  try {
+    const name = str(req.body.name, 120);
+    if (!name) return res.status(400).json({ error: 'اسم الخدمة مطلوب' });
+    if (!await addUpsellService(name, Number(req.body.price) || 0)) return res.status(409).json({ error: 'الخدمة موجودة مسبقاً' });
+    audit(req, 'upsell.service.create', 'upsell', name, `إضافة خدمة Upsell «${name}»`, { price: Number(req.body.price) || 0 });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/upsell-services/:name', requireAdmin, async (req, res) => {
+  try {
+    const ok = await updateUpsellService(decodeURIComponent(req.params.name),
+      req.body.newName ? str(req.body.newName, 120) : undefined, Number(req.body.price) || 0);
+    res.json({ ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/upsell-services/:name', requireAdmin, async (req, res) => {
+  try { await deleteUpsellService(decodeURIComponent(req.params.name)); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Record upsell purchases on a client (admin + both CSM roles)
+app.put('/api/clients/:id/upsells', requireCsmOrAdmin, async (req, res) => {
+  try {
+    const upsells = (req.body.upsells || []).slice(0, 500).map(u => ({
+      id: u.id, date: str(u.date, 30), type: str(u.type, 120),
+      price: Number(u.price) || 0, author: str(u.author, 100), createdAt: str(u.createdAt, 40),
+    }));
+    await updateUpsells(+req.params.id, upsells);
+    audit(req, 'client.upsell', 'client', +req.params.id, 'تسجيل بيع خدمة (Upsell)', { count: upsells.length });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 const CSM_OPT_KINDS = ['condition', 'follow', 'phone_condition', 'phone_follow'];

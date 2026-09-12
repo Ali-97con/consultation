@@ -704,6 +704,28 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div id="upgrade-body" style="padding:18px"></div>
   </div>
 </div>
+<!-- UPSELL: record a service sale -->
+<div class="mo" id="upsell-mo" onclick="if(event.target===this)closeUpsell()">
+  <div class="mbox" style="max-width:460px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">💰</div>
+      <h3>بيع خدمة (Upsell)</h3>
+      <button class="mcls" onclick="closeUpsell()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="upsell-body" style="padding:18px"></div>
+  </div>
+</div>
+<!-- UPSELL: manage services list (admin) -->
+<div class="mo" id="upsell-opts-mo" onclick="if(event.target===this)$('upsell-opts-mo').classList.remove('on')">
+  <div class="mbox" style="max-width:480px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">🧾</div>
+      <h3>إدارة خدمات Upsell</h3>
+      <button class="mcls" onclick="$('upsell-opts-mo').classList.remove('on')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="upsell-opts-body" style="padding:18px;max-height:70vh;overflow-y:auto"></div>
+  </div>
+</div>
 <!-- PRINT REPORT (hidden; used for CSM PDF export via browser print) -->
 <div id="print-area"></div>
 <!-- NOTIFICATIONS LOGIN POP-UP -->
@@ -1470,6 +1492,7 @@ async function reloadClients() {
 }
 // CSM option lists, loaded from the server (admin + csm)
 let CSM_OPTS = { conditions: [], follows: [], phoneConditions: [], phoneFollows: [] };
+let UPSELL_SERVICES = [];   // [{name, price}] loaded from the server
 
 function applyCsmRestrictions() {
   if (!isCsm()) return;
@@ -1572,13 +1595,14 @@ async function api(method, url, body) {
 async function initApp() {
   try {
     const _isCoach = isCoach(), _isCsm = isCsm(), _isCsmPhone = isCsmPhone(), _limited = _isCoach || _isCsm || _isCsmPhone;
-    const [clientsData, trashData, teamData, plansData, teamTrashData, csmOpts] = await Promise.all([
+    const [clientsData, trashData, teamData, plansData, teamTrashData, csmOpts, upsellServices] = await Promise.all([
       api('GET', '/api/clients'),
       _limited ? Promise.resolve([]) : api('GET', '/api/trash'),
       api('GET', '/api/team'),
       api('GET', '/api/plans'),
       _limited ? Promise.resolve([]) : api('GET', '/api/team/trash'),
       _isCoach ? Promise.resolve(null) : api('GET', '/api/csm/options').catch(()=>null),
+      _isCoach ? Promise.resolve([]) : api('GET', '/api/upsell-services').catch(()=>[]),
     ]);
     clients   = clientsData;
     trash     = trashData;
@@ -1590,6 +1614,7 @@ async function initApp() {
     // Deleting a DB plan removes it on next load; deleting a default is in-memory only.
     plansData.forEach(p => { PLANS[p.name] = p.price; });
     if (csmOpts) CSM_OPTS = csmOpts;
+    if (Array.isArray(upsellServices)) UPSELL_SERVICES = upsellServices;
     updateTrashBadge();
     $('cnt-badge').textContent = clients.length;
     const ldr = $('app-loader');
@@ -2230,7 +2255,7 @@ function renderTable() {
       <td><div class="tds" style="cursor:pointer" onclick="openDetail(${c.id})">
         ${clientAv(c, 'av'+(c.status==='active'?' on':''))}
         <div class="cl-name-wrap">
-          <div class="td-nm" style="${isRef?'text-decoration:line-through;color:var(--t3)':''}">${hlText(c.name)}</div>
+          <div class="td-nm" style="${isRef?'text-decoration:line-through;color:var(--t3)':''}">${hlText(c.name)}${(c.upgrades||[]).length?` <span title="تمت ترقية الباقة" style="font-size:9.5px;background:var(--pbg);color:var(--p2);padding:1px 5px;border-radius:8px;vertical-align:middle">⬆️ ترقية</span>`:''}${(c.upsells||[]).length?` <span title="لديه مبيعات إضافية" style="font-size:9.5px;background:var(--gbg);color:var(--g);padding:1px 5px;border-radius:8px;vertical-align:middle">🛒</span>`:''}</div>
           <div class="td-ph">${hlText(c.phone)}</div>
         </div>
       </div></td>
@@ -2413,6 +2438,11 @@ function renderIncomeDetail(month, sortKey, sortDir) {
     allDates.forEach(([amt,date],i) => {
       if (amt > 0 && date && date.startsWith(month))
         payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates });
+    });
+    // Upsell sales count as cash received in their month
+    (c.upsells||[]).forEach(u => {
+      if ((u.price||0) > 0 && u.date && u.date.startsWith(month))
+        payments.push({ name:c.name, plan:'🛒 '+(u.type||'Upsell'), num:'—', amt:u.price, payMethod:'Upsell', date:u.date, allDates:[[u.price,u.date]], isUpsell:true });
     });
   });
   payments.sort((a,b) => {
@@ -4750,15 +4780,17 @@ function openCsmDetail(id, phone=false){
   const followOpts = _csmDetailPhone ? CSM_OPTS.phoneFollows : CSM_OPTS.follows;
   _editingCsm = null;
   const notes=(c.csmNotes||[]).slice().sort((a,b)=>(b.date||b.createdAt||'').localeCompare(a.date||a.createdAt||''));
+  const upsells=(c.upsells||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const today=new Date().toISOString().split('T')[0];
   $('csm-title').textContent = c.name;
   $('csm-body').innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
       ${clientAv(c,'dp-av',null,'30px')}
       <div style="flex:1;min-width:0">
         <div style="font-size:16px;font-weight:700">${esc(c.name)}</div>
         <div style="font-size:12px;color:var(--t3)">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
       </div>
+      <button class="btn btn-p" onclick="openUpsell(${id})">💰 ${LANG==='ar'?'بيع خدمة (Upsell)':'Upsell'}</button>
       <button class="btn btn-g" onclick="closeCsmDetail();openDetail(${id})">👤 ${LANG==='ar'?'الملف الشخصي':'Profile'}</button>
       <button class="btn btn-g" onclick="exportCsmPdf(${id})">🖨️ ${LANG==='ar'?'تصدير PDF':'Export PDF'}</button>
     </div>
@@ -4775,6 +4807,11 @@ function openCsmDetail(id, phone=false){
         <button class="btn btn-g" id="csm-cancel-btn" style="display:none" onclick="cancelEditCsm(${id})">إلغاء التعديل</button>
       </div>
     </div>
+    ${upsells.length?`<div style="font-size:12px;font-weight:700;margin-bottom:8px">🛒 المبيعات الإضافية — Upsell (${upsells.length})</div>
+      <div style="margin-bottom:16px">${upsells.map(u=>`<div style="background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:9px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div><div style="font-size:12.5px;font-weight:600">${esc(u.type)||'—'}</div><div style="font-size:11px;color:var(--t3)">📅 ${u.date?fmtDate(u.date):'—'}${u.author?' · '+esc(u.author):''}</div></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:800;color:var(--g)">${fmtMoney(u.price||0)}</span><button class="btn btn-r" style="padding:3px 8px;font-size:11px" onclick="delUpsell(${id},${u.id})">🗑️</button></div>
+      </div>`).join('')}</div>`:''}
     <div style="font-size:12px;font-weight:700;margin-bottom:8px">📋 سجل المتابعة (${notes.length})</div>
     <div id="csm-hist">${notes.length?notes.map(n=>csmEntryHtml(id,n)).join(''):`<div style="color:var(--t3);font-size:12px;padding:10px 0">لا توجد متابعات بعد</div>`}</div>
     ${(c.notes||[]).length?`<div style="font-size:12px;font-weight:700;margin:18px 0 8px">📝 ملاحظات الفريق (${c.notes.length})</div>
@@ -5109,21 +5146,31 @@ function openUpgrade(id){
   const def = nextTierPlan(c.plan);
   const defTarget = (def && targets.includes(def)) ? def : (targets[0]||'');
   const box='background:var(--hv);border:1px solid var(--b2);border-radius:8px;padding:10px 12px';
+  const row=(k,idv,val,color)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px"><span style="color:var(--t3)">${k}</span><span id="${idv}" style="font-weight:700${color?`;color:${color}`:''}">${val||''}</span></div>`;
   $('upgrade-body').innerHTML = `
     <div style="${box};margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
       <span style="font-size:12px;color:var(--t3)">الباقة الحالية</span>
       <span style="font-weight:700">${esc(c.plan)||'—'} · ${fmtMoney(oldTotal)}</span>
     </div>
     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">الباقة الجديدة</label>
-    <select class="inp" id="up-plan" onchange="_recalcUpgrade()" style="margin-bottom:12px">
+    <select class="inp" id="up-plan" onchange="_onUpPlan()" style="margin-bottom:10px">
       ${targets.map(p=>`<option value="${esc(p)}"${p===defTarget?' selected':''}>${esc(p)} — ${fmtMoney(PLANS[p]||0)}</option>`).join('')||'<option value="">لا توجد باقة أعلى</option>'}
     </select>
-    <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:10px"><span style="color:var(--t3)">الفرق</span><span id="up-diff" style="font-weight:700"></span></div>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">سعر الباقة الجديدة ($) — قابل للتعديل</label>
+    <input class="inp" id="up-newprice" type="number" min="0" value="${PLANS[defTarget]||0}" oninput="_recalcUpgrade()" style="margin-bottom:10px"/>
+    ${row('الفرق','up-diff')}
     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">نسبة الخصم على الفرق (%)</label>
     <input class="inp" id="up-disc-pct" type="number" min="0" max="100" step="1" value="20" oninput="_recalcUpgrade()" style="margin-bottom:8px"/>
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:12px"><span style="color:var(--t3)">قيمة الخصم</span><span id="up-disc-amt" style="font-weight:700;color:var(--y)"></span></div>
+    ${row('قيمة الخصم','up-disc-amt','','var(--y)')}
     <div style="${box};margin-bottom:6px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">الإجمالي الجديد للعقد</span><span id="up-newtotal" style="font-weight:800;color:var(--g)"></span></div>
-    <div style="${box};margin-bottom:14px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">المتبقي بعد الترقية</span><span id="up-rem" style="font-weight:800;color:var(--r)"></span></div>
+    <div style="${box};margin-bottom:12px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">قيمة الترقية المضافة</span><span id="up-increment" style="font-weight:800;color:var(--p2)"></span></div>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">كيف تُدفع قيمة الترقية؟</label>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <label style="flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--hv);border:1px solid var(--b1);padding:8px 10px;border-radius:8px;cursor:pointer"><input type="radio" name="up-paymode" value="now" checked onchange="_recalcUpgrade()"/> دفع الآن</label>
+      <label style="flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--hv);border:1px solid var(--b1);padding:8px 10px;border-radius:8px;cursor:pointer"><input type="radio" name="up-paymode" value="installments" onchange="_recalcUpgrade()"/> تقسيط</label>
+    </div>
+    <div id="up-inst-wrap" style="display:none;margin-bottom:10px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">عدد الأقساط (شهرياً)</label><input class="inp" id="up-instcount" type="number" min="2" max="24" value="3" oninput="_recalcUpgrade()"/></div>
+    <div id="up-inst-preview" style="font-size:11px;color:var(--t3);margin-bottom:12px"></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-p" style="flex:1" onclick="confirmUpgrade()">✓ تأكيد الترقية</button>
       <button class="btn btn-g" onclick="closeUpgrade()">إلغاء</button>
@@ -5131,31 +5178,57 @@ function openUpgrade(id){
   _recalcUpgrade();
   $('upgrade-mo').classList.add('on');
 }
+function _onUpPlan(){ const p=($('up-plan')||{}).value||''; if($('up-newprice')) $('up-newprice').value = PLANS[p]||0; _recalcUpgrade(); }
+function _upgradeMode(){ const el=document.querySelector('input[name="up-paymode"]:checked'); return el?el.value:'now'; }
 function _upgradeCalc(){
   const c=clients.find(x=>x.id===_upgradeId); if(!c) return null;
   const oldTotal=c.customTotal||PLANS[c.plan]||0;
   const plan=($('up-plan')||{}).value||'';
-  const newPrice=PLANS[plan]||0;
+  const newPrice=Math.max(0, +($('up-newprice')||{}).value||0);
   const diff=Math.max(0,newPrice-oldTotal);
   const pct=Math.max(0,Math.min(100, +($('up-disc-pct')||{}).value||0));
   const disc=Math.round(diff*pct/100);
   const newTotal=Math.max(oldTotal, newPrice-disc);
-  return { c, oldTotal, plan, newPrice, diff, pct, disc, newTotal };
+  const increment=Math.max(0, newTotal-oldTotal);
+  const payMode=_upgradeMode();
+  const instCount=Math.max(2,Math.min(24, +($('up-instcount')||{}).value||3));
+  return { c, oldTotal, plan, newPrice, diff, pct, disc, newTotal, increment, payMode, instCount };
+}
+// Build the payment entries to append for the upgrade increment (paid now, or split monthly).
+function _upgradeAddedPayments(r){
+  if(r.increment<=0) return [];
+  if(r.payMode==='installments'){
+    const n=r.instCount, per=Math.round(r.increment/n), out=[];
+    for(let i=0;i<n;i++){ const d=new Date(); d.setMonth(d.getMonth()+i+1); out.push({ amt: i===n-1 ? r.increment-per*(n-1) : per, date: d.toISOString().slice(0,10) }); }
+    return out;
+  }
+  return [{ amt: r.increment, date: new Date().toISOString().slice(0,10) }];
 }
 function _recalcUpgrade(){
   const r=_upgradeCalc(); if(!r) return;
   if($('up-diff')) $('up-diff').textContent=fmtMoney(r.diff);
   if($('up-disc-amt')) $('up-disc-amt').textContent='−'+fmtMoney(r.disc)+` (${r.pct}%)`;
   if($('up-newtotal')) $('up-newtotal').textContent=fmtMoney(r.newTotal);
-  if($('up-rem')) $('up-rem').textContent=fmtMoney(Math.max(0, r.newTotal - fx(r.c)));
+  if($('up-increment')) $('up-increment').textContent=fmtMoney(r.increment);
+  const wrap=$('up-inst-wrap'); if(wrap) wrap.style.display = r.payMode==='installments' ? '' : 'none';
+  const pv=$('up-inst-preview');
+  if(pv){
+    const add=_upgradeAddedPayments(r);
+    pv.textContent = r.increment<=0 ? '' : r.payMode==='installments'
+      ? `${add.length} أقساط بقيمة ~${fmtMoney(add[0].amt)} شهرياً بدءاً من ${add[0].date}`
+      : `دفعة واحدة ${fmtMoney(r.increment)} بتاريخ اليوم`;
+  }
 }
 async function confirmUpgrade(){
   const r=_upgradeCalc(); if(!r) return;
   if(!r.plan || r.plan===r.c.plan){ toast('اختر باقة مختلفة','⚠️'); return; }
+  const payments=[...payList(r.c).map(([amt,date])=>({amt,date})), ..._upgradeAddedPayments(r)];
   try{
     await api('POST',`/api/clients/${r.c.id}/upgrade`,{
       plan:r.plan, newTotal:r.newTotal, from:r.c.plan, oldPrice:r.oldTotal,
-      newPrice:r.newPrice, diff:r.diff, discount:r.disc, discountPct:r.pct, date:new Date().toISOString().slice(0,10),
+      newPrice:r.newPrice, diff:r.diff, discount:r.disc, discountPct:r.pct,
+      increment:r.increment, payMode:r.payMode, payments,
+      date:new Date().toISOString().slice(0,10),
     });
     await reloadClients();
     closeUpgrade();
@@ -5165,6 +5238,89 @@ async function confirmUpgrade(){
   }catch(e){ toast('فشل الترقية: '+(e.message||''),'⚠️'); }
 }
 function closeUpgrade(){ $('upgrade-mo').classList.remove('on'); _upgradeId=null; }
+
+// ═══════════════ UPSELL (service sales) ═══════════════
+let _upsellId = null;
+function openUpsell(id){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  _upsellId=id;
+  const today=new Date().toISOString().split('T')[0];
+  const svc=UPSELL_SERVICES;
+  const defPrice = svc.length ? svc[0].price : 0;
+  $('upsell-body').innerHTML = `
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">التاريخ</label>
+    <input class="inp" id="ups-date" type="date" value="${today}" style="margin-bottom:12px"/>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">الخدمة</label>
+    <select class="inp" id="ups-type" onchange="_onUpsellType()" style="margin-bottom:12px">
+      ${svc.map((s,i)=>`<option value="${esc(s.name)}" data-price="${s.price}"${i===0?' selected':''}>${esc(s.name)} — ${fmtMoney(s.price)}</option>`).join('')||'<option value="">لا توجد خدمات</option>'}
+    </select>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">السعر ($) — قابل للتعديل</label>
+    <input class="inp" id="ups-price" type="number" min="0" value="${defPrice}" style="margin-bottom:14px"/>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p" style="flex:1" onclick="saveUpsell()">💾 حفظ البيع</button>
+      ${isAdmin()?`<button class="btn btn-g" onclick="openUpsellOpts()">⚙️ الخدمات</button>`:''}
+      <button class="btn btn-g" onclick="closeUpsell()">إلغاء</button>
+    </div>`;
+  $('upsell-mo').classList.add('on');
+}
+function _onUpsellType(){
+  const sel=$('ups-type'); if(!sel) return;
+  const opt=sel.options[sel.selectedIndex];
+  if(opt && $('ups-price')) $('ups-price').value = opt.getAttribute('data-price')||0;
+}
+async function saveUpsell(){
+  const c=clients.find(x=>x.id===_upsellId); if(!c) return;
+  const date=($('ups-date')||{}).value||'', type=($('ups-type')||{}).value||'', price=+($('ups-price')||{}).value||0;
+  if(!type){ toast('اختر خدمة','⚠️'); return; }
+  const entry={ id:Date.now(), date, type, price, author:sessionStorage.getItem('ah97_user')||'', createdAt:new Date().toISOString() };
+  c.upsells=[...(c.upsells||[]), entry];
+  try{ await api('PUT',`/api/clients/${c.id}/upsells`,{upsells:c.upsells}); }catch(e){ toast('خطأ في الحفظ','❌'); return; }
+  closeUpsell();
+  toast('تم تسجيل البيع ✓','✅');
+  if(typeof logActivity==='function') logActivity('💰','بيع خدمة',`${c.name}: ${type}`);
+  if($('csm-mo').classList.contains('on')) openCsmDetail(c.id, _csmDetailPhone);
+}
+async function delUpsell(id, upId){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  if(!confirm('حذف هذا البيع؟')) return;
+  c.upsells=(c.upsells||[]).filter(u=>u.id!==upId);
+  try{ await api('PUT',`/api/clients/${id}/upsells`,{upsells:c.upsells}); }catch(e){ toast('خطأ','❌'); return; }
+  openCsmDetail(id, _csmDetailPhone);
+}
+function closeUpsell(){ $('upsell-mo').classList.remove('on'); _upsellId=null; }
+
+// Manage the upsell services list (admin)
+function openUpsellOpts(){
+  $('upsell-opts-body').innerHTML = `
+    ${UPSELL_SERVICES.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--b1)">
+      <span style="flex:1;font-size:12.5px">${esc(s.name)}</span>
+      <input type="number" value="${s.price}" style="width:90px;background:var(--bg);border:1px solid var(--b2);border-radius:6px;padding:4px 8px;color:var(--t1);font-size:12px" onchange="saveUpsellPrice('${esc(s.name)}',this.value)"/>
+      <button class="btn btn-r" style="padding:3px 8px;font-size:11px" onclick="delUpsellSvc('${esc(s.name)}')">🗑️</button>
+    </div>`).join('')||'<div style="color:var(--t3);font-size:12px">—</div>'}
+    <div style="display:flex;gap:6px;margin-top:12px">
+      <input class="inp" id="ups-new-name" placeholder="اسم الخدمة" style="flex:1"/>
+      <input class="inp" id="ups-new-price" type="number" min="0" value="0" placeholder="السعر" style="width:100px"/>
+      <button class="btn btn-p" onclick="addUpsellSvc()">➕</button>
+    </div>`;
+  $('upsell-opts-mo').classList.add('on');
+}
+async function addUpsellSvc(){
+  const name=($('ups-new-name')||{}).value.trim(), price=+($('ups-new-price')||{}).value||0;
+  if(!name) return;
+  if(UPSELL_SERVICES.some(s=>s.name===name)){ toast('موجود مسبقاً','⚠️'); return; }
+  UPSELL_SERVICES.push({name, price});
+  try{ await api('POST','/api/upsell-services',{name, price}); }catch(e){ toast('خطأ','❌'); }
+  openUpsellOpts();
+}
+async function saveUpsellPrice(name, val){
+  const s=UPSELL_SERVICES.find(x=>x.name===name); if(s) s.price=+val||0;
+  try{ await api('PUT',`/api/upsell-services/${encodeURIComponent(name)}`,{price:+val||0}); }catch(e){ toast('خطأ','❌'); }
+}
+async function delUpsellSvc(name){
+  const i=UPSELL_SERVICES.findIndex(x=>x.name===name); if(i>-1) UPSELL_SERVICES.splice(i,1);
+  try{ await api('DELETE',`/api/upsell-services/${encodeURIComponent(name)}`); }catch(e){ toast('خطأ','❌'); }
+  openUpsellOpts();
+}
 
 // ═══════════════ PHONE-CSM: upgrades history ═══════════════
 function renderUpgrades(){
