@@ -3,7 +3,8 @@ const express = require('express');
 const path    = require('path');
 const {
   getClients, getTrash,
-  createClient, updateClient, updateNotes,
+  createClient, updateClient, updateNotes, upgradeClient,
+  addAudit, getAudit,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
@@ -62,17 +63,33 @@ function requireAdmin(req, res, next) {
     .catch(() => res.status(500).json({ error: 'خطأ في التحقق من الجلسة' }));
 }
 
-function requireCsmOrAdmin(req, res, next) {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  getSessionDB(token)
-    .then(session => {
-      if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
-      if (session.role !== 'admin' && session.role !== 'csm')
-        return res.status(403).json({ error: 'هذه الميزة لمدير نجاح العملاء والمشرف فقط' });
-      req.user = { username: session.username, role: session.role };
-      next();
-    })
-    .catch(() => res.status(500).json({ error: 'خطأ في التحقق من الجلسة' }));
+// Generic role gate: allow only the listed roles.
+function requireRoles(...roles) {
+  return (req, res, next) => {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    getSessionDB(token)
+      .then(session => {
+        if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
+        if (!roles.includes(session.role)) return res.status(403).json({ error: 'صلاحية غير كافية' });
+        req.user = { username: session.username, role: session.role };
+        next();
+      })
+      .catch(() => res.status(500).json({ error: 'خطأ في التحقق من الجلسة' }));
+  };
+}
+// CSM follow-up endpoints: admin + both CSM roles (in-app and phone).
+const requireCsmOrAdmin       = requireRoles('admin', 'csm', 'csm_phone');
+// Upgrade + audit log: admin + phone-CSM.
+const requireCsmPhoneOrAdmin  = requireRoles('admin', 'csm_phone');
+
+// Write an audit entry; never blocks or fails the request.
+function audit(req, action, entity, entityId, summary, details) {
+  try {
+    addAudit({
+      username: req.user && req.user.username, role: req.user && req.user.role,
+      action, entity, entityId, summary, details,
+    }).catch(() => {});
+  } catch (_) { /* ignore */ }
 }
 
 // ─── Login rate limiter ───────────────────────────────────────────────────────
@@ -169,13 +186,19 @@ app.get('/api/clients', requireAuth, async (_req, res) => {
 app.post('/api/clients', requireAdmin, async (req, res) => {
   try {
     const client = await createClient(sanitizeClientBody(req.body));
+    audit(req, 'client.create', 'client', client.id, `إضافة عميل «${client.name || client.id}»`, { plan: client.plan });
     res.status(201).json(clean(client));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/clients/:id', requireAuth, async (req, res) => {
-  try { await updateClient(+req.params.id, sanitizeClientBody(req.body)); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    const patch = sanitizeClientBody(req.body);
+    const updated = await updateClient(+req.params.id, patch);
+    audit(req, 'client.update', 'client', +req.params.id,
+      `تعديل بيانات «${(updated && updated.name) || req.params.id}»`, { fields: Object.keys(patch) });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.put('/api/clients/:id/notes', requireAuth, async (req, res) => {
@@ -204,7 +227,42 @@ app.put('/api/clients/:id/csm-notes', requireCsmOrAdmin, async (req, res) => {
       createdAt: str(n.createdAt, 40),
     }));
     await updateCsmNotes(+req.params.id, notes);
+    audit(req, 'csm.note', 'client', +req.params.id, 'تحديث متابعة نجاح العملاء', { count: notes.length });
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Plan upgrade (admin + phone-CSM): changes plan + contract total, logs it ──
+app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) => {
+  try {
+    const id = +req.params.id;
+    const b = req.body || {};
+    const plan = str(b.plan, 100);
+    if (!plan) return res.status(400).json({ error: 'الباقة الجديدة مطلوبة' });
+    const newTotal = Math.max(0, Number(b.newTotal) || 0);
+    const rec = {
+      from: str(b.from, 100) || '', to: plan,
+      oldPrice: Number(b.oldPrice) || 0, newPrice: Number(b.newPrice) || 0,
+      diff: Number(b.diff) || 0, discount: Number(b.discount) || 0,
+      newTotal, date: str(b.date, 30) || new Date().toISOString().slice(0, 10),
+      by: req.user.username,
+    };
+    const updated = await upgradeClient(id, plan, newTotal, rec);
+    if (!updated) return res.status(404).json({ error: 'العميل غير موجود' });
+    audit(req, 'client.upgrade', 'client', id,
+      `ترقية باقة «${updated.name || id}»: ${rec.from} → ${rec.to}`, rec);
+    res.json({ ok: true, client: clean(updated) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Audit log (admin + phone-CSM) ────────────────────────────────────────────
+app.get('/api/audit', requireCsmPhoneOrAdmin, async (req, res) => {
+  try {
+    const { action, entity, username, limit } = req.query || {};
+    res.json(await getAudit({
+      action: str(action, 80), entity: str(entity, 40),
+      username: str(username, 100), limit: +limit || 300,
+    }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -237,7 +295,7 @@ app.delete('/api/csm/options/:kind/:label', requireCsmOrAdmin, async (req, res) 
 });
 
 app.delete('/api/clients/:id', requireAdmin, async (req, res) => {
-  try { await softDelete(+req.params.id); res.json({ ok: true }); }
+  try { await softDelete(+req.params.id); audit(req, 'client.delete', 'client', +req.params.id, `نقل عميل #${req.params.id} إلى المهملات`); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -350,12 +408,13 @@ app.put('/api/plans/:name', requireAdmin, async (req, res) => {
     const ok = await updateCustomPlan(decodeURIComponent(req.params.name),
       newName ? str(newName, 100) : undefined, price);
     if (!ok) return res.status(409).json({ error: 'اسم الباقة موجود مسبقاً' });
+    audit(req, 'plan.update', 'plan', decodeURIComponent(req.params.name), `تعديل الباقة «${decodeURIComponent(req.params.name)}»`, { newName, price });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/plans/:name', requireAdmin, async (req, res) => {
-  try { await deleteCustomPlan(decodeURIComponent(req.params.name)); res.json({ ok: true }); }
+  try { await deleteCustomPlan(decodeURIComponent(req.params.name)); audit(req, 'plan.delete', 'plan', decodeURIComponent(req.params.name), `حذف الباقة «${decodeURIComponent(req.params.name)}»`); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -404,9 +463,10 @@ app.post('/api/users', requireAdmin, async (req, res) => {
   try {
     const { username, password, role } = req.body || {};
     if (!username || !password) return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
-    if (!['admin', 'coach', 'csm'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
+    if (!['admin', 'coach', 'csm', 'csm_phone'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
     const ok = await createUser(str(username, 50), str(password, 200), role);
     if (!ok) return res.status(409).json({ error: 'اسم المستخدم موجود مسبقاً' });
+    audit(req, 'user.create', 'user', str(username, 50), `إنشاء مستخدم «${username}» (${role})`);
     res.status(201).json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -414,11 +474,12 @@ app.post('/api/users', requireAdmin, async (req, res) => {
 app.put('/api/users/:username', requireAdmin, async (req, res) => {
   try {
     const { password, role } = req.body || {};
-    if (role && !['admin', 'coach', 'csm'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
+    if (role && !['admin', 'coach', 'csm', 'csm_phone'].includes(role)) return res.status(400).json({ error: 'الدور غير صحيح' });
     const ok = await updateUser(req.params.username, {
       password: password ? str(password, 200) : undefined,
       role,
     });
+    audit(req, 'user.update', 'user', req.params.username, `تعديل مستخدم «${req.params.username}»`, { role, passwordChanged: !!password });
     res.json({ ok });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -428,6 +489,7 @@ app.delete('/api/users/:username', requireAdmin, async (req, res) => {
     if (req.user.username === req.params.username.toLowerCase())
       return res.status(400).json({ error: 'لا يمكنك حذف حسابك الخاص' });
     const ok = await deleteUser(req.params.username);
+    audit(req, 'user.delete', 'user', req.params.username, `حذف مستخدم «${req.params.username}»`);
     res.json({ ok });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -445,6 +445,19 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       التنبيهات
       <span class="nl-b" id="nl-notif-badge" style="display:none;background:var(--r)">0</span>
     </div>
+    <div class="ns" id="ns-phone">المتابعة الهاتفية</div>
+    <div class="nl" data-v="phoneclients" id="nl-phoneclients">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+      قائمة العملاء
+    </div>
+    <div class="nl" data-v="upgrades" id="nl-upgrades">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+      الترقيات
+    </div>
+    <div class="nl" data-v="audit" id="nl-audit">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+      سجل التعديلات
+    </div>
     <div class="ns" id="ns-sys">النظام</div>
     <div class="nl" data-v="users" id="nl-users">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
@@ -600,6 +613,9 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   <div class="pg" id="pg-team"></div>
   <div class="pg" id="pg-commissions"></div>
   <div class="pg" id="pg-csm"></div>
+  <div class="pg" id="pg-phoneclients"></div>
+  <div class="pg" id="pg-upgrades"></div>
+  <div class="pg" id="pg-audit"></div>
   <div class="pg" id="pg-notifs"></div>
   <div class="pg" id="pg-users"></div>
   <div class="pg" id="pg-trash"></div>
@@ -670,6 +686,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <button class="mcls" onclick="closeFinReport()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
     </div>
     <div id="fin-report-body" style="padding:18px;max-height:80vh;overflow-y:auto"></div>
+  </div>
+</div>
+<!-- PLAN UPGRADE (phone-CSM / admin) -->
+<div class="mo" id="upgrade-mo" onclick="if(event.target===this)closeUpgrade()">
+  <div class="mbox" style="max-width:460px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">⬆️</div>
+      <h3>ترقية الباقة</h3>
+      <button class="mcls" onclick="closeUpgrade()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="upgrade-body" style="padding:18px"></div>
   </div>
 </div>
 <!-- PRINT REPORT (hidden; used for CSM PDF export via browser print) -->
@@ -1137,8 +1164,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',notifs:'Notifications',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'قائمة العملاء (متابعة هاتفية)',upgrades:'الترقيات',audit:'سجل التعديلات',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Clients (Phone CSM)',upgrades:'Upgrades',audit:'Change Log',notifs:'Notifications',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171' };
@@ -1429,17 +1456,24 @@ function isCsm() {
 function isAdmin() {
   try { return sessionStorage.getItem('ah97_role') === 'admin'; } catch(_) { return false; }
 }
+function isCsmPhone() {
+  try { return sessionStorage.getItem('ah97_role') === 'csm_phone'; } catch(_) { return false; }
+}
+// Reload the in-memory clients array from the server (after an upgrade/edit).
+async function reloadClients() {
+  try { clients = await api('GET', '/api/clients'); if($('cnt-badge')) $('cnt-badge').textContent = clients.length; } catch(_) {}
+}
 // CSM option lists, loaded from the server (admin + csm)
 let CSM_OPTS = { conditions: [], follows: [] };
 
 function applyCsmRestrictions() {
   if (!isCsm()) return;
   // CSM sees only the follow-up section (can still open client profiles from it)
-  ['overview','clients','analytics','insights','team','commissions','users','trash'].forEach(v => {
+  ['overview','clients','analytics','insights','team','commissions','users','trash','phoneclients','upgrades','audit'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
-  ['ns-team','ns-sys','ns-main'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  ['ns-team','ns-sys','ns-main','ns-phone'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
   document.querySelectorAll('button').forEach(btn => {
     const oc = btn.getAttribute('onclick') || '';
     if (oc === 'openModal()' || oc === 'window.print()' || oc === 'exportCSV()') btn.style.display = 'none';
@@ -1448,6 +1482,25 @@ function applyCsmRestrictions() {
   const uNm = document.querySelector('.u-nm'), uRl = document.querySelector('.u-rl'), uAv = document.querySelector('.u-av');
   if (uNm) uNm.textContent = username;
   if (uRl) uRl.textContent = 'CSM · AH97';
+  if (uAv) uAv.textContent = (username[0] || 'C').toUpperCase();
+}
+
+function applyCsmPhoneRestrictions() {
+  if (!isCsmPhone()) return;
+  // Phone-CSM sees only: broad client list, upgrades, change log.
+  ['overview','clients','analytics','insights','team','commissions','csm','notifs','users','trash'].forEach(v => {
+    const el = document.querySelector(`.nl[data-v="${v}"]`);
+    if (el) el.style.display = 'none';
+  });
+  ['ns-team','ns-csm','ns-sys','ns-main'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  document.querySelectorAll('button').forEach(btn => {
+    const oc = btn.getAttribute('onclick') || '';
+    if (oc === 'openModal()' || oc === 'window.print()' || oc === 'exportCSV()') btn.style.display = 'none';
+  });
+  const username = sessionStorage.getItem('ah97_user') || 'CSM';
+  const uNm = document.querySelector('.u-nm'), uRl = document.querySelector('.u-rl'), uAv = document.querySelector('.u-av');
+  if (uNm) uNm.textContent = username;
+  if (uRl) uRl.textContent = 'CSM هاتفي · AH97';
   if (uAv) uAv.textContent = (username[0] || 'C').toUpperCase();
 }
 
@@ -1463,11 +1516,11 @@ function closeMobMenu() {
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, users, trash + orphaned section headers
-  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash'].forEach(v => {
+  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash','phoneclients','upgrades','audit'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
-  ['ns-team','ns-csm','ns-sys'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  ['ns-team','ns-csm','ns-sys','ns-phone'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
   // Hide topbar action buttons (add client, print, export)
   document.querySelectorAll('button').forEach(btn => {
     const oc = btn.getAttribute('onclick') || '';
@@ -1513,7 +1566,7 @@ async function api(method, url, body) {
 
 async function initApp() {
   try {
-    const _isCoach = isCoach(), _isCsm = isCsm(), _limited = _isCoach || _isCsm;
+    const _isCoach = isCoach(), _isCsm = isCsm(), _isCsmPhone = isCsmPhone(), _limited = _isCoach || _isCsm || _isCsmPhone;
     const [clientsData, trashData, teamData, plansData, teamTrashData, csmOpts] = await Promise.all([
       api('GET', '/api/clients'),
       _limited ? Promise.resolve([]) : api('GET', '/api/trash'),
@@ -1538,8 +1591,9 @@ async function initApp() {
     if (ldr) { ldr.classList.add('hide'); setTimeout(()=>ldr.remove(), 500); }
     applyCoachRestrictions();
     applyCsmRestrictions();
-    if (_isCsm) nav('csm'); else if (_isCoach) nav('clients'); else renderOverview();
-    if (!_isCoach && !_isCsm) api('POST','/api/csm/ensure-follow-start').catch(()=>{}); // seed follow-up counters
+    applyCsmPhoneRestrictions();
+    if (_isCsm) nav('csm'); else if (_isCsmPhone) nav('phoneclients'); else if (_isCoach) nav('clients'); else renderOverview();
+    if (!_limited) api('POST','/api/csm/ensure-follow-start').catch(()=>{}); // seed follow-up counters (admin only)
     updateNotifBadge();
     if (!_isCoach) setTimeout(showNotifPopup, 400);
   } catch(e) {
@@ -1718,7 +1772,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, phoneclients:renderPhoneClients, upgrades:renderUpgrades, audit:renderAudit, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -3752,7 +3806,7 @@ function openDetail(id) {
 
   // Clean profile: unset fields show "غير محدد"; sex/dates are editable inline (admin/coach)
   const unset = `<span style="color:var(--t3)">${LANG==='ar'?'غير محدد':'Not set'}</span>`;
-  const editable = !isCoach();
+  const editable = !isCoach() && !isCsmPhone();   // phone-CSM is read-only (except CSM notes + upgrade)
   const mini = 'background:var(--hv);border:1px solid var(--b2);border-radius:6px;padding:3px 8px;color:var(--t1);font-size:12px;cursor:pointer';
   const sexLbl = c.sex==='male'?(LANG==='ar'?'ذكر':'Male'):c.sex==='female'?(LANG==='ar'?'أنثى':'Female'):null;
   const sexInline = editable
@@ -4929,6 +4983,205 @@ function exportCsmPdf(id){
   setTimeout(()=>document.body.classList.remove('printing'),400);
 }
 
+// ═══════════════ PHONE-CSM: broad client list ═══════════════
+let _pcSearch = '';
+function setPcSearch(v){ _pcSearch = v; renderPhoneClients(); const el=$('pc-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
+function nextTierPlan(plan){
+  const t = planTier(plan);
+  if(t==='CORE') return 'PREMIUM';
+  if(t==='PREMIUM') return 'INNER CIRCLE';
+  return null;   // INNER / OTHER: no further upgrade
+}
+function renderPhoneClients(){
+  const q = _pcSearch.trim().toLowerCase();
+  const list = clients.filter(c=>!c.deleted)
+    .filter(c => matchNamePhone(c.name, c.phone, q) || (c.email||'').toLowerCase().includes(q))
+    .sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+  const sexLbl = s => s==='male'?'ذكر':s==='female'?'أنثى':'—';
+  const th = (x,extra='')=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'};${extra}">`;
+  const rows = list.length ? list.map(c=>{
+    const canUp = !!nextTierPlan(c.plan);
+    return `<tr style="border-bottom:1px solid var(--b1)">
+      <td style="padding:10px 12px;font-size:12.5px;font-weight:600">${esc(c.name)||'—'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap;direction:ltr">${esc(c.phone)||'—'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2);direction:ltr">${esc(c.email)||'—'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2)">${sexLbl(c.sex)}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2)">${esc(c.closer)||'—'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2)">${esc(c.setter)||'—'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${c.regDate?fmtDate(c.regDate):'—'}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${c.contractEnd?fmtDate(c.contractEnd):'—'}</td>
+      <td style="padding:10px 12px">${planBadge(c.plan)}</td>
+      <td style="padding:10px 12px;text-align:center;white-space:nowrap">
+        <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openDetail(${c.id})" title="الملف">👤</button>
+        <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openCsmDetail(${c.id})" title="متابعة">📝</button>
+        ${canUp?`<button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpgrade(${c.id})" title="ترقية">⬆️</button>`:''}
+      </td></tr>`;
+  }).join('') : `<tr><td colspan="10" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء مطابقون</td></tr>`;
+  $('pg-phoneclients').innerHTML = `
+  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <input class="inp" id="pc-search" style="max-width:260px" placeholder="🔍 بحث بالاسم أو الهاتف أو البريد..." value="${esc(_pcSearch)}" oninput="setPcSearch(this.value)"/>
+    <span style="font-size:12px;color:var(--t3)">${list.length} عميل</span>
+    <span style="margin-right:auto;font-size:11px;color:var(--t3)">اضغط 📝 للمتابعة · ⬆️ لترقية الباقة (CORE→PREMIUM، PREMIUM→INNER)</span>
+  </div>
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;min-width:900px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+        ${th()}الاسم</th>${th()}الهاتف</th>${th()}البريد</th>${th('center')}الجنس</th>${th()}Closer</th>${th()}Setter</th>${th()}بداية العقد</th>${th()}نهاية العقد</th>${th()}الباقة</th>${th('center')}إجراءات</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+// ── Plan upgrade modal ──
+let _upgradeId = null;
+function openUpgrade(id){
+  const c = clients.find(x=>x.id===id); if(!c) return;
+  _upgradeId = id;
+  const oldTotal = c.customTotal||PLANS[c.plan]||0;
+  const targets = Object.keys(PLANS).filter(p => p!==c.plan && (PLANS[p]||0) >= oldTotal);
+  const def = nextTierPlan(c.plan);
+  const defTarget = (def && targets.includes(def)) ? def : (targets[0]||'');
+  const box='background:var(--hv);border:1px solid var(--b2);border-radius:8px;padding:10px 12px';
+  $('upgrade-body').innerHTML = `
+    <div style="${box};margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--t3)">الباقة الحالية</span>
+      <span style="font-weight:700">${esc(c.plan)||'—'} · ${fmtMoney(oldTotal)}</span>
+    </div>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">الباقة الجديدة</label>
+    <select class="inp" id="up-plan" onchange="_recalcUpgrade()" style="margin-bottom:12px">
+      ${targets.map(p=>`<option value="${esc(p)}"${p===defTarget?' selected':''}>${esc(p)} — ${fmtMoney(PLANS[p]||0)}</option>`).join('')||'<option value="">لا توجد باقة أعلى</option>'}
+    </select>
+    <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:10px"><span style="color:var(--t3)">الفرق</span><span id="up-diff" style="font-weight:700"></span></div>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">خصم على الفرق ($)</label>
+    <input class="inp" id="up-disc" type="number" min="0" value="0" oninput="_recalcUpgrade()" style="margin-bottom:12px"/>
+    <div style="${box};margin-bottom:6px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">الإجمالي الجديد للعقد</span><span id="up-newtotal" style="font-weight:800;color:var(--g)"></span></div>
+    <div style="${box};margin-bottom:14px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">المتبقي بعد الترقية</span><span id="up-rem" style="font-weight:800;color:var(--r)"></span></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p" style="flex:1" onclick="confirmUpgrade()">✓ تأكيد الترقية</button>
+      <button class="btn btn-g" onclick="closeUpgrade()">إلغاء</button>
+    </div>`;
+  _recalcUpgrade();
+  $('upgrade-mo').classList.add('on');
+}
+function _upgradeCalc(){
+  const c=clients.find(x=>x.id===_upgradeId); if(!c) return null;
+  const oldTotal=c.customTotal||PLANS[c.plan]||0;
+  const plan=($('up-plan')||{}).value||'';
+  const newPrice=PLANS[plan]||0;
+  const diff=Math.max(0,newPrice-oldTotal);
+  const disc=Math.max(0,Math.min(diff, +($('up-disc')||{}).value||0));
+  const newTotal=Math.max(oldTotal, newPrice-disc);
+  return { c, oldTotal, plan, newPrice, diff, disc, newTotal };
+}
+function _recalcUpgrade(){
+  const r=_upgradeCalc(); if(!r) return;
+  if($('up-diff')) $('up-diff').textContent=fmtMoney(r.diff);
+  if($('up-newtotal')) $('up-newtotal').textContent=fmtMoney(r.newTotal);
+  if($('up-rem')) $('up-rem').textContent=fmtMoney(Math.max(0, r.newTotal - fx(r.c)));
+}
+async function confirmUpgrade(){
+  const r=_upgradeCalc(); if(!r) return;
+  if(!r.plan || r.plan===r.c.plan){ toast('اختر باقة مختلفة','⚠️'); return; }
+  try{
+    await api('POST',`/api/clients/${r.c.id}/upgrade`,{
+      plan:r.plan, newTotal:r.newTotal, from:r.c.plan, oldPrice:r.oldTotal,
+      newPrice:r.newPrice, diff:r.diff, discount:r.disc, date:new Date().toISOString().slice(0,10),
+    });
+    await reloadClients();
+    closeUpgrade();
+    toast('تمت ترقية الباقة ✓','✅');
+    if(typeof logActivity==='function') logActivity('⬆️','ترقية باقة',`${r.c.name}: ${r.plan}`);
+    if(S.view==='phoneclients') renderPhoneClients(); else if(S.view==='upgrades') renderUpgrades();
+  }catch(e){ toast('فشل الترقية: '+(e.message||''),'⚠️'); }
+}
+function closeUpgrade(){ $('upgrade-mo').classList.remove('on'); _upgradeId=null; }
+
+// ═══════════════ PHONE-CSM: upgrades history ═══════════════
+function renderUpgrades(){
+  const all=[];
+  clients.filter(c=>!c.deleted).forEach(c => (c.upgrades||[]).forEach(u => all.push({ ...u, cid:c.id, client:c.name })));
+  all.sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+  const addedRev = all.reduce((s,u)=> s + Math.max(0, (u.newTotal||0) - (u.oldPrice||0)), 0);
+  const kpi=(v,l,c)=>`<div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800${c?`;color:${c}`:''}">${v}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${l}</div></div>`;
+  const th = x=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
+  const rows = all.length ? all.map(u=>`
+    <tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${u.cid})">
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${u.date?fmtDate(u.date):'—'}</td>
+      <td style="padding:10px 12px;font-size:12.5px;font-weight:600">${esc(u.client)||'—'}</td>
+      <td style="padding:10px 12px;font-size:12px">${planBadge(u.from)} <span style="color:var(--t3)">→</span> ${planBadge(u.to)}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px">${fmtMoney(u.oldPrice||0)}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px">${fmtMoney(u.newPrice||0)}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;color:${(u.discount||0)>0?'var(--y)':'var(--t3)'}">${u.discount?('−'+fmtMoney(u.discount)):'—'}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(u.newTotal||0)}</td>
+      <td style="padding:10px 12px;font-size:11.5px;color:var(--t3)">${esc(u.by)||'—'}</td>
+    </tr>`).join('') : `<tr><td colspan="8" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا توجد ترقيات بعد</td></tr>`;
+  $('pg-upgrades').innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
+    ${kpi(all.length,'عدد الترقيات','#6366f1')}
+    ${kpi(fmtMoney(addedRev),'قيمة مضافة للعقود','var(--g)')}
+  </div>
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;min-width:760px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+        ${th()}التاريخ</th>${th()}العميل</th>${th()}الترقية</th>${th('center')}السعر السابق</th>${th('center')}سعر الجديد</th>${th('center')}الخصم</th>${th('center')}الإجمالي الجديد</th>${th()}بواسطة</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+// ═══════════════ CHANGE LOG (سجل التعديلات) ═══════════════
+let _auditFilter = '';
+function setAuditFilter(v){ _auditFilter = v; renderAudit(); }
+const AUDIT_ACTIONS = {
+  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة',
+  'csm.note':'متابعة CSM','plan.update':'تعديل باقة','plan.delete':'حذف باقة','plan.create':'إضافة باقة',
+  'user.create':'إضافة مستخدم','user.update':'تعديل مستخدم','user.delete':'حذف مستخدم',
+};
+function auditActionLabel(a){ return AUDIT_ACTIONS[a] || a; }
+function auditActionColor(a){
+  if(a==='client.upgrade') return 'var(--p2)';
+  if(a.endsWith('.delete')) return 'var(--r)';
+  if(a.endsWith('.create')) return 'var(--g)';
+  return 'var(--t2)';
+}
+async function renderAudit(){
+  const filterBar = a => `<option value="${a[0]}"${_auditFilter===a[0]?' selected':''}>${a[1]}</option>`;
+  const controls = `
+  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:12.5px;font-weight:600">تصفية:</span>
+    <select class="fsl" onchange="setAuditFilter(this.value)" style="min-width:170px">
+      <option value="">كل الأحداث</option>${Object.entries(AUDIT_ACTIONS).map(filterBar).join('')}
+    </select>
+    <button class="btn btn-g" onclick="renderAudit()" style="margin-right:auto">🔄 تحديث</button>
+  </div>`;
+  $('pg-audit').innerHTML = controls + `<div class="card" style="padding:24px;text-align:center;color:var(--t3)">جارِ التحميل…</div>`;
+  let data=[];
+  try{ data = await api('GET', `/api/audit?limit=400${_auditFilter?`&action=${encodeURIComponent(_auditFilter)}`:''}`); }
+  catch(e){ $('pg-audit').innerHTML = controls + `<div class="card" style="padding:24px;color:var(--r);text-align:center">تعذّر تحميل السجل: ${esc(e.message||'')}</div>`; return; }
+  const th = x=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
+  const rows = data.length ? data.map(r=>{
+    const d=new Date(r.ts);
+    const dstr=isNaN(d)? (r.ts||'') : d.toLocaleString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    return `<tr style="border-bottom:1px solid var(--b1)">
+      <td style="padding:10px 12px;font-size:11.5px;color:var(--t3);white-space:nowrap">${dstr}</td>
+      <td style="padding:10px 12px;font-size:12px;font-weight:600">${esc(r.username)||'—'}<div style="font-size:10px;color:var(--t3);font-weight:400">${esc(r.role)||''}</div></td>
+      <td style="padding:10px 12px"><span style="font-size:11px;font-weight:600;color:${auditActionColor(r.action)};background:var(--hv);padding:2px 8px;border-radius:6px;white-space:nowrap">${auditActionLabel(r.action)}</span></td>
+      <td style="padding:10px 12px;font-size:12.5px">${esc(r.summary)||'—'}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="4" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا توجد سجلات</td></tr>`;
+  $('pg-audit').innerHTML = controls + `
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;min-width:640px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+        ${th()}التاريخ والوقت</th>${th()}المستخدم</th>${th()}الإجراء</th>${th()}التفاصيل</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
 // ═══════════════ MONTHLY FINANCIAL REPORT (تحليلات → تقرير الشهر المالي) ═══════════════
 let _finMonth = null, _finCmp = null;
 function setFinMonth(v){ _finMonth=v; if(_finCmp===_finMonth) _finCmp=prevMonth(v); renderFinReportBody(); }
@@ -5485,6 +5738,7 @@ async function renderUsers() {
             <select id="u-role" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--b2);border-radius:8px;padding:9px 12px;color:var(--t1);font-size:13px">
               <option value="coach">Coach — يرى العملاء والملاحظات فقط</option>
               <option value="csm">CSM — متابعة نجاح العملاء</option>
+              <option value="csm_phone">CSM هاتفي — متابعة + ترقية الباقات</option>
               <option value="admin">مشرف — صلاحيات كاملة</option>
             </select>
           </div>

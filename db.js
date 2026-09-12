@@ -97,6 +97,19 @@ async function ensureSchema() {
       ('condition','يرد',1),('condition','مايرد',2),('condition','لسا ما بلش',3),('condition','موقف',4),('condition','طلع',5),
       ('follow','مابدأ الدورة',1),('follow','لسا ما خلص الدورة',2),('follow','خلص الدورة',3),('follow','لسا ما بدآ التطبيق',4),('follow','بدآ التطبيق',5),('follow','لسا ما طلع ارباح',6),('follow','طلع ارباح',7),('follow','راضي عن البرنامج',8),('follow','مو راضي عن البرنامج',9)
     on conflict (kind,label) do nothing;
+
+    create table if not exists audit_log (
+      id        bigserial   primary key,
+      ts        timestamptz not null default now(),
+      username  text,
+      role      text,
+      action    text        not null,   -- e.g. client.update · client.upgrade · csm.note · plan.rename
+      entity    text,                    -- 'client' | 'plan' | 'team' | 'user'
+      entity_id text,
+      summary   text,                    -- short Arabic description
+      details   jsonb
+    );
+    create index if not exists audit_log_ts_idx on audit_log(ts desc);
   `);
 }
 function schemaReady() { if (!schemaPromise) schemaPromise = ensureSchema(); return schemaPromise; }
@@ -256,6 +269,44 @@ async function updateClient(id, patch) {
   const updated = { ...rows[0].data, ...safePatch, id };
   await q('update clients set data = $2 where id = $1', [id, j(updated)]);
   return updated;
+}
+
+// Upgrade a client's plan: sets plan + customTotal and appends an entry to data.upgrades[].
+// `rec` is the upgrade record { from,to,oldPrice,newPrice,diff,discount,newTotal,date,by }.
+async function upgradeClient(id, newPlan, newTotal, rec) {
+  await ready();
+  const { rows } = await q('select data from clients where id = $1 and deleted = false', [id]);
+  if (!rows.length) return null;
+  const data = rows[0].data;
+  const upgrades = Array.isArray(data.upgrades) ? data.upgrades : [];
+  upgrades.push(rec);
+  const updated = { ...data, id, plan: newPlan, customTotal: newTotal, upgrades };
+  await q('update clients set data = $2 where id = $1', [id, j(updated)]);
+  return updated;
+}
+
+// ─── Audit log ────────────────────────────────────────────────────────────────
+async function addAudit(e) {
+  await schemaReady();
+  await q(
+    `insert into audit_log(username, role, action, entity, entity_id, summary, details)
+     values($1,$2,$3,$4,$5,$6,$7)`,
+    [e.username || null, e.role || null, e.action, e.entity || null,
+     e.entityId != null ? String(e.entityId) : null, e.summary || null,
+     e.details != null ? j(e.details) : null]);
+}
+async function getAudit({ limit = 300, action, entity, username } = {}) {
+  await schemaReady();
+  const where = [], params = [];
+  if (action)   { params.push(action);   where.push(`action = $${params.length}`); }
+  if (entity)   { params.push(entity);   where.push(`entity = $${params.length}`); }
+  if (username) { params.push(username); where.push(`username = $${params.length}`); }
+  params.push(Math.min(2000, Math.max(1, +limit || 300)));
+  const { rows } = await q(
+    `select id, ts, username, role, action, entity, entity_id, summary, details
+       from audit_log ${where.length ? 'where ' + where.join(' and ') : ''}
+      order by ts desc limit $${params.length}`, params);
+  return rows;
 }
 
 async function updateCsmNotes(id, csmNotes) {
@@ -733,8 +784,10 @@ const SEED_CLIENTS = [
 module.exports = {
   // Clients
   getClients, getTrash, importData,
-  createClient, updateClient, updateNotes,
+  createClient, updateClient, updateNotes, upgradeClient,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
+  // Audit log
+  addAudit, getAudit,
   // Team
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
