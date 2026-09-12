@@ -243,7 +243,7 @@ app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) =>
     const rec = {
       from: str(b.from, 100) || '', to: plan,
       oldPrice: Number(b.oldPrice) || 0, newPrice: Number(b.newPrice) || 0,
-      diff: Number(b.diff) || 0, discount: Number(b.discount) || 0,
+      diff: Number(b.diff) || 0, discount: Number(b.discount) || 0, discountPct: Number(b.discountPct) || 0,
       newTotal, date: str(b.date, 30) || new Date().toISOString().slice(0, 10),
       by: req.user.username,
     };

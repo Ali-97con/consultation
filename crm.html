@@ -548,6 +548,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
           <option>دفعة واحدة</option><option>قسطين</option>
           <option>3 أقساط</option><option>4 أقساط</option>
         </select>
+        <select class="fsl" id="f-paid" onchange="renderTable()" title="حالة السداد">
+          <option value="">الكل (سداد)</option>
+          <option value="paid">✅ مدفوع بالكامل</option>
+          <option value="unpaid">⏳ لم يُسدَّد بالكامل</option>
+        </select>
         <select class="fsl" id="f-month" onchange="renderTable()">
           <option value="">كل الشهور</option>
         </select>
@@ -1532,7 +1537,7 @@ function applyCoachRestrictions() {
   // Pre-hide restricted table columns
   ['paytype','collected','remaining','closer','setter'].forEach(k => S.hiddenCols.add(k));
   // Hide filter dropdowns
-  ['f-closer','f-setter','f-pay'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+  ['f-closer','f-setter','f-pay','f-paid'].forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
   // Hide column toggle panel items for restricted columns
   ['paytype','collected','remaining','closer','setter'].forEach(k => {
     const el = document.querySelector(`[onclick="toggleCol('${k}')"]`);
@@ -2159,6 +2164,7 @@ function getFiltered() {
   const se  = ($('f-setter')||{value:''}).value;
   const pt  = ($('f-pay')||{value:''}).value;
   const mo  = ($('f-month')||{value:''}).value;
+  const pd  = ($('f-paid')||{value:''}).value;
   return clients.filter(c => {
     if (q) {
       const nm = norm(c.name), ph = norm(c.phone), em = norm(c.email);
@@ -2170,6 +2176,8 @@ function getFiltered() {
     if (se && c.setter !== se) return false;
     if (pt && c.paymentType !== pt) return false;
     if (mo && !(c.regDate||'').startsWith(mo)) return false;
+    if (pd === 'paid'   && fr(c) > 0) return false;   // fully paid = no remaining
+    if (pd === 'unpaid' && fr(c) <= 0) return false;  // still owes the balance
     return true;
   }).sort((a,b)=>{
     if (q) {
@@ -5111,8 +5119,9 @@ function openUpgrade(id){
       ${targets.map(p=>`<option value="${esc(p)}"${p===defTarget?' selected':''}>${esc(p)} — ${fmtMoney(PLANS[p]||0)}</option>`).join('')||'<option value="">لا توجد باقة أعلى</option>'}
     </select>
     <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:10px"><span style="color:var(--t3)">الفرق</span><span id="up-diff" style="font-weight:700"></span></div>
-    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">خصم على الفرق ($)</label>
-    <input class="inp" id="up-disc" type="number" min="0" value="0" oninput="_recalcUpgrade()" style="margin-bottom:12px"/>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">نسبة الخصم على الفرق (%)</label>
+    <input class="inp" id="up-disc-pct" type="number" min="0" max="100" step="1" value="20" oninput="_recalcUpgrade()" style="margin-bottom:8px"/>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:12px"><span style="color:var(--t3)">قيمة الخصم</span><span id="up-disc-amt" style="font-weight:700;color:var(--y)"></span></div>
     <div style="${box};margin-bottom:6px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">الإجمالي الجديد للعقد</span><span id="up-newtotal" style="font-weight:800;color:var(--g)"></span></div>
     <div style="${box};margin-bottom:14px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">المتبقي بعد الترقية</span><span id="up-rem" style="font-weight:800;color:var(--r)"></span></div>
     <div style="display:flex;gap:8px">
@@ -5128,13 +5137,15 @@ function _upgradeCalc(){
   const plan=($('up-plan')||{}).value||'';
   const newPrice=PLANS[plan]||0;
   const diff=Math.max(0,newPrice-oldTotal);
-  const disc=Math.max(0,Math.min(diff, +($('up-disc')||{}).value||0));
+  const pct=Math.max(0,Math.min(100, +($('up-disc-pct')||{}).value||0));
+  const disc=Math.round(diff*pct/100);
   const newTotal=Math.max(oldTotal, newPrice-disc);
-  return { c, oldTotal, plan, newPrice, diff, disc, newTotal };
+  return { c, oldTotal, plan, newPrice, diff, pct, disc, newTotal };
 }
 function _recalcUpgrade(){
   const r=_upgradeCalc(); if(!r) return;
   if($('up-diff')) $('up-diff').textContent=fmtMoney(r.diff);
+  if($('up-disc-amt')) $('up-disc-amt').textContent='−'+fmtMoney(r.disc)+` (${r.pct}%)`;
   if($('up-newtotal')) $('up-newtotal').textContent=fmtMoney(r.newTotal);
   if($('up-rem')) $('up-rem').textContent=fmtMoney(Math.max(0, r.newTotal - fx(r.c)));
 }
@@ -5144,7 +5155,7 @@ async function confirmUpgrade(){
   try{
     await api('POST',`/api/clients/${r.c.id}/upgrade`,{
       plan:r.plan, newTotal:r.newTotal, from:r.c.plan, oldPrice:r.oldTotal,
-      newPrice:r.newPrice, diff:r.diff, discount:r.disc, date:new Date().toISOString().slice(0,10),
+      newPrice:r.newPrice, diff:r.diff, discount:r.disc, discountPct:r.pct, date:new Date().toISOString().slice(0,10),
     });
     await reloadClients();
     closeUpgrade();
@@ -5170,7 +5181,7 @@ function renderUpgrades(){
       <td style="padding:10px 12px;font-size:12px">${planBadge(u.from)} <span style="color:var(--t3)">→</span> ${planBadge(u.to)}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px">${fmtMoney(u.oldPrice||0)}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px">${fmtMoney(u.newPrice||0)}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:12px;color:${(u.discount||0)>0?'var(--y)':'var(--t3)'}">${u.discount?('−'+fmtMoney(u.discount)):'—'}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;color:${(u.discount||0)>0?'var(--y)':'var(--t3)'}">${u.discount?('−'+fmtMoney(u.discount)+(u.discountPct?` (${u.discountPct}%)`:'')):'—'}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(u.newTotal||0)}</td>
       <td style="padding:10px 12px;font-size:11.5px;color:var(--t3)">${esc(u.by)||'—'}</td>
     </tr>`).join('') : `<tr><td colspan="8" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا توجد ترقيات بعد</td></tr>`;
