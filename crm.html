@@ -3138,8 +3138,9 @@ function openCommDetail(name, month){
       ${month?`<span style="font-size:11px;background:var(--pbg);color:var(--p2);border:1px solid var(--pbd);padding:3px 10px;border-radius:20px;font-weight:600">${monthLabel(month)}</span>`:''}
       <span style="margin-right:auto;font-size:10.5px;color:var(--t3)">${LANG==='ar'?'العمولة = النسبة × المبلغ بعد خصم 5٪ ضريبة':'Commission = rate × payment after −5% VAT'}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:10px;margin-bottom:16px">
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:var(--y)">${fmtMoney(collected)}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'المبلغ المحصّل':'Cash collected'}</div></div>
+      <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:#f59e0b">${fmtMoney(exVat(collected))}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'بعد الضريبة (−5٪)':'Ex-VAT (−5%)'}</div></div>
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800;color:var(--g)">${fmtMoney(total)}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'إجمالي العمولات':'Commission'}</div></div>
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800">${clientsCount}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'عملاء':'Clients'}</div></div>
       <div class="kpi" style="padding:12px"><div style="font-size:18px;font-weight:800">${items.length}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${LANG==='ar'?'دفعات':'Payments'}</div></div>
