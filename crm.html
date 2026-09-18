@@ -2434,10 +2434,11 @@ function renderIncomeDetail(month, sortKey, sortDir) {
   if (sel && sel.value !== month) sel.value = month;
   const payments = [];
   clients.filter(c => !c.deleted).forEach(c => {
+    const ref = c.status === 'refunded';           // refunded → their cash is returned (shown negative, nets out of the total)
     const allDates = payList(c);
     allDates.forEach(([amt,date],i) => {
       if (amt > 0 && date && date.startsWith(month))
-        payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates });
+        payments.push({ name:c.name, plan: ref?('↩️ '+(c.plan||'')):c.plan, num:i+1, amt: ref?-amt:amt, payMethod: ref?'مُسترجع':(c.payMethod||'-'), date, allDates, isRefund:ref });
     });
     // Upsell sales count as cash received in their month
     (c.upsells||[]).forEach(u => {
@@ -2493,7 +2494,8 @@ function renderIncomeDetail(month, sortKey, sortDir) {
     </div>` : '';
 
   const totalAED = payments.reduce((s,p) => s + (p.amt * getRate(p.date.slice(0,7)) / 1000), 0);
-  badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) + '  ·  ' + totalAED.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' د.إ' : '';
+  const refundedSum = payments.filter(p=>p.isRefund).reduce((s,p)=>s+(-p.amt),0);
+  badge.textContent = payments.length ? (LANG==='ar'?'المجموع: ':'Total: ') + fmtMoney(total) + '  ·  ' + totalAED.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' د.إ' + (refundedSum>0?`  ·  ${LANG==='ar'?'مُسترجع':'Refunded'}: −${fmtMoney(refundedSum)}`:'') : '';
 
   table.innerHTML = ratesHtml + `
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
@@ -2524,8 +2526,8 @@ function renderIncomeDetail(month, sortKey, sortDir) {
                   </span>` : '').join('')}
               </div>
             </td>
-            <td style="padding:10px;text-align:left;font-weight:800;color:#10b981">${fmtMoney(p.amt)}</td>
-            <td style="padding:10px 14px;text-align:left;font-weight:800;color:#f59e0b">${toAED(p.amt, p.date.slice(0,7))}</td>
+            <td style="padding:10px;text-align:left;font-weight:800;color:${p.amt<0?'var(--r)':'#10b981'}">${p.amt<0?'−'+fmtMoney(-p.amt):fmtMoney(p.amt)}</td>
+            <td style="padding:10px 14px;text-align:left;font-weight:800;color:${p.amt<0?'var(--r)':'#f59e0b'}">${toAED(p.amt, p.date.slice(0,7))}</td>
           </tr>`).join('')}
         <tr style="border-top:2px solid var(--b1);font-weight:800;font-size:13px">
           <td colspan="5" style="padding:10px 14px;color:var(--t1)">${LANG==='ar'?'الإجمالي':'Total'} (${payments.length} ${LANG==='ar'?'دفعة':'payments'})</td>
@@ -4851,6 +4853,7 @@ function addCsmEntry(id){
   const entry={ id:Date.now(), date, condition:cond, follow, text, author:sessionStorage.getItem('ah97_user')||'', createdAt:new Date().toISOString() };
   c.csmNotes=[...(c.csmNotes||[]), entry];
   api('PUT',`/api/clients/${id}/csm-notes`,{notes:c.csmNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
+  removeHiddenNotif(`${id}:fu`);   // new observation → un-hide follow-up so the next cycle can remind again
   openCsmDetail(id, _csmDetailPhone);
   updateNotifBadge();   // follow-up reminder anchor moved → its notification clears
   toast('تم حفظ المتابعة','✅');
@@ -5766,12 +5769,14 @@ function computeNotifs(){
     if(daysUntil(c.contractEnd) < 0) return;            // contract ended → skip
     const last=lastCsmDate(c), N=planFollowDays(c.plan), tier=planTier(c.plan);
     const contacted = !!c.contactedAt && (!last || c.contactedAt.slice(0,10) >= last); // reached out since last observation
+    // One follow-up key per client (NOT per N-day bucket) so hiding it stays hidden across cycles,
+    // until a new observation is added (which clears the hidden key — see addCsmEntry).
     if(!last){
-      out.push({ key:`${c.id}:fu0`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:null, every:N, noFollow:true, contacted });
+      out.push({ key:`${c.id}:fu`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:null, every:N, noFollow:true, contacted });
     } else {
       const since=daysSince(last);
       if(since!==null && since>=N)
-        out.push({ key:`${c.id}:fu:${Math.floor(since/N)}`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:since, every:N, noFollow:false, contacted });
+        out.push({ key:`${c.id}:fu`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:since, every:N, noFollow:false, contacted });
     }
   });
   const order = { followup:0, ended:1, '3d':2, '15d':3 };
@@ -5779,6 +5784,7 @@ function computeNotifs(){
 }
 function getHiddenNotifs(){ try{ return new Set(JSON.parse(localStorage.getItem('notif_hidden')||'[]')); }catch(_){ return new Set(); } }
 function addHiddenNotifs(keys){ try{ const s=getHiddenNotifs(); keys.forEach(k=>s.add(k)); localStorage.setItem('notif_hidden', JSON.stringify([...s])); }catch(_){} updateNotifBadge(); }
+function removeHiddenNotif(key){ try{ const s=getHiddenNotifs(); if(s.delete(key)){ localStorage.setItem('notif_hidden', JSON.stringify([...s])); } }catch(_){} }
 function notifVisible(){ const h=getHiddenNotifs(); return computeNotifs().filter(n=>!h.has(n.key)); }   // shown on the page (incl. contacted)
 function notifPending(){ return notifVisible().filter(n=>!n.contacted); }                                // counted in badge + login pop-up
 function notifMeta(n){
