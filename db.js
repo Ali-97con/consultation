@@ -286,23 +286,49 @@ async function updateClient(id, patch) {
 
 // Upgrade a client's plan: sets plan + customTotal and appends an entry to data.upgrades[].
 // `rec` is the upgrade record { from,to,oldPrice,newPrice,diff,discount,newTotal,date,by }.
-async function upgradeClient(id, newPlan, newTotal, rec, payments) {
+function mirrorP(obj, payments) {              // keep legacy p1..p4 in sync with payments[]
+  obj.p1 = (payments[0] && payments[0].amt) || 0; obj.p1d = (payments[0] && payments[0].date) || '';
+  obj.p2 = (payments[1] && payments[1].amt) || 0; obj.p2d = (payments[1] && payments[1].date) || '';
+  obj.p3 = (payments[2] && payments[2].amt) || 0; obj.p3d = (payments[2] && payments[2].date) || '';
+  obj.p4 = (payments[3] && payments[3].amt) || 0; obj.p4d = (payments[3] && payments[3].date) || '';
+}
+function payArr(data) {                          // normalise a client's payments to [{amt,date}]
+  if (Array.isArray(data.payments)) return data.payments;
+  return [[data.p1, data.p1d], [data.p2, data.p2d], [data.p3, data.p3d], [data.p4, data.p4d]]
+    .map(([a, d]) => ({ amt: a || 0, date: d || '' }));
+}
+async function upgradeClient(id, newPlan, newTotal, rec, payments, contractEnd) {
   await ready();
   const { rows } = await q('select data from clients where id = $1 and deleted = false', [id]);
   if (!rows.length) return null;
   const data = rows[0].data;
+  // Snapshot previous state so the upgrade can be undone.
+  rec.prevPlan = data.plan; rec.prevTotal = (data.customTotal != null ? data.customTotal : null);
+  rec.prevContractEnd = data.contractEnd || ''; rec.prevPayments = payArr(data);
   const upgrades = Array.isArray(data.upgrades) ? data.upgrades : [];
   upgrades.push(rec);
   const updated = { ...data, id, plan: newPlan, customTotal: newTotal, upgrades };
-  if (Array.isArray(payments)) {                    // difference paid now / in installments → new schedule
-    updated.payments = payments;
-    updated.p1 = (payments[0] && payments[0].amt) || 0; updated.p1d = (payments[0] && payments[0].date) || '';
-    updated.p2 = (payments[1] && payments[1].amt) || 0; updated.p2d = (payments[1] && payments[1].date) || '';
-    updated.p3 = (payments[2] && payments[2].amt) || 0; updated.p3d = (payments[2] && payments[2].date) || '';
-    updated.p4 = (payments[3] && payments[3].amt) || 0; updated.p4d = (payments[3] && payments[3].date) || '';
-  }
+  if (contractEnd) updated.contractEnd = contractEnd;
+  if (Array.isArray(payments)) { updated.payments = payments; mirrorP(updated, payments); }
   await q('update clients set data = $2 where id = $1', [id, j(updated)]);
   return updated;
+}
+// Undo the most recent upgrade for a client: restore plan/total/contractEnd/payments from the snapshot.
+async function undoLastUpgrade(id) {
+  await ready();
+  const { rows } = await q('select data from clients where id = $1 and deleted = false', [id]);
+  if (!rows.length) return null;
+  const data = rows[0].data;
+  const upgrades = Array.isArray(data.upgrades) ? data.upgrades.slice() : [];
+  if (!upgrades.length) return null;
+  const rec = upgrades.pop();
+  const updated = { ...data, id, upgrades };
+  updated.plan = (rec.prevPlan !== undefined ? rec.prevPlan : rec.from);
+  updated.customTotal = (rec.prevTotal != null ? rec.prevTotal : rec.oldPrice);
+  if (rec.prevContractEnd !== undefined) updated.contractEnd = rec.prevContractEnd;
+  if (Array.isArray(rec.prevPayments)) { updated.payments = rec.prevPayments; mirrorP(updated, rec.prevPayments); }
+  await q('update clients set data = $2 where id = $1', [id, j(updated)]);
+  return { client: updated, rec };
 }
 
 // ─── Audit log ────────────────────────────────────────────────────────────────
@@ -841,7 +867,7 @@ const SEED_CLIENTS = [
 module.exports = {
   // Clients
   getClients, getTrash, importData,
-  createClient, updateClient, updateNotes, upgradeClient,
+  createClient, updateClient, updateNotes, upgradeClient, undoLastUpgrade,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   // Audit log
   addAudit, getAudit,

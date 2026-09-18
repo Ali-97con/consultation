@@ -3,7 +3,7 @@ const express = require('express');
 const path    = require('path');
 const {
   getClients, getTrash,
-  createClient, updateClient, updateNotes, upgradeClient,
+  createClient, updateClient, updateNotes, upgradeClient, undoLastUpgrade,
   addAudit, getAudit,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,
@@ -252,11 +252,24 @@ app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) =>
     const payments = Array.isArray(b.payments)
       ? b.payments.slice(0, 60).map(p => ({ amt: Number(p && p.amt) || 0, date: str((p && p.date) || '', 30) || '' }))
       : undefined;
-    const updated = await upgradeClient(id, plan, newTotal, rec, payments);
+    const contractEnd = str(b.contractEnd, 30) || undefined;
+    if (contractEnd) rec.contractEnd = contractEnd;
+    const updated = await upgradeClient(id, plan, newTotal, rec, payments, contractEnd);
     if (!updated) return res.status(404).json({ error: 'العميل غير موجود' });
     audit(req, 'client.upgrade', 'client', id,
       `ترقية باقة «${updated.name || id}»: ${rec.from} → ${rec.to}`, rec);
     res.json({ ok: true, client: clean(updated) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Undo the most recent upgrade (admin + phone-CSM)
+app.post('/api/clients/:id/upgrade/undo', requireCsmPhoneOrAdmin, async (req, res) => {
+  try {
+    const r = await undoLastUpgrade(+req.params.id);
+    if (!r) return res.status(404).json({ error: 'لا توجد ترقية لإلغائها' });
+    audit(req, 'client.upgrade.undo', 'client', +req.params.id,
+      `إلغاء ترقية «${r.client.name || req.params.id}»: عودة إلى ${r.client.plan}`, r.rec);
+    res.json({ ok: true, client: clean(r.client) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

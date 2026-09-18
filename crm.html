@@ -3929,6 +3929,13 @@ function openDetail(id) {
     <div class="dp-row"><span class="dp-k">${LANG==='ar'?'ملاحظات الفريق':'Team notes'}</span><span class="dp-v">${c.notes.length} ${LANG==='ar'?'ملاحظة':'notes'}</span></div>
   </div>
 
+  <!-- ── UPGRADES & UPSELLS (admin + CSM roles) ── -->
+  ${(!isCoach() && ((c.upgrades||[]).length || (c.upsells||[]).length)) ? `<div class="dp-sc">
+    <div class="dp-st">💰 ${LANG==='ar'?'الترقيات والمبيعات الإضافية':'Upgrades & Upsells'}</div>
+    ${(c.upgrades||[]).slice().reverse().map(u=>`<div class="dp-row"><span class="dp-k">⬆️ ${esc(u.from||'')} → ${esc(u.to||'')}</span><span class="dp-v">${u.date?fmtDate(u.date):''} · ${fmtMoney(u.newTotal||0)}</span></div>`).join('')}
+    ${(c.upsells||[]).slice().reverse().map(u=>`<div class="dp-row"><span class="dp-k">🛒 ${esc(u.type||'')}</span><span class="dp-v">${u.date?fmtDate(u.date):''} · ${fmtMoney(u.price||0)}</span></div>`).join('')}
+  </div>`:''}
+
   <!-- ── NOTES ── -->
   <div class="dp-sc">
     <div class="dp-st">📝 ${t('dp_notes')} <span style="font-size:10px;color:var(--t3);font-weight:400;text-transform:none;letter-spacing:0">(${c.notes.length})</span></div>
@@ -5033,6 +5040,8 @@ function exportCsmPdf(id){
   const c=clients.find(x=>x.id===id); if(!c) return;
   const notes=(c.csmNotes||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const teamNotes=(c.notes||[]).slice().sort((a,b)=>b.id-a.id);
+  const upsells=(c.upsells||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const upgrades=(c.upgrades||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const sexLbl=c.sex==='male'?'ذكر':c.sex==='female'?'أنثى':'—';
   $('print-area').innerHTML=`
     <h1>${esc(c.name)}</h1>
@@ -5047,6 +5056,15 @@ function exportCsmPdf(id){
       <tr><td>بداية العقد</td><td>${c.regDate?fmtDate(c.regDate):'—'}</td></tr>
       <tr><td>نهاية العقد</td><td>${c.contractEnd?fmtDate(c.contractEnd):'—'}</td></tr>
     </tbody></table>
+    ${upgrades.length?`<h3>الترقيات (${upgrades.length})</h3>
+    <table class="pt2"><thead><tr><th>التاريخ</th><th>من</th><th>إلى</th><th>الإجمالي الجديد</th></tr></thead><tbody>
+    ${upgrades.map(u=>`<tr><td>${u.date?fmtDate(u.date):'—'}</td><td>${esc(u.from||'—')}</td><td>${esc(u.to||'—')}</td><td>${fmtMoney(u.newTotal||0)}</td></tr>`).join('')}
+    </tbody></table>`:''}
+    ${upsells.length?`<h3>المبيعات الإضافية — Upsell (${upsells.length})</h3>
+    <table class="pt2"><thead><tr><th>التاريخ</th><th>الخدمة</th><th>السعر</th></tr></thead><tbody>
+    ${upsells.map(u=>`<tr><td>${u.date?fmtDate(u.date):'—'}</td><td>${esc(u.type||'—')}</td><td>${fmtMoney(u.price||0)}</td></tr>`).join('')}
+    <tr><td colspan="2"><b>الإجمالي</b></td><td><b>${fmtMoney(upsells.reduce((s,u)=>s+(u.price||0),0))}</b></td></tr>
+    </tbody></table>`:''}
     <h3>سجل متابعة نجاح العملاء (${notes.length})</h3>
     ${notes.length?notes.map(n=>`<div class="pn"><b>📅 ${esc(n.date||'')}</b>${n.condition?' — '+esc(n.condition):''}${(n.follow||[]).length?' · '+n.follow.map(esc).join('، '):''}${n.text?'<br>'+esc(n.text):''}<div class="pa">— ${esc(n.author||'')}</div></div>`).join(''):'<div class="pe">لا توجد متابعات</div>'}
     <h3>ملاحظات الفريق (${teamNotes.length})</h3>
@@ -5185,6 +5203,14 @@ function openUpgrade(id){
     </div>
     <div id="up-inst-wrap" style="display:none;margin-bottom:10px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">عدد الأقساط (شهرياً)</label><input class="inp" id="up-instcount" type="number" min="2" max="24" value="3" oninput="_recalcUpgrade()"/></div>
     <div id="up-inst-preview" style="font-size:11px;color:var(--t3);margin-bottom:12px"></div>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">تمديد نهاية العقد</label>
+    <select class="inp" id="up-extend" onchange="_recalcUpgrade()" style="margin-bottom:6px">
+      <option value="0">بدون تغيير (${c.contractEnd?fmtDate(c.contractEnd):'—'})</option>
+      <option value="6">+6 أشهر</option>
+      <option value="12" selected>+12 شهر</option>
+      <option value="24">+24 شهر</option>
+    </select>
+    <div id="up-end-preview" style="font-size:11px;color:var(--t3);margin-bottom:14px"></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-p" style="flex:1" onclick="confirmUpgrade()">✓ تأكيد الترقية</button>
       <button class="btn btn-g" onclick="closeUpgrade()">إلغاء</button>
@@ -5193,6 +5219,15 @@ function openUpgrade(id){
   $('upgrade-mo').classList.add('on');
 }
 function _onUpPlan(){ const p=($('up-plan')||{}).value||''; if($('up-newprice')) $('up-newprice').value = PLANS[p]||0; _recalcUpgrade(); }
+// New contract end date after optional extension (months from current end, or from today if past/none).
+function _upgradeNewEnd(c){
+  const ext=+($('up-extend')||{}).value||0;
+  if(ext<=0) return c.contractEnd||'';
+  const today=new Date().toISOString().slice(0,10);
+  const base=(c.contractEnd && c.contractEnd>=today) ? new Date(c.contractEnd) : new Date();
+  base.setMonth(base.getMonth()+ext);
+  return base.toISOString().slice(0,10);
+}
 function _upgradeMode(){ const el=document.querySelector('input[name="up-paymode"]:checked'); return el?el.value:'now'; }
 function _upgradeCalc(){
   const c=clients.find(x=>x.id===_upgradeId); if(!c) return null;
@@ -5232,16 +5267,20 @@ function _recalcUpgrade(){
       ? `${add.length} أقساط بقيمة ~${fmtMoney(add[0].amt)} شهرياً بدءاً من ${add[0].date}`
       : `دفعة واحدة ${fmtMoney(r.increment)} بتاريخ اليوم`;
   }
+  const ep=$('up-end-preview');
+  if(ep){ const ne=_upgradeNewEnd(r.c); const ext=+($('up-extend')||{}).value||0; ep.textContent = ext>0 && ne ? `نهاية العقد الجديدة: ${fmtDate(ne)}` : ''; }
 }
 async function confirmUpgrade(){
   const r=_upgradeCalc(); if(!r) return;
   if(!r.plan || r.plan===r.c.plan){ toast('اختر باقة مختلفة','⚠️'); return; }
   const payments=[...payList(r.c).map(([amt,date])=>({amt,date})), ..._upgradeAddedPayments(r)];
+  const ext=+($('up-extend')||{}).value||0;
+  const contractEnd = ext>0 ? _upgradeNewEnd(r.c) : undefined;
   try{
     await api('POST',`/api/clients/${r.c.id}/upgrade`,{
       plan:r.plan, newTotal:r.newTotal, from:r.c.plan, oldPrice:r.oldTotal,
       newPrice:r.newPrice, diff:r.diff, discount:r.disc, discountPct:r.pct,
-      increment:r.increment, payMode:r.payMode, payments,
+      increment:r.increment, payMode:r.payMode, payments, contractEnd,
       date:new Date().toISOString().slice(0,10),
     });
     await reloadClients();
@@ -5344,8 +5383,10 @@ function renderUpgrades(){
   const addedRev = all.reduce((s,u)=> s + Math.max(0, (u.newTotal||0) - (u.oldPrice||0)), 0);
   const kpi=(v,l,c)=>`<div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800${c?`;color:${c}`:''}">${v}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${l}</div></div>`;
   const th = x=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
-  const rows = all.length ? all.map(u=>`
-    <tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${u.cid})">
+  const seenUndo = new Set();   // list is date-desc → first row per client is their latest upgrade (undoable)
+  const rows = all.length ? all.map(u=>{
+    const latest = !seenUndo.has(u.cid); seenUndo.add(u.cid);
+    return `<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${u.cid})">
       <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${u.date?fmtDate(u.date):'—'}</td>
       <td style="padding:10px 12px;font-size:12.5px;font-weight:600">${esc(u.client)||'—'}</td>
       <td style="padding:10px 12px;font-size:12px">${planBadge(u.from)} <span style="color:var(--t3)">→</span> ${planBadge(u.to)}</td>
@@ -5353,8 +5394,9 @@ function renderUpgrades(){
       <td style="padding:10px 12px;text-align:center;font-size:12px">${fmtMoney(u.newPrice||0)}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:${(u.discount||0)>0?'var(--y)':'var(--t3)'}">${u.discount?('−'+fmtMoney(u.discount)+(u.discountPct?` (${u.discountPct}%)`:'')):'—'}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(u.newTotal||0)}</td>
-      <td style="padding:10px 12px;font-size:11.5px;color:var(--t3)">${esc(u.by)||'—'}</td>
-    </tr>`).join('') : `<tr><td colspan="8" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا توجد ترقيات بعد</td></tr>`;
+      <td style="padding:10px 12px;font-size:11.5px;color:var(--t3);white-space:nowrap">${esc(u.by)||'—'}${latest?` <button class="btn btn-r" style="padding:2px 7px;font-size:10px" onclick="event.stopPropagation();undoUpgrade(${u.cid})" title="إلغاء آخر ترقية">↩️ إلغاء</button>`:''}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="8" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا توجد ترقيات بعد</td></tr>`;
   $('pg-upgrades').innerHTML = `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
     ${kpi(all.length,'عدد الترقيات','#6366f1')}
@@ -5370,11 +5412,22 @@ function renderUpgrades(){
   </div>`;
 }
 
+async function undoUpgrade(cid){
+  const c=clients.find(x=>x.id===cid); if(!c) return;
+  if(!confirm('إلغاء آخر ترقية لهذا العميل؟ سيعود إلى الباقة والسعر والدفعات السابقة.')) return;
+  try{ await api('POST',`/api/clients/${cid}/upgrade/undo`); }
+  catch(e){ toast('فشل الإلغاء: '+(e.message||''),'⚠️'); return; }
+  await reloadClients();
+  toast('تم إلغاء الترقية ✓','↩️');
+  if(typeof logActivity==='function') logActivity('↩️','إلغاء ترقية',c.name);
+  if(S.view==='upgrades') renderUpgrades(); else if(S.view==='phoneclients') renderPhoneClients(); else if(S.view==='clients') renderTable();
+}
+
 // ═══════════════ CHANGE LOG (سجل التعديلات) ═══════════════
 let _auditFilter = '';
 function setAuditFilter(v){ _auditFilter = v; renderAudit(); }
 const AUDIT_ACTIONS = {
-  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة',
+  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة','client.upgrade.undo':'إلغاء ترقية','client.upsell':'بيع خدمة (Upsell)',
   'csm.note':'متابعة CSM','plan.update':'تعديل باقة','plan.delete':'حذف باقة','plan.create':'إضافة باقة',
   'user.create':'إضافة مستخدم','user.update':'تعديل مستخدم','user.delete':'حذف مستخدم',
 };
@@ -5446,7 +5499,9 @@ function computeFinReport(month){
   const cashNew = newClients.reduce((s,c)=>s+grossM(c),0);
   const cashOld = oldPayers.reduce((s,c)=>s+grossM(c),0);
   const cashRef = refunds.reduce((s,c)=>s+grossM(c),0);         // magnitude returned this month
-  const netCash = cashNew + cashOld - cashRef;
+  const upsellM = c => (c.upsells||[]).reduce((t,u)=> t + ((u.date||'').startsWith(month) ? (+u.price||0) : 0), 0);
+  const upsellRev = all.reduce((s,c)=>s+upsellM(c),0);          // upsell sales this month (extra revenue)
+  const netCash = cashNew + cashOld + upsellRev - cashRef;
 
   const newContractVal = newClients.reduce((s,c)=>s+total(c),0);
   const newRemaining   = newClients.reduce((s,c)=>s+fr(c),0);
@@ -5455,7 +5510,7 @@ function computeFinReport(month){
   const byPlan={};
   all.forEach(c=>{ const v=netM(c); if(v!==0){ const p=c.plan||'—'; byPlan[p]=(byPlan[p]||0)+v; } });
 
-  return { month, newClients, oldPayers, refunds, cashNew, cashOld, cashRef, netCash,
+  return { month, newClients, oldPayers, refunds, cashNew, cashOld, cashRef, upsellRev, netCash,
            newContractVal, newRemaining, payersCount, byPlan, grossM, total };
 }
 function _finDelta(cur, prev, money){
@@ -5500,6 +5555,7 @@ function renderFinReportBody(){
       ${kpi(M(r.cashNew),'من العملاء الجدد',_finDelta(r.cashNew,rc.cashNew,true),'#10b981')}
       ${kpi(M(r.cashOld),'من العملاء القدامى',_finDelta(r.cashOld,rc.cashOld,true),'#0ea5e9')}
       ${kpi(r.cashRef?('−'+M(r.cashRef)):M(0),'مستردّ هذا الشهر',_finDelta(r.cashRef,rc.cashRef,true),'var(--r)')}
+      ${kpi(M(r.upsellRev),'مبيعات إضافية (Upsell)',_finDelta(r.upsellRev,rc.upsellRev,true),'#10b981')}
       ${kpi(M(r.newContractVal),'قيمة عقود الجدد',_finDelta(r.newContractVal,rc.newContractVal,true),'var(--bl)')}
       ${kpi(M(r.newRemaining),'متبقٍ على الجدد',_finDelta(r.newRemaining,rc.newRemaining,true),'var(--r)')}
       ${kpi(r.payersCount,'عدد الدافعين',_finDelta(r.payersCount,rc.payersCount,false),'var(--y)')}
@@ -5555,6 +5611,7 @@ function renderFinReportBody(){
       ${cmpRow('من الجدد',r.cashNew,rc.cashNew,true)}
       ${cmpRow('من القدامى',r.cashOld,rc.cashOld,true)}
       ${cmpRow('مستردّ',r.cashRef,rc.cashRef,true)}
+      ${cmpRow('مبيعات إضافية (Upsell)',r.upsellRev,rc.upsellRev,true)}
       ${cmpRow('عملاء جدد',r.newClients.length,rc.newClients.length,false)}
       ${cmpRow('عدد الدافعين',r.payersCount,rc.payersCount,false)}
       ${cmpRow('قيمة عقود الجدد',r.newContractVal,rc.newContractVal,true)}
@@ -5577,6 +5634,7 @@ function exportFinReportPdf(){
       <tr><td>— من العملاء الجدد</td><td>${M(r.cashNew)}</td></tr>
       <tr><td>— من العملاء القدامى</td><td>${M(r.cashOld)}</td></tr>
       <tr><td>— مستردّ</td><td>−${M(r.cashRef)}</td></tr>
+      <tr><td>— مبيعات إضافية (Upsell)</td><td>${M(r.upsellRev)}</td></tr>
       <tr><td>قيمة عقود الجدد</td><td>${M(r.newContractVal)}</td></tr>
       <tr><td>متبقٍ على الجدد</td><td>${M(r.newRemaining)}</td></tr>
       <tr><td>عدد الدافعين</td><td>${r.payersCount}</td></tr>
