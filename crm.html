@@ -1829,7 +1829,9 @@ function renderOverview() {
   const fmtYM = ym => { if(!ym||ym==='all') return LANG==='ar'?'كل الأشهر':'All months'; const [y,m]=ym.split('-'); return new Date(+y,+m-1,1).toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{month:'short',year:'numeric'}); };
   const refClients = clients.filter(c=>c.status==='refunded');
   const refAmount  = refClients.reduce((a,c)=>a+fx(c),0);
-  const collected  = clients.reduce((a,c)=>a+netFx(c),0);
+  // Net cash collected = money kept = payments from non-refunded clients (a refunded client's payment
+  // is cancelled by its refund → contributes 0, not −fx). Refunds are shown separately (KPI below).
+  const collected  = clients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+fx(c),0);
   const pending    = clients.reduce((a,c)=>a+fr(c),0);
   const overdue    = clients.filter(isOverdue).length;
   const endingSoon = clients.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;}).length;
@@ -2434,12 +2436,18 @@ function renderIncomeDetail(month, sortKey, sortDir) {
   if (sel && sel.value !== month) sel.value = month;
   const payments = [];
   clients.filter(c => !c.deleted).forEach(c => {
-    const ref = c.status === 'refunded';           // refunded → their cash is returned (shown negative, nets out of the total)
+    const ref = c.status === 'refunded';
     const allDates = payList(c);
+    let refInMonth = 0, refDate = '';
     allDates.forEach(([amt,date],i) => {
-      if (amt > 0 && date && date.startsWith(month))
-        payments.push({ name:c.name, plan: ref?('↩️ '+(c.plan||'')):c.plan, num:i+1, amt: ref?-amt:amt, payMethod: ref?'مُسترجع':(c.payMethod||'-'), date, allDates, isRefund:ref });
+      if (amt > 0 && date && date.startsWith(month)) {
+        payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates });
+        if (ref) { refInMonth += amt; refDate = date; }
+      }
     });
+    // Refunded client: money came in this month but was returned → a deduction row cancels it (net 0)
+    if (ref && refInMonth > 0)
+      payments.push({ name:c.name, plan:'↩️ '+(c.plan||''), num:'—', amt:-refInMonth, payMethod:'مُسترجع', date:refDate||(month+'-15'), allDates:[[-refInMonth, refDate]], isRefund:true });
     // Upsell sales count as cash received in their month
     (c.upsells||[]).forEach(u => {
       if ((u.price||0) > 0 && u.date && u.date.startsWith(month))
@@ -2624,7 +2632,9 @@ function renderAnalytics() {
   const monthlyNew  = months12.map(m=>aClients.filter(c=>c.regDate&&c.regDate.startsWith(m.key)).length);
 
   const totalExp = aClients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+(c.customTotal||PLANS[c.plan]||0),0);
-  const totalCol = aClients.reduce((a,c)=>a+netFx(c),0);
+  // Net collected = payments from non-refunded clients (refunded clients net to 0, shown separately)
+  const totalCol = aClients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+fx(c),0);
+  const refCol   = aClients.filter(c=>c.status==='refunded').reduce((a,c)=>a+fx(c),0);
   const collRate = totalExp>0?Math.round(Math.max(0,totalCol)/totalExp*100):0;
   const fullPaid = aClients.filter(c=>fr(c)===0&&c.status!=='lead'&&c.status!=='refunded').length;
   const nonLead  = aClients.filter(c=>c.status!=='lead'&&c.status!=='refunded').length;
@@ -2662,7 +2672,7 @@ function renderAnalytics() {
   </div>
 
   <!-- KPIs -->
-  <div class="kpi-g" style="grid-template-columns:repeat(6,1fr)">
+  <div class="kpi-g" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
     ${[
       {l:t('anal_coll_rate'),v:collRate+'%',c:'var(--g)'},
       {l:t('anal_comp_rate'),v:compRate+'%',c:'var(--p2)'},
@@ -2670,6 +2680,7 @@ function renderAnalytics() {
       {l:t('anal_total_rem'),v:fmtMoney(aClients.reduce((a,c)=>a+fr(c),0)),c:'var(--r)'},
       {l:t('anal_avg_val'),v:fmtMoney(Math.round(totalExp/(aClients.length||1))),c:'var(--y)'},
       {l:t('anal_total_exp'),v:fmtMoney(totalExp),c:'var(--bl)'},
+      ...(refCol>0?[{l:LANG==='ar'?'مُسترجع (مخصوم)':'Refunded (deducted)',v:'−'+fmtMoney(refCol),c:'var(--r)'}]:[]),
     ].map(k=>`<div class="kpi"><div class="kpi-v" style="color:${k.c};font-size:22px">${k.v}</div><div class="kpi-l">${k.l}</div></div>`).join('')}
   </div>
 
