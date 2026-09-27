@@ -4,7 +4,7 @@ const path    = require('path');
 const {
   getClients, getTrash,
   createClient, updateClient, updateNotes, upgradeClient, undoLastUpgrade,
-  pauseClient, resumeClient,
+  pauseClient, resumeClient, ensureResumed, ensureEnded,
   addAudit, getAudit,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,
@@ -267,10 +267,23 @@ app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) =>
 app.post('/api/clients/:id/pause', requireCsmOrAdmin, async (req, res) => {
   try {
     const today = str(req.body.date, 30) || new Date().toISOString().slice(0, 10);
-    const r = await pauseClient(+req.params.id, today);
+    const mode = req.body.mode === 'fixed' ? 'fixed' : 'open';
+    const days = Math.max(0, Math.min(400, Math.round(Number(req.body.days) || 0)));
+    const r = await pauseClient(+req.params.id, { mode, days, date: today });
     if (!r) return res.status(404).json({ error: 'العميل غير موجود' });
-    if (!r.already) audit(req, 'client.pause', 'client', +req.params.id, `إيقاف مؤقت للعقد «${r.client.name || req.params.id}»`, { start: today });
+    if (!r.already) audit(req, 'client.pause', 'client', +req.params.id,
+      `إيقاف مؤقت للعقد «${r.client.name || req.params.id}»${mode === 'fixed' ? ` (${days} يوم حتى ${r.client.pauseUntil})` : ' (مفتوح)'}`, { start: today, mode, days });
     res.json({ ok: true, client: clean(r.client) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Maintenance: auto-resume finished fixed pauses + auto-mark ended contracts (admin, on load)
+app.post('/api/maintenance/run', requireAdmin, async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const resumed = await ensureResumed(today);
+    const ended = await ensureEnded(today);
+    res.json({ ok: true, resumed, ended });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/clients/:id/resume', requireCsmOrAdmin, async (req, res) => {

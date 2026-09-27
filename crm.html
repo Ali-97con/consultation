@@ -162,6 +162,7 @@ tbody tr.overdue-row td{border-right:2px solid var(--r)}
 .b-chu{background:var(--rbg);color:var(--r)}.b-chu::before{background:var(--r)}
 .b-led{background:rgba(107,114,128,.15);color:#9ca3af}.b-led::before{background:#9ca3af}
 .b-ref{background:rgba(239,68,68,.1);color:#f87171;border:1px dashed rgba(239,68,68,.4)}.b-ref::before{background:#f87171}
+.b-end{background:rgba(100,116,139,.16);color:#94a3b8}.b-end::before{background:#94a3b8}
 /* PLAN BADGE */
 .plan{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;letter-spacing:.3px}
 .pl-core{background:rgba(6,182,212,.15);color:#06b6d4;border:1px solid rgba(6,182,212,.3)}
@@ -529,7 +530,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
           <option value="active">نشط</option><option value="trial">تجريبي</option>
           <option value="enrolled">مسجل</option><option value="graduated">متخرج</option>
           <option value="paused">موقف</option><option value="churned">توقف</option>
-          <option value="lead">محتمل</option>
+          <option value="lead">محتمل</option><option value="ended">منتهي</option>
           <option value="refunded">💸 تم ارجاع المبلغ</option>
         </select>
         <select class="fsl" id="f-plan" onchange="renderTable()">
@@ -557,6 +558,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
           <option value="">الكل (إيقاف)</option>
           <option value="paused">⏸️ موقوف مؤقتاً</option>
           <option value="notpaused">▶️ غير موقوف</option>
+        </select>
+        <select class="fsl" id="f-ended" onchange="renderTable()" title="حالة العقد">
+          <option value="">الكل (العقد)</option>
+          <option value="ended">🔚 عقد منتهي</option>
+          <option value="ongoing">▶️ عقد جارٍ</option>
         </select>
         <select class="fsl" id="f-month" onchange="renderTable()">
           <option value="">كل الشهور</option>
@@ -731,6 +737,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div id="upsell-opts-body" style="padding:18px;max-height:70vh;overflow-y:auto"></div>
   </div>
 </div>
+<!-- CONTRACT PAUSE dialog -->
+<div class="mo" id="pause-mo" onclick="if(event.target===this)closePauseDialog()">
+  <div class="mbox" style="max-width:430px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:#f59e0b22;display:flex;align-items:center;justify-content:center;flex-shrink:0">⏸️</div>
+      <h3>إيقاف مؤقت للعقد</h3>
+      <button class="mcls" onclick="closePauseDialog()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="pause-body" style="padding:18px"></div>
+  </div>
+</div>
 <!-- PRINT REPORT (hidden; used for CSM PDF export via browser print) -->
 <div id="print-area"></div>
 <!-- NOTIFICATIONS LOGIN POP-UP -->
@@ -794,7 +811,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         <option value="lead">محتمل</option><option value="trial">تجريبي</option>
         <option value="enrolled">مسجل</option><option value="active">نشط</option>
         <option value="graduated">متخرج</option><option value="paused">موقف</option>
-        <option value="churned">توقف</option>
+        <option value="churned">توقف</option><option value="ended">منتهي</option>
         <option value="refunded">💸 تم ارجاع المبلغ</option>
       </select></div>
       <div class="fg"><label>📅 نهاية العقد</label><input class="inp" id="m-contract-end" type="date"/></div></div>
@@ -1191,16 +1208,16 @@ const T = {
 };
 function t(key) { return (T[LANG]||T.ar)[key] || T.ar[key] || key; }
 const SL_MAP = {
-  ar:{ active:'نشط',trial:'تجريبي',enrolled:'مسجل',graduated:'متخرج',paused:'موقف',churned:'توقف',lead:'محتمل',refunded:'مُسترجع' },
-  en:{ active:'Active',trial:'Trial',enrolled:'Enrolled',graduated:'Graduated',paused:'Paused',churned:'Churned',lead:'Lead',refunded:'Refunded' }
+  ar:{ active:'نشط',trial:'تجريبي',enrolled:'مسجل',graduated:'متخرج',paused:'موقف',churned:'توقف',lead:'محتمل',refunded:'مُسترجع',ended:'منتهي' },
+  en:{ active:'Active',trial:'Trial',enrolled:'Enrolled',graduated:'Graduated',paused:'Paused',churned:'Churned',lead:'Lead',refunded:'Refunded',ended:'Ended' }
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
   ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'قائمة العملاء (متابعة هاتفية)',upgrades:'الترقيات',audit:'سجل التعديلات',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
   en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Clients (Phone CSM)',upgrades:'Upgrades',audit:'Change Log',notifs:'Notifications',users:'Users',trash:'Trash' }
 };
-const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref' };
-const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171' };
+const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref', ended:'b-end' };
+const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171', ended:'#94a3b8' };
 
 // ═══════════════ DATA (loaded from server) ═══════════════
 // Legacy mkC kept only to avoid reference errors — data now comes from /api/clients
@@ -1620,6 +1637,7 @@ async function initApp() {
     plansData.forEach(p => { PLANS[p.name] = p.price; });
     if (csmOpts) CSM_OPTS = csmOpts;
     if (Array.isArray(upsellServices)) UPSELL_SERVICES = upsellServices;
+    autoMaintenance();   // auto-resume finished fixed pauses + auto-mark ended contracts
     updateTrashBadge();
     $('cnt-badge').textContent = clients.length;
     const ldr = $('app-loader');
@@ -1655,7 +1673,11 @@ const nc = s  => Array.isArray(s.payments) ? Math.max(1, s.payments.length) : (P
 const isPaused = c => !!(c && c.pausedAt);
 const pausedDays = c => isPaused(c) ? (daysSince(c.pausedAt)||0) : 0;                         // days of the current, ongoing pause
 const totalPausedDays = c => (c.pauses||[]).reduce((s,p)=>s+(+p.days||0),0) + pausedDays(c);   // all pause days incl. current
-function pauseBadge(c){ return isPaused(c) ? `<span style="font-size:10.5px;font-weight:600;background:#f59e0b22;color:#f59e0b;padding:2px 8px;border-radius:20px;white-space:nowrap">⏸️ ${LANG==='ar'?'موقوف مؤقتاً':'Paused'}${pausedDays(c)?` · ${pausedDays(c)}${LANG==='ar'?'ي':'d'}`:''}</span>` : ''; }
+function pauseBadge(c){
+  if(!isPaused(c)) return '';
+  const extra = c.pauseUntil ? ` · ${LANG==='ar'?'حتى':'until'} ${fmtDate(c.pauseUntil)}` : (pausedDays(c)?` · ${pausedDays(c)}${LANG==='ar'?'ي':'d'}`:'');
+  return `<span style="font-size:10.5px;font-weight:600;background:#f59e0b22;color:#f59e0b;padding:2px 8px;border-radius:20px;white-space:nowrap">⏸️ ${LANG==='ar'?'موقوف مؤقتاً':'Paused'}${extra}</span>`;
+}
 const ini = n => n.trim().split(' ').slice(0,2).map(w=>w[0]).join('');
 const col = i => COLORS[i % COLORS.length];
 // Client avatar: gendered emoji (👨/👩) when sex is set, else colored initials.
@@ -2218,6 +2240,8 @@ function getFiltered() {
   const mo  = ($('f-month')||{value:''}).value;
   const pd  = ($('f-paid')||{value:''}).value;
   const pz  = ($('f-pause')||{value:''}).value;
+  const fe  = ($('f-ended')||{value:''}).value;
+  const todayStr = new Date().toISOString().slice(0,10);
   return clients.filter(c => {
     if (q) {
       const nm = norm(c.name), ph = norm(c.phone), em = norm(c.email);
@@ -2233,6 +2257,9 @@ function getFiltered() {
     if (pd === 'unpaid' && fr(c) <= 0) return false;  // still owes the balance
     if (pz === 'paused'    && !isPaused(c)) return false;
     if (pz === 'notpaused' &&  isPaused(c)) return false;
+    const contractOver = !!c.contractEnd && c.contractEnd < todayStr;
+    if (fe === 'ended'   && !contractOver) return false;
+    if (fe === 'ongoing' &&  contractOver) return false;
     return true;
   }).sort((a,b)=>{
     if (q) {
@@ -3923,7 +3950,7 @@ function openDetail(id) {
         ${isOverdue(c)&&!isPaused(c)?`<span style="font-size:11px;background:var(--rbg);color:var(--r);padding:2px 8px;border-radius:10px;font-weight:600">${t('dp_overdue')}</span>`:''}
       </div>
     </div>
-    ${(isAdmin()||isCsm()||isCsmPhone())?`<button class="btn ${isPaused(c)?'btn-p':'btn-g'}" style="align-self:center;white-space:nowrap;margin-inline-start:auto" onclick="${isPaused(c)?`endPause(${id})`:`startPause(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف مؤقت':'Pause')}</button>`:''}
+    ${(isAdmin()||isCsm()||isCsmPhone())?`<button class="btn ${isPaused(c)?'btn-p':'btn-g'}" style="align-self:center;white-space:nowrap;margin-inline-start:auto" onclick="${isPaused(c)?`endPause(${id})`:`openPauseDialog(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف مؤقت':'Pause')}</button>`:''}
     <button class="dp-cls" onclick="closeDetail()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
   </div>
 
@@ -3962,7 +3989,7 @@ function openDetail(id) {
   <!-- ── CONTRACT PAUSE (admin + CSM roles) ── -->
   ${(!isCoach() && (isPaused(c) || (c.pauses||[]).length)) ? `<div class="dp-sc">
     <div class="dp-st">⏸️ ${LANG==='ar'?'الإيقاف المؤقت':'Contract pause'}</div>
-    ${isPaused(c)?`<div class="dp-row"><span class="dp-k" style="color:#f59e0b">${LANG==='ar'?'موقوف حالياً منذ':'Paused since'}</span><span class="dp-v">${fmtDate(c.pausedAt)} · ${pausedDays(c)} ${LANG==='ar'?'يوم':'d'}</span></div>`:''}
+    ${isPaused(c)?`<div class="dp-row"><span class="dp-k" style="color:#f59e0b">${LANG==='ar'?'موقوف حالياً منذ':'Paused since'}</span><span class="dp-v">${fmtDate(c.pausedAt)} · ${pausedDays(c)} ${LANG==='ar'?'يوم':'d'}</span></div>${c.pauseUntil?`<div class="dp-row"><span class="dp-k">${LANG==='ar'?'يُستأنف تلقائياً':'Auto-resume'}</span><span class="dp-v">${fmtDate(c.pauseUntil)}</span></div>`:''}`:''}
     <div class="dp-row"><span class="dp-k">${LANG==='ar'?'إجمالي أيام الإيقاف':'Total paused'}</span><span class="dp-v">${totalPausedDays(c)} ${LANG==='ar'?'يوم':'d'}</span></div>
     ${(c.pauses||[]).slice().reverse().map(p=>`<div class="dp-row"><span class="dp-k">${fmtDate(p.start)} → ${fmtDate(p.end)}</span><span class="dp-v">${p.days} ${LANG==='ar'?'يوم':'d'}</span></div>`).join('')}
   </div>`:''}
@@ -4713,14 +4740,74 @@ function daysUntil(dateStr){
 function daysSince(dateStr){ const d = daysUntil(dateStr); return d===null ? null : -d; }
 
 // ── Contract pause / resume ──
-async function startPause(id){
+function _addDaysStr(dateStr, days){ const d=new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+function _daysBtw(a,b){ return Math.max(0, Math.round((new Date(b)-new Date(a))/86400000)); }
+function _monthDays(m){ const t=new Date(); const d=new Date(t); d.setMonth(d.getMonth()+m); return Math.max(1,Math.round((d-t)/86400000)); }
+let _pauseId=null;
+function openPauseDialog(id){
   const c=clients.find(x=>x.id===id); if(!c || isPaused(c)) return;
+  _pauseId=id;
+  const rl='display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--hv);border:1px solid var(--b1);padding:8px 10px;border-radius:8px;cursor:pointer;flex:1';
+  $('pause-body').innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:12px">${esc(c.name)}</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <label style="${rl}"><input type="radio" name="pause-mode" value="fixed" checked onchange="_pauseModeChange()"/> ${LANG==='ar'?'مدة محددة':'Fixed period'}</label>
+      <label style="${rl}"><input type="radio" name="pause-mode" value="open" onchange="_pauseModeChange()"/> ${LANG==='ar'?'عداد مفتوح':'Open counter'}</label>
+    </div>
+    <div id="pause-period-wrap" style="margin-bottom:12px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">${LANG==='ar'?'المدة':'Duration'}</label>
+      <select class="inp" id="pause-days" onchange="_pauseModeChange()">
+        <option value="7">${LANG==='ar'?'7 أيام':'7 days'}</option>
+        <option value="15">${LANG==='ar'?'15 يوم':'15 days'}</option>
+        <option value="${_monthDays(1)}">${LANG==='ar'?'شهر':'1 month'}</option>
+        <option value="${_monthDays(2)}">${LANG==='ar'?'شهران':'2 months'}</option>
+        <option value="${_monthDays(3)}">${LANG==='ar'?'3 أشهر':'3 months'}</option>
+      </select>
+      <div id="pause-until-preview" style="font-size:11px;color:var(--t3);margin-top:6px"></div>
+    </div>
+    <div id="pause-open-note" style="display:none;font-size:11.5px;color:var(--t3);margin-bottom:12px">${LANG==='ar'?'يبقى العقد موقوفاً حتى تضغط «استئناف»؛ تُضاف الأيام الفعلية لنهاية العقد.':'Stays paused until you press Resume; the real days are added to the contract end.'}</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p" style="flex:1" onclick="doPause(${id})">✓ ${LANG==='ar'?'تأكيد الإيقاف':'Confirm pause'}</button>
+      <button class="btn btn-g" onclick="closePauseDialog()">${LANG==='ar'?'إلغاء':'Cancel'}</button>
+    </div>`;
+  _pauseModeChange();
+  $('pause-mo').classList.add('on');
+}
+function _pauseModeChange(){
+  const mode=(document.querySelector('input[name="pause-mode"]:checked')||{}).value||'fixed';
+  if($('pause-period-wrap')) $('pause-period-wrap').style.display = mode==='fixed'?'':'none';
+  if($('pause-open-note')) $('pause-open-note').style.display = mode==='fixed'?'none':'';
+  const pv=$('pause-until-preview');
+  if(pv && mode==='fixed'){ const days=+($('pause-days')||{}).value||0; pv.textContent = days?`${LANG==='ar'?'يُستأنف تلقائياً في':'Auto-resumes on'} ${fmtDate(_addDaysStr(new Date().toISOString().slice(0,10),days))}`:''; }
+}
+function closePauseDialog(){ $('pause-mo').classList.remove('on'); _pauseId=null; }
+async function doPause(id){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  const mode=(document.querySelector('input[name="pause-mode"]:checked')||{}).value||'fixed';
+  const days=mode==='fixed'?(+($('pause-days')||{}).value||0):0;
   const today=new Date().toISOString().slice(0,10);
-  try{ const r=await api('POST',`/api/clients/${id}/pause`,{date:today}); if(r&&r.client) Object.assign(c, r.client); }
+  try{ const r=await api('POST',`/api/clients/${id}/pause`,{mode,days,date:today}); if(r&&r.client) Object.assign(c, r.client); }
   catch(e){ toast('فشل الإيقاف: '+(e.message||''),'⚠️'); return; }
+  closePauseDialog();
   toast('تم إيقاف العقد مؤقتاً ⏸️','⏸️');
   if(typeof logActivity==='function') logActivity('⏸️','إيقاف مؤقت للعقد',c.name);
   _refreshAfterPause(id);
+}
+// On load: auto-resume finished fixed pauses + auto-mark ended contracts (persisted server-side for admin).
+function autoMaintenance(){
+  const today=new Date().toISOString().slice(0,10);
+  let changed=false;
+  clients.forEach(c=>{
+    if(c.pausedAt && c.pauseUntil && c.pauseUntil <= today){
+      const days=_daysBtw(c.pausedAt, c.pauseUntil);
+      c.pauses=[...(c.pauses||[]), {start:c.pausedAt, end:c.pauseUntil, days}];
+      if(c.contractEnd && days>0) c.contractEnd=_addDaysStr(c.contractEnd, days);
+      c.status=c.pausePrevStatus||c.status; c.pausedAt=null; c.pauseUntil=null; c.pausePrevStatus=null;
+      changed=true;
+    }
+  });
+  clients.forEach(c=>{ if(c.status==='active' && c.contractEnd && c.contractEnd < today && !isPaused(c)){ c.status='ended'; changed=true; } });
+  if(changed && isAdmin()) api('POST','/api/maintenance/run').catch(()=>{});
 }
 async function endPause(id){
   const c=clients.find(x=>x.id===id); if(!c || !isPaused(c)) return;
@@ -4878,7 +4965,7 @@ function openCsmDetail(id, phone=false){
         <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(c.name)} ${pauseBadge(c)}</div>
         <div style="font-size:12px;color:var(--t3)">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
       </div>
-      <button class="btn ${isPaused(c)?'btn-p':'btn-g'}" onclick="${isPaused(c)?`endPause(${id})`:`startPause(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف':'Pause')}</button>
+      <button class="btn ${isPaused(c)?'btn-p':'btn-g'}" onclick="${isPaused(c)?`endPause(${id})`:`openPauseDialog(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف':'Pause')}</button>
       <button class="btn btn-p" onclick="openUpsell(${id})">💰 ${LANG==='ar'?'بيع خدمة (Upsell)':'Upsell'}</button>
       <button class="btn btn-g" onclick="closeCsmDetail();openDetail(${id})">👤 ${LANG==='ar'?'الملف الشخصي':'Profile'}</button>
       <button class="btn btn-g" onclick="exportCsmPdf(${id})">🖨️ ${LANG==='ar'?'تصدير PDF':'Export PDF'}</button>
