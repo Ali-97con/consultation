@@ -331,6 +331,35 @@ async function undoLastUpgrade(id) {
   return { client: updated, rec };
 }
 
+// ─── Contract pause / resume ──────────────────────────────────────────────────
+function _daysBetween(a, b) { return Math.max(0, Math.round((new Date(b) - new Date(a)) / 86400000)); }
+function _addDays(dateStr, days) { const d = new Date(dateStr); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); }
+async function pauseClient(id, dateStr) {
+  await ready();
+  const { rows } = await q('select data from clients where id = $1 and deleted = false', [id]);
+  if (!rows.length) return null;
+  const data = rows[0].data;
+  if (data.pausedAt) return { client: data, already: true };   // already paused
+  const updated = { ...data, id, pausedAt: dateStr };
+  await q('update clients set data = $2 where id = $1', [id, j(updated)]);
+  return { client: updated };
+}
+async function resumeClient(id, dateStr) {
+  await ready();
+  const { rows } = await q('select data from clients where id = $1 and deleted = false', [id]);
+  if (!rows.length) return null;
+  const data = rows[0].data;
+  if (!data.pausedAt) return { client: data, notPaused: true };
+  const start = data.pausedAt;
+  const days = _daysBetween(start, dateStr);
+  const pauses = Array.isArray(data.pauses) ? data.pauses.slice() : [];
+  pauses.push({ start, end: dateStr, days });
+  const updated = { ...data, id, pausedAt: null, pauses };
+  if (data.contractEnd && days > 0) updated.contractEnd = _addDays(data.contractEnd, days);
+  await q('update clients set data = $2 where id = $1', [id, j(updated)]);
+  return { client: updated, days };
+}
+
 // ─── Audit log ────────────────────────────────────────────────────────────────
 async function addAudit(e) {
   await schemaReady();
@@ -868,6 +897,7 @@ module.exports = {
   // Clients
   getClients, getTrash, importData,
   createClient, updateClient, updateNotes, upgradeClient, undoLastUpgrade,
+  pauseClient, resumeClient,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   // Audit log
   addAudit, getAudit,

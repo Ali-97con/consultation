@@ -553,6 +553,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
           <option value="paid">✅ مدفوع بالكامل</option>
           <option value="unpaid">⏳ لم يُسدَّد بالكامل</option>
         </select>
+        <select class="fsl" id="f-pause" onchange="renderTable()" title="حالة الإيقاف">
+          <option value="">الكل (إيقاف)</option>
+          <option value="paused">⏸️ موقوف مؤقتاً</option>
+          <option value="notpaused">▶️ غير موقوف</option>
+        </select>
         <select class="fsl" id="f-month" onchange="renderTable()">
           <option value="">كل الشهور</option>
         </select>
@@ -1646,6 +1651,11 @@ const fr = s  => s.status === 'refunded' ? 0 : Math.max(0, (s.customTotal||PLANS
 // Net collected: refunded clients count as negative (their money was returned)
 const netFx = s => s.status === 'refunded' ? -fx(s) : fx(s);
 const nc = s  => Array.isArray(s.payments) ? Math.max(1, s.payments.length) : (PCNT[s.paymentType]||1);
+// Contract pause: a client with a pausedAt is on hold (its days are added to contractEnd on resume).
+const isPaused = c => !!(c && c.pausedAt);
+const pausedDays = c => isPaused(c) ? (daysSince(c.pausedAt)||0) : 0;                         // days of the current, ongoing pause
+const totalPausedDays = c => (c.pauses||[]).reduce((s,p)=>s+(+p.days||0),0) + pausedDays(c);   // all pause days incl. current
+function pauseBadge(c){ return isPaused(c) ? `<span style="font-size:10.5px;font-weight:600;background:#f59e0b22;color:#f59e0b;padding:2px 8px;border-radius:20px;white-space:nowrap">⏸️ ${LANG==='ar'?'موقوف مؤقتاً':'Paused'}${pausedDays(c)?` · ${pausedDays(c)}${LANG==='ar'?'ي':'d'}`:''}</span>` : ''; }
 const ini = n => n.trim().split(' ').slice(0,2).map(w=>w[0]).join('');
 const col = i => COLORS[i % COLORS.length];
 // Client avatar: gendered emoji (👨/👩) when sex is set, else colored initials.
@@ -1660,7 +1670,7 @@ function clientAv(c, cls, extraStyle, fontSize){
 }
 
 function isOverdue(s) {
-  if (fr(s) <= 0 || s.status === 'lead' || s.status === 'refunded') return false;
+  if (fr(s) <= 0 || s.status === 'lead' || s.status === 'refunded' || isPaused(s)) return false;  // paused contracts are on hold
   if (!s.lastPayDate) return true;
   return (new Date() - new Date(s.lastPayDate)) / 86400000 > 45;
 }
@@ -1829,12 +1839,13 @@ function renderOverview() {
   const fmtYM = ym => { if(!ym||ym==='all') return LANG==='ar'?'كل الأشهر':'All months'; const [y,m]=ym.split('-'); return new Date(+y,+m-1,1).toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{month:'short',year:'numeric'}); };
   const refClients = clients.filter(c=>c.status==='refunded');
   const refAmount  = refClients.reduce((a,c)=>a+fx(c),0);
+  const pausedList = clients.filter(isPaused);
   // Net cash collected = money kept = payments from non-refunded clients (a refunded client's payment
   // is cancelled by its refund → contributes 0, not −fx). Refunds are shown separately (KPI below).
   const collected  = clients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+fx(c),0);
   const pending    = clients.reduce((a,c)=>a+fr(c),0);
   const overdue    = clients.filter(isOverdue).length;
-  const endingSoon = clients.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;}).length;
+  const endingSoon = clients.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30 && !isPaused(c);}).length;
 
   // Total contract value & collection rate
   const totalContract = clients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+(c.customTotal||PLANS[c.plan]||0),0);
@@ -1870,6 +1881,7 @@ function renderOverview() {
     {l:LANG==='ar'?'عقود تنتهي ≤ 30 يوم':'Contracts ending',v:endingSoon,num:endingSoon,tr:'',ic:'#f59e0b',ico:'<rect x="3" y="4" width="18" height="18" rx="2" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M16 2v4M8 2v4M3 10h18"/>'},
     {l:LANG==='ar'?'دفعات متأخرة':'Overdue',v:overdue,num:overdue,tr:'',ic:'#ef4444',ico:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>'},
     {l:LANG==='ar'?'مُسترجع':'Refunded',v:refClients.length?`${refClients.length} · ${fmtMoney(refAmount)}`:'0',num:refClients.length===0?0:null,tr:'',ic:'#f87171',ico:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>'},
+    {l:LANG==='ar'?'موقوف مؤقتاً':'Paused',v:pausedList.length,num:pausedList.length,tr:'',ic:'#f59e0b',ico:'<circle cx="12" cy="12" r="9" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M10 9v6M14 9v6"/>'},
   ];
 
   $('pg-overview').innerHTML = `
@@ -1966,7 +1978,9 @@ function renderOverview() {
       <div class="cb" id="ending-list"></div></div>
     <div class="card"><div class="ch"><h3>⚠️ ${t('overdue_title')}</h3><span class="sub" style="color:var(--r)">${overdue} ${t('client_word')}</span></div>
       <div class="cb" id="od-list"></div></div>
-  </div>`;
+  </div>
+  ${pausedList.length?`<div class="card" style="margin-top:14px"><div class="ch"><h3>⏸️ ${LANG==='ar'?'العقود الموقوفة مؤقتاً':'Paused contracts'}</h3><span class="sub" style="color:#f59e0b">${pausedList.length} ${t('client_word')}</span></div>
+    <div class="cb" id="paused-list"></div></div>`:''}`;
 
   // ── Animate KPI number counters ──
   animateKpiNums();
@@ -2001,7 +2015,7 @@ function renderOverview() {
   renderPlanDist(planDefMonth);
 
   // ── Contracts ending soon list ──
-  const endList = clients.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30;})
+  const endList = clients.filter(c=>{const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=30 && !isPaused(c);})
     .sort((a,b)=>daysUntil(a.contractEnd)-daysUntil(b.contractEnd));
   $('ending-list').innerHTML = endList.length === 0
     ? `<div class="empty">${LANG==='ar'?'لا توجد عقود تنتهي قريباً':'No contracts ending soon'}</div>`
@@ -2016,6 +2030,17 @@ function renderOverview() {
         <div style="font-size:11px;background:${d<=3?'var(--rbg)':'rgba(245,158,11,.14)'};color:${d<=3?'var(--r)':'var(--y)'};padding:2px 8px;border-radius:10px;font-weight:700">${d} ${LANG==='ar'?'يوم':'d'}</div>
       </div>
     </div>`; }).join('');
+
+  // ── Paused contracts list ──
+  if($('paused-list')) $('paused-list').innerHTML = pausedList.map(c=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${c.id})">
+      ${clientAv(c)}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}</div>
+        <div style="font-size:11px;color:var(--t3)">${planBadge(c.plan)} · ${LANG==='ar'?'موقوف منذ':'paused since'} ${fmtDate(c.pausedAt)}</div>
+      </div>
+      <div style="text-align:left;flex-shrink:0"><div style="font-size:11px;background:#f59e0b22;color:#f59e0b;padding:2px 8px;border-radius:10px;font-weight:700">${pausedDays(c)} ${LANG==='ar'?'يوم':'d'}</div></div>
+    </div>`).join('');
 
   // ── Overdue list ──
   const odList = clients.filter(isOverdue);
@@ -2192,6 +2217,7 @@ function getFiltered() {
   const pt  = ($('f-pay')||{value:''}).value;
   const mo  = ($('f-month')||{value:''}).value;
   const pd  = ($('f-paid')||{value:''}).value;
+  const pz  = ($('f-pause')||{value:''}).value;
   return clients.filter(c => {
     if (q) {
       const nm = norm(c.name), ph = norm(c.phone), em = norm(c.email);
@@ -2205,6 +2231,8 @@ function getFiltered() {
     if (mo && !(c.regDate||'').startsWith(mo)) return false;
     if (pd === 'paid'   && fr(c) > 0) return false;   // fully paid = no remaining
     if (pd === 'unpaid' && fr(c) <= 0) return false;  // still owes the balance
+    if (pz === 'paused'    && !isPaused(c)) return false;
+    if (pz === 'notpaused' &&  isPaused(c)) return false;
     return true;
   }).sort((a,b)=>{
     if (q) {
@@ -2275,7 +2303,7 @@ function renderTable() {
         ${isRef?'—':rem===0?t('paid_full'):(od?'⚠️ ':'')+fmtMoney(rem)}</td>
       <td style="font-size:12px;${S.hiddenCols.has('closer')?'display:none':''}">${c.closer}</td>
       <td style="font-size:12px;color:var(--t2);${S.hiddenCols.has('setter')?'display:none':''}">${c.setter}</td>
-      <td${S.hiddenCols.has('status')?' style="display:none"':''}><span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span></td>
+      <td${S.hiddenCols.has('status')?' style="display:none"':''}><span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span>${isPaused(c)?' '+pauseBadge(c):''}</td>
       <td style="font-size:11.5px;color:var(--t2);${S.hiddenCols.has('regDate')?'display:none':''}">${fmtDate(c.regDate)}</td>
       <td><div class="tda">
         <button class="ab" onclick="openDetail(${c.id})" title="تفاصيل"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
@@ -3891,9 +3919,11 @@ function openDetail(id) {
       <div style="display:flex;gap:5px;flex-wrap:wrap">
         <span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span>
         ${planBadge(c.plan)}
-        ${isOverdue(c)?`<span style="font-size:11px;background:var(--rbg);color:var(--r);padding:2px 8px;border-radius:10px;font-weight:600">${t('dp_overdue')}</span>`:''}
+        ${pauseBadge(c)}
+        ${isOverdue(c)&&!isPaused(c)?`<span style="font-size:11px;background:var(--rbg);color:var(--r);padding:2px 8px;border-radius:10px;font-weight:600">${t('dp_overdue')}</span>`:''}
       </div>
     </div>
+    ${(isAdmin()||isCsm()||isCsmPhone())?`<button class="btn ${isPaused(c)?'btn-p':'btn-g'}" style="align-self:center;white-space:nowrap;margin-inline-start:auto" onclick="${isPaused(c)?`endPause(${id})`:`startPause(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف مؤقت':'Pause')}</button>`:''}
     <button class="dp-cls" onclick="closeDetail()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
   </div>
 
@@ -3928,6 +3958,14 @@ function openDetail(id) {
     ${csmSummary}
     <div class="dp-row"><span class="dp-k">${LANG==='ar'?'ملاحظات الفريق':'Team notes'}</span><span class="dp-v">${c.notes.length} ${LANG==='ar'?'ملاحظة':'notes'}</span></div>
   </div>
+
+  <!-- ── CONTRACT PAUSE (admin + CSM roles) ── -->
+  ${(!isCoach() && (isPaused(c) || (c.pauses||[]).length)) ? `<div class="dp-sc">
+    <div class="dp-st">⏸️ ${LANG==='ar'?'الإيقاف المؤقت':'Contract pause'}</div>
+    ${isPaused(c)?`<div class="dp-row"><span class="dp-k" style="color:#f59e0b">${LANG==='ar'?'موقوف حالياً منذ':'Paused since'}</span><span class="dp-v">${fmtDate(c.pausedAt)} · ${pausedDays(c)} ${LANG==='ar'?'يوم':'d'}</span></div>`:''}
+    <div class="dp-row"><span class="dp-k">${LANG==='ar'?'إجمالي أيام الإيقاف':'Total paused'}</span><span class="dp-v">${totalPausedDays(c)} ${LANG==='ar'?'يوم':'d'}</span></div>
+    ${(c.pauses||[]).slice().reverse().map(p=>`<div class="dp-row"><span class="dp-k">${fmtDate(p.start)} → ${fmtDate(p.end)}</span><span class="dp-v">${p.days} ${LANG==='ar'?'يوم':'d'}</span></div>`).join('')}
+  </div>`:''}
 
   <!-- ── UPGRADES & UPSELLS (admin + CSM roles) ── -->
   ${(!isCoach() && ((c.upgrades||[]).length || (c.upsells||[]).length)) ? `<div class="dp-sc">
@@ -4673,6 +4711,36 @@ function daysUntil(dateStr){
   return Math.ceil((d - new Date())/86400000);
 }
 function daysSince(dateStr){ const d = daysUntil(dateStr); return d===null ? null : -d; }
+
+// ── Contract pause / resume ──
+async function startPause(id){
+  const c=clients.find(x=>x.id===id); if(!c || isPaused(c)) return;
+  const today=new Date().toISOString().slice(0,10);
+  try{ const r=await api('POST',`/api/clients/${id}/pause`,{date:today}); if(r&&r.client) Object.assign(c, r.client); }
+  catch(e){ toast('فشل الإيقاف: '+(e.message||''),'⚠️'); return; }
+  toast('تم إيقاف العقد مؤقتاً ⏸️','⏸️');
+  if(typeof logActivity==='function') logActivity('⏸️','إيقاف مؤقت للعقد',c.name);
+  _refreshAfterPause(id);
+}
+async function endPause(id){
+  const c=clients.find(x=>x.id===id); if(!c || !isPaused(c)) return;
+  const today=new Date().toISOString().slice(0,10);
+  let r; try{ r=await api('POST',`/api/clients/${id}/resume`,{date:today}); }
+  catch(e){ toast('فشل الاستئناف: '+(e.message||''),'⚠️'); return; }
+  if(r&&r.client) Object.assign(c, r.client);
+  const days=(r&&r.days)||0;
+  toast(`تم استئناف العقد ▶️ (+${days} يوم على نهاية العقد)`,'▶️');
+  if(typeof logActivity==='function') logActivity('▶️','استئناف العقد',`${c.name} (+${days}ي)`);
+  _refreshAfterPause(id);
+}
+function _refreshAfterPause(id){
+  updateNotifBadge();
+  if(S.view==='clients') renderTable();
+  else if(S.view==='overview') renderOverview();
+  else if(S.view==='phoneclients') renderPhoneClients();
+  if($('dp') && $('dp').classList.contains('on')) openDetail(id);
+  if($('csm-mo') && $('csm-mo').classList.contains('on')) openCsmDetail(id, _csmDetailPhone);
+}
 function agoLabel(dateStr){
   const n = daysSince(dateStr);
   if (n===null) return '—';
@@ -4807,9 +4875,10 @@ function openCsmDetail(id, phone=false){
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
       ${clientAv(c,'dp-av',null,'30px')}
       <div style="flex:1;min-width:0">
-        <div style="font-size:16px;font-weight:700">${esc(c.name)}</div>
+        <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(c.name)} ${pauseBadge(c)}</div>
         <div style="font-size:12px;color:var(--t3)">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
       </div>
+      <button class="btn ${isPaused(c)?'btn-p':'btn-g'}" onclick="${isPaused(c)?`endPause(${id})`:`startPause(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف':'Pause')}</button>
       <button class="btn btn-p" onclick="openUpsell(${id})">💰 ${LANG==='ar'?'بيع خدمة (Upsell)':'Upsell'}</button>
       <button class="btn btn-g" onclick="closeCsmDetail();openDetail(${id})">👤 ${LANG==='ar'?'الملف الشخصي':'Profile'}</button>
       <button class="btn btn-g" onclick="exportCsmPdf(${id})">🖨️ ${LANG==='ar'?'تصدير PDF':'Export PDF'}</button>
@@ -5427,7 +5496,7 @@ async function undoUpgrade(cid){
 let _auditFilter = '';
 function setAuditFilter(v){ _auditFilter = v; renderAudit(); }
 const AUDIT_ACTIONS = {
-  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة','client.upgrade.undo':'إلغاء ترقية','client.upsell':'بيع خدمة (Upsell)',
+  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة','client.upgrade.undo':'إلغاء ترقية','client.upsell':'بيع خدمة (Upsell)','client.pause':'إيقاف مؤقت','client.resume':'استئناف العقد',
   'csm.note':'متابعة CSM','plan.update':'تعديل باقة','plan.delete':'حذف باقة','plan.create':'إضافة باقة',
   'user.create':'إضافة مستخدم','user.update':'تعديل مستخدم','user.delete':'حذف مستخدم',
 };
@@ -5825,7 +5894,7 @@ function lastCsmDate(c){
 }
 function computeNotifs(){
   const out = [];
-  clients.filter(c=>!c.deleted && c.contractEnd).forEach(c=>{
+  clients.filter(c=>!c.deleted && c.contractEnd && !isPaused(c)).forEach(c=>{
     const d = daysUntil(c.contractEnd); if (d===null) return;
     let type = null;
     if (d < 0) type='ended'; else if (d <= 3) type='3d'; else if (d <= 15) type='15d';
@@ -5833,7 +5902,7 @@ function computeNotifs(){
   });
   // Follow-up reminders: active clients WITH a contract end date that hasn't passed, cadence by plan.
   // No follow-up yet → flagged immediately. Otherwise → every N days counted from the LAST follow-up.
-  clients.filter(c=>!c.deleted && c.status==='active').forEach(c=>{
+  clients.filter(c=>!c.deleted && c.status==='active' && !isPaused(c)).forEach(c=>{
     if(!c.contractEnd) return;                          // no contract end date → not in follow-up notifs
     if(daysUntil(c.contractEnd) < 0) return;            // contract ended → skip
     const last=lastCsmDate(c), N=planFollowDays(c.plan), tier=planTier(c.plan);

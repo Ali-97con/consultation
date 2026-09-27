@@ -4,6 +4,7 @@ const path    = require('path');
 const {
   getClients, getTrash,
   createClient, updateClient, updateNotes, upgradeClient, undoLastUpgrade,
+  pauseClient, resumeClient,
   addAudit, getAudit,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,
@@ -259,6 +260,27 @@ app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) =>
     audit(req, 'client.upgrade', 'client', id,
       `ترقية باقة «${updated.name || id}»: ${rec.from} → ${rec.to}`, rec);
     res.json({ ok: true, client: clean(updated) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Contract pause / resume (admin + both CSM roles) ─────────────────────────
+app.post('/api/clients/:id/pause', requireCsmOrAdmin, async (req, res) => {
+  try {
+    const today = str(req.body.date, 30) || new Date().toISOString().slice(0, 10);
+    const r = await pauseClient(+req.params.id, today);
+    if (!r) return res.status(404).json({ error: 'العميل غير موجود' });
+    if (!r.already) audit(req, 'client.pause', 'client', +req.params.id, `إيقاف مؤقت للعقد «${r.client.name || req.params.id}»`, { start: today });
+    res.json({ ok: true, client: clean(r.client) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/clients/:id/resume', requireCsmOrAdmin, async (req, res) => {
+  try {
+    const today = str(req.body.date, 30) || new Date().toISOString().slice(0, 10);
+    const r = await resumeClient(+req.params.id, today);
+    if (!r) return res.status(404).json({ error: 'العميل غير موجود' });
+    if (!r.notPaused) audit(req, 'client.resume', 'client', +req.params.id,
+      `استئناف العقد «${r.client.name || req.params.id}» (+${r.days} يوم → ${r.client.contractEnd || '—'})`, { days: r.days });
+    res.json({ ok: true, client: clean(r.client), days: r.days });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
