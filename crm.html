@@ -460,6 +460,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       سجل التعديلات
     </div>
     <div class="ns" id="ns-sys">النظام</div>
+    <div class="nl" data-v="sessions" id="nl-sessions">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+      الجلسات الأسبوعية
+    </div>
     <div class="nl" data-v="users" id="nl-users">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
       المستخدمون
@@ -632,6 +636,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   <div class="pg" id="pg-phoneclients"></div>
   <div class="pg" id="pg-upgrades"></div>
   <div class="pg" id="pg-audit"></div>
+  <div class="pg" id="pg-sessions"></div>
   <div class="pg" id="pg-notifs"></div>
   <div class="pg" id="pg-users"></div>
   <div class="pg" id="pg-trash"></div>
@@ -1213,8 +1218,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'قائمة العملاء (متابعة هاتفية)',upgrades:'الترقيات',audit:'سجل التعديلات',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Clients (Phone CSM)',upgrades:'Upgrades',audit:'Change Log',notifs:'Notifications',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'قائمة العملاء (متابعة هاتفية)',upgrades:'الترقيات',audit:'سجل التعديلات',sessions:'الجلسات الأسبوعية',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Clients (Phone CSM)',upgrades:'Upgrades',audit:'Change Log',sessions:'Weekly Sessions',notifs:'Notifications',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref', ended:'b-end' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171', ended:'#94a3b8' };
@@ -1519,7 +1524,7 @@ let UPSELL_SERVICES = [];   // [{name, price}] loaded from the server
 function applyCsmRestrictions() {
   if (!isCsm()) return;
   // CSM sees only the follow-up section (can still open client profiles from it)
-  ['overview','clients','analytics','insights','team','commissions','users','trash','phoneclients','upgrades','audit'].forEach(v => {
+  ['overview','clients','analytics','insights','team','commissions','users','trash','phoneclients','upgrades','audit','sessions'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1538,7 +1543,7 @@ function applyCsmRestrictions() {
 function applyCsmPhoneRestrictions() {
   if (!isCsmPhone()) return;
   // Phone-CSM sees only: broad client list, upgrades, change log.
-  ['overview','clients','analytics','insights','team','commissions','csm','notifs','users','trash'].forEach(v => {
+  ['overview','clients','analytics','insights','team','commissions','csm','notifs','users','trash','sessions'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1566,7 +1571,7 @@ function closeMobMenu() {
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, users, trash + orphaned section headers
-  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash','phoneclients','upgrades','audit'].forEach(v => {
+  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash','phoneclients','upgrades','audit','sessions'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1834,7 +1839,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, phoneclients:renderPhoneClients, upgrades:renderUpgrades, audit:renderAudit, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, phoneclients:renderPhoneClients, upgrades:renderUpgrades, audit:renderAudit, sessions:renderSessions, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -5586,6 +5591,7 @@ const AUDIT_ACTIONS = {
   'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة','client.upgrade.undo':'إلغاء ترقية','client.upsell':'بيع خدمة (Upsell)','client.pause':'إيقاف مؤقت','client.resume':'استئناف العقد',
   'csm.note':'متابعة CSM','plan.update':'تعديل باقة','plan.delete':'حذف باقة','plan.create':'إضافة باقة',
   'user.create':'إضافة مستخدم','user.update':'تعديل مستخدم','user.delete':'حذف مستخدم',
+  'session.send':'إرسال بريد جلسة','session.template':'تعديل قالب بريد',
 };
 function auditActionLabel(a){ return AUDIT_ACTIONS[a] || a; }
 function auditActionColor(a){
@@ -5628,6 +5634,122 @@ async function renderAudit(){
       <tbody>${rows}</tbody>
     </table>
   </div>`;
+}
+
+// ═══════════════ WEEKLY SESSION EMAILS (الجلسات الأسبوعية) ═══════════════
+let _sessTpl = null, _sessSending = false;
+function sessionRecipients(){
+  return clients.filter(c=>!c.deleted && c.status==='active' && c.email && /@/.test(c.email))
+    .map(c=>({ clientId:c.id, email:(c.email||'').trim(), name:c.name }));
+}
+async function renderSessions(){
+  $('pg-sessions').innerHTML = `<div class="card" style="padding:24px;text-align:center;color:var(--t3)">جارِ التحميل…</div>`;
+  try{ _sessTpl = await api('GET','/api/sessions/templates'); }
+  catch(e){ $('pg-sessions').innerHTML=`<div class="card" style="padding:24px;color:var(--r);text-align:center">تعذّر التحميل: ${esc(e.message||'')}</div>`; return; }
+  _renderSessionsBody();
+}
+function _tplBlock(key, num, title, sendLabel){
+  const t=(_sessTpl&&_sessTpl[key])||{subject:'',html:''};
+  const vhint = key==='register' ? '{{الاسم}} {{التاريخ}} {{الرابط}}' : '{{الاسم}} {{التاريخ}}';
+  return `<div class="card mb" style="padding:16px 18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <div style="font-size:13px;font-weight:700">${num} ${title}</div>
+      <button class="btn btn-p" onclick="sendSessionCampaign('${key}')">📤 ${sendLabel}</button>
+    </div>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">الموضوع</label>
+    <input class="inp" id="tpl-${key}-subject" value="${esc(t.subject)}" style="margin-bottom:8px"/>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">المحتوى (HTML) — المتغيرات: ${vhint}</label>
+    <textarea class="inp" id="tpl-${key}-html" rows="7" style="font-family:monospace;font-size:12px;line-height:1.5">${esc(t.html)}</textarea>
+    <button class="btn btn-g" style="margin-top:8px" onclick="saveSessionTpl('${key}')">💾 حفظ القالب</button>
+  </div>`;
+}
+function _renderSessionsBody(){
+  const recips = sessionRecipients();
+  const today = new Date().toISOString().slice(0,10);
+  $('pg-sessions').innerHTML = `
+    <div class="card mb" style="padding:12px 16px;font-size:11.5px;color:var(--t3)">ℹ️ الإرسال عبر Brevo من <b>${esc(sessionSenderHint())}</b>. تأكّد من ضبط مفاتيح Brevo في متغيرات البيئة على الخادم. المستلمون = العملاء النشطون الذين لديهم بريد إلكتروني.</div>
+    <div class="card mb" style="padding:16px 18px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:12px">📅 جلسة هذا الأسبوع</div>
+      <div class="fr">
+        <div class="fg"><label>تاريخ الجلسة</label><input class="inp" id="sess-date" type="date" value="${today}" onchange="loadSessionLog()"/></div>
+        <div class="fg"><label>رابط التسجيل / الانضمام</label><input class="inp" id="sess-link" placeholder="https://..."/></div>
+      </div>
+      <div style="margin-top:12px;font-size:12.5px;color:var(--t3)">👥 المستلمون: <b style="color:var(--t1)">${recips.length}</b> عميل نشط لديه بريد إلكتروني</div>
+    </div>
+    <div class="card mb" style="padding:14px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12.5px;font-weight:600">✉️ إرسال تجريبي إلى</span>
+      <input class="inp" id="sess-test-email" style="max-width:230px" placeholder="بريدك للاختبار" value="${esc(sessionSenderHint())}"/>
+      <select class="fsl" id="sess-test-camp" style="min-width:120px"><option value="reminder">التذكير</option><option value="register">التسجيل</option></select>
+      <button class="btn btn-g" onclick="sendSessionTest()">إرسال تجريبي</button>
+    </div>
+    ${_tplBlock('reminder','①','تذكير بموعد الجلسة','إرسال التذكير للجميع')}
+    ${_tplBlock('register','②','التسجيل في الجلسة (بالرابط)','إرسال رابط التسجيل للجميع')}
+    <div id="sess-progress" class="card mb" style="padding:14px 16px;display:none"></div>
+    <div class="card" style="padding:0;overflow-x:auto">
+      <div style="padding:12px 16px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center">سجل الإرسال <button class="btn btn-g" onclick="loadSessionLog()" style="padding:3px 10px;font-size:11px">🔄 تحديث</button></div>
+      <div id="sess-log"></div>
+    </div>`;
+  loadSessionLog();
+}
+function sessionSenderHint(){ try{ return sessionStorage.getItem('ah97_user')||''; }catch(_){ return ''; } }
+async function _putTpl(key){
+  const subject=(($('tpl-'+key+'-subject')||{}).value)||'', html=(($('tpl-'+key+'-html')||{}).value)||'';
+  await api('PUT',`/api/sessions/templates/${key}`,{subject,html});
+  if(_sessTpl) _sessTpl[key]={subject,html};
+}
+async function saveSessionTpl(key){
+  try{ await _putTpl(key); toast('تم حفظ القالب ✓','✅'); }
+  catch(e){ toast('فشل الحفظ: '+(e.message||''),'⚠️'); }
+}
+async function sendSessionTest(){
+  const to=(($('sess-test-email')||{}).value||'').trim(); if(!to||!/@/.test(to)){ toast('أدخل بريد اختبار صحيح','⚠️'); return; }
+  const campaign=($('sess-test-camp')||{}).value||'reminder';
+  const date=($('sess-date')||{}).value||'', link=($('sess-link')||{}).value||'';
+  try{ await _putTpl(campaign); await api('POST','/api/sessions/test',{campaign,to,date,link}); toast('تم إرسال البريد التجريبي ✓','✅'); }
+  catch(e){ toast('فشل الإرسال: '+(e.message||''),'⚠️'); }
+}
+async function sendSessionCampaign(campaign){
+  if(_sessSending) return;
+  const date=($('sess-date')||{}).value||'', link=($('sess-link')||{}).value||'';
+  if(!date){ toast('حدد تاريخ الجلسة','⚠️'); return; }
+  if(campaign==='register' && !link){ toast('أدخل رابط التسجيل','⚠️'); return; }
+  const recips=sessionRecipients();
+  if(!recips.length){ toast('لا يوجد مستلمون','⚠️'); return; }
+  const label = campaign==='reminder'?'التذكير':'رابط التسجيل';
+  if(!confirm(`إرسال «${label}» إلى ${recips.length} عميل نشط؟\nالتاريخ: ${date}`)) return;
+  try{ await _putTpl(campaign); }catch(e){ toast('فشل حفظ القالب','⚠️'); return; }
+  _sessSending=true;
+  const prog=$('sess-progress'); if(prog) prog.style.display='';
+  let sent=0,failed=0,skipped=0,done=0; const chunk=20;
+  for(let i=0;i<recips.length;i+=chunk){
+    const batch=recips.slice(i,i+chunk);
+    try{ const r=await api('POST','/api/sessions/send',{campaign,weekKey:date,date,link,recipients:batch}); sent+=r.sent||0; failed+=r.failed||0; skipped+=r.skipped||0; }
+    catch(e){ failed+=batch.length; }
+    done+=batch.length; _updateSessProgress(done,recips.length,sent,failed,skipped);
+  }
+  _sessSending=false;
+  toast(`انتهى الإرسال — نجح ${sent} · فشل ${failed} · تخطّي ${skipped}`, failed?'⚠️':'✅');
+  if(typeof logActivity==='function') logActivity('📧','إرسال جلسة أسبوعية',`${label}: ${sent} مُرسَل`);
+  loadSessionLog();
+}
+function _updateSessProgress(done,total,sent,failed,skipped){
+  const prog=$('sess-progress'); if(!prog) return;
+  const pct=total?Math.round(done/total*100):0;
+  prog.innerHTML=`<div style="font-size:12.5px;margin-bottom:6px">جارِ الإرسال… ${done}/${total} — <span style="color:var(--g)">نجح ${sent}</span> · <span style="color:var(--r)">فشل ${failed}</span> · تخطّي ${skipped}</div><div style="height:8px;background:var(--b1);border-radius:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--g);transition:width .2s"></div></div>`;
+}
+async function loadSessionLog(){
+  const el=$('sess-log'); if(!el) return;
+  const date=($('sess-date')||{}).value||'';
+  let data=[]; try{ data=await api('GET',`/api/sessions/log${date?`?weekKey=${encodeURIComponent(date)}`:''}`); }catch(e){}
+  const th=x=>`<th style="padding:8px 12px;text-align:${x||'right'};color:var(--t3);font-size:11px">`;
+  el.innerHTML = data.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">${th()}الوقت</th>${th()}الحملة</th>${th()}البريد</th>${th()}الحالة</th></tr></thead>
+    <tbody>${data.map(r=>`<tr style="border-bottom:1px solid var(--b1)">
+      <td style="padding:7px 12px;color:var(--t3);white-space:nowrap">${(()=>{const d=new Date(r.ts);return isNaN(d)?'':d.toLocaleString('ar-SA-u-nu-latn',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});})()}</td>
+      <td style="padding:7px 12px">${r.campaign==='reminder'?'تذكير':'تسجيل'}</td>
+      <td style="padding:7px 12px;direction:ltr">${esc(r.to_email)}</td>
+      <td style="padding:7px 12px"><span style="color:${r.status==='sent'?'var(--g)':'var(--r)'};font-weight:600">${r.status==='sent'?'✓ أُرسل':'✗ فشل'}</span>${r.error?`<div style="font-size:10px;color:var(--t3);max-width:280px">${esc(r.error)}</div>`:''}</td>
+    </tr>`).join('')}</tbody></table>` : `<div style="padding:22px;text-align:center;color:var(--t3);font-size:12px">لا سجلّات لهذا التاريخ</div>`;
 }
 
 // ═══════════════ MONTHLY FINANCIAL REPORT (تحليلات → تقرير الشهر المالي) ═══════════════

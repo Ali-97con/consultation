@@ -6,6 +6,7 @@ const {
   createClient, updateClient, updateNotes, upgradeClient, undoLastUpgrade,
   pauseClient, resumeClient, ensureResumed, ensureEnded,
   addAudit, getAudit,
+  getEmailTemplates, saveEmailTemplate, logEmail, emailSentSet, getEmailLog,
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
@@ -322,6 +323,94 @@ app.get('/api/audit', requireCsmPhoneOrAdmin, async (req, res) => {
 app.get('/api/csm/options', requireCsmOrAdmin, async (_req, res) => {
   try { res.json(await getCsmOptions()); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Weekly-session emails (Brevo) — admin only ───────────────────────────────
+function renderTpl(str, vars) {
+  return String(str || '').replace(/\{\{\s*(الاسم|التاريخ|الرابط|الغاء)\s*\}\}/g, (_, k) => (vars[k] != null ? vars[k] : ''));
+}
+async function sendBrevoEmail({ to, toName, subject, html }) {
+  const key = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  if (!key) throw new Error('BREVO_API_KEY غير مضبوط في الخادم');
+  if (!senderEmail) throw new Error('BREVO_SENDER_EMAIL غير مضبوط في الخادم');
+  const sender = { name: process.env.BREVO_SENDER_NAME || 'AH97', email: senderEmail };
+  const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': key, 'content-type': 'application/json', 'accept': 'application/json' },
+    body: JSON.stringify({ sender, to: [{ email: to, name: toName || undefined }], subject, htmlContent: html }),
+  });
+  if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`Brevo ${r.status}: ${t.slice(0, 200)}`); }
+  return r.json().catch(() => ({}));
+}
+function unsubLink() {
+  const e = process.env.BREVO_SENDER_EMAIL || '';
+  return `mailto:${e}?subject=${encodeURIComponent('إلغاء الاشتراك')}`;
+}
+
+app.get('/api/sessions/templates', requireAdmin, async (_req, res) => {
+  try { res.json(await getEmailTemplates()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/sessions/templates/:key', requireAdmin, async (req, res) => {
+  try {
+    const key = ['reminder', 'register'].includes(req.params.key) ? req.params.key : null;
+    if (!key) return res.status(400).json({ error: 'نوع القالب غير صحيح' });
+    await saveEmailTemplate(key, str(req.body.subject, 300), str(req.body.html, 50000));
+    audit(req, 'session.template', 'email', key, `تعديل قالب البريد (${key})`);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/sessions/log', requireAdmin, async (req, res) => {
+  try { res.json(await getEmailLog(str(req.query.weekKey, 30))); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Send a single test email to a chosen address
+app.post('/api/sessions/test', requireAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const key = ['reminder', 'register'].includes(b.campaign) ? b.campaign : 'reminder';
+    const to = str(b.to, 200);
+    if (!to || !/@/.test(to)) return res.status(400).json({ error: 'بريد الاختبار غير صحيح' });
+    const tpls = await getEmailTemplates();
+    const tpl = tpls[key] || {};
+    const vars = { 'الاسم': 'عميلنا العزيز', 'التاريخ': str(b.date, 60) || '—', 'الرابط': str(b.link, 500) || '#', 'الغاء': unsubLink() };
+    await sendBrevoEmail({ to, toName: 'Test', subject: renderTpl(tpl.subject, vars), html: renderTpl(tpl.html, vars) });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Send one batch of recipients for a campaign (frontend chunks the full list). Dedup per session+campaign.
+app.post('/api/sessions/send', requireAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const key = ['reminder', 'register'].includes(b.campaign) ? b.campaign : null;
+    if (!key) return res.status(400).json({ error: 'الحملة غير صحيحة' });
+    const weekKey = str(b.weekKey, 30) || str(b.date, 30) || new Date().toISOString().slice(0, 10);
+    const date = str(b.date, 60) || '';
+    const link = str(b.link, 500) || '';
+    if (key === 'register' && !link) return res.status(400).json({ error: 'رابط التسجيل مطلوب' });
+    const recipients = Array.isArray(b.recipients) ? b.recipients.slice(0, 60) : [];
+    const tpls = await getEmailTemplates();
+    const tpl = tpls[key] || {};
+    const already = await emailSentSet(key, weekKey);
+    let sent = 0, failed = 0, skipped = 0;
+    for (const rcp of recipients) {
+      const to = str(rcp && rcp.email, 200);
+      if (!to || !/@/.test(to)) { skipped++; continue; }
+      if (already.has(to.toLowerCase())) { skipped++; continue; }   // already emailed this session+campaign
+      const vars = { 'الاسم': str(rcp.name, 200) || 'عميلنا العزيز', 'التاريخ': date || '—', 'الرابط': link || '#', 'الغاء': unsubLink() };
+      try {
+        await sendBrevoEmail({ to, toName: str(rcp.name, 200), subject: renderTpl(tpl.subject, vars), html: renderTpl(tpl.html, vars) });
+        await logEmail({ campaign: key, weekKey, clientId: rcp.clientId, toEmail: to, status: 'sent' });
+        sent++;
+      } catch (err) {
+        await logEmail({ campaign: key, weekKey, clientId: rcp.clientId, toEmail: to, status: 'failed', error: String(err.message || err).slice(0, 300) });
+        failed++;
+      }
+    }
+    audit(req, 'session.send', 'email', weekKey, `إرسال بريد (${key === 'reminder' ? 'تذكير' : 'تسجيل'}) — نجح ${sent} · فشل ${failed}`, { campaign: key, sent, failed, skipped });
+    res.json({ ok: true, sent, failed, skipped });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Upsell services (list) + per-client upsell purchases ─────────────────────

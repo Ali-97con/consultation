@@ -123,7 +123,46 @@ async function ensureSchema() {
       details   jsonb
     );
     create index if not exists audit_log_ts_idx on audit_log(ts desc);
+
+    create table if not exists email_templates (
+      key     text primary key,          -- 'reminder' | 'register'
+      subject text,
+      html    text
+    );
+    create table if not exists email_log (
+      id        bigserial   primary key,
+      ts        timestamptz not null default now(),
+      campaign  text,                     -- 'reminder' | 'register'
+      week_key  text,                     -- the session date (dedup key)
+      client_id integer,
+      to_email  text,
+      status    text,                     -- 'sent' | 'failed'
+      error     text
+    );
+    create index if not exists email_log_week_idx on email_log(week_key, campaign);
   `);
+  // Seed default weekly-session email templates (only if missing)
+  await q(`insert into email_templates(key, subject, html) values($1,$2,$3) on conflict (key) do nothing`,
+    ['reminder', 'تذكير: جلستنا الأسبوعية يوم {{التاريخ}}',
+     '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:1.9">'
+     + '<p>مرحباً {{الاسم}}،</p>'
+     + '<p>نذكّرك بموعد <b>جلستنا الأسبوعية</b> القادمة:</p>'
+     + '<p style="font-size:17px">📅 <b>{{التاريخ}}</b></p>'
+     + '<p>نتطلع لحضورك ومشاركتك.</p>'
+     + '<p style="margin-top:18px">— علي حامد للإستشارات</p>'
+     + '<hr style="border:none;border-top:1px solid #eee;margin:18px 0">'
+     + '<p style="font-size:11px;color:#999">إذا لا ترغب في استقبال هذه الرسائل، <a href="{{الغاء}}" style="color:#999">اضغط هنا لإلغاء الاشتراك</a>.</p></div>']);
+  await q(`insert into email_templates(key, subject, html) values($1,$2,$3) on conflict (key) do nothing`,
+    ['register', 'سجّل الآن في جلسة هذا الأسبوع',
+     '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:1.9">'
+     + '<p>مرحباً {{الاسم}}،</p>'
+     + '<p>سجّل حضورك في <b>جلستنا الأسبوعية</b> عبر الرابط التالي:</p>'
+     + '<p style="margin:18px 0"><a href="{{الرابط}}" style="background:#6366f1;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold">التسجيل الآن</a></p>'
+     + '<p>📅 {{التاريخ}}</p>'
+     + '<p>نراك هناك!</p>'
+     + '<p style="margin-top:18px">— علي حامد للإستشارات</p>'
+     + '<hr style="border:none;border-top:1px solid #eee;margin:18px 0">'
+     + '<p style="font-size:11px;color:#999"><a href="{{الغاء}}" style="color:#999">إلغاء الاشتراك</a></p></div>']);
 }
 function schemaReady() { if (!schemaPromise) schemaPromise = ensureSchema(); return schemaPromise; }
 
@@ -403,6 +442,38 @@ async function getAudit({ limit = 300, action, entity, username } = {}) {
     `select id, ts, username, role, action, entity, entity_id, summary, details
        from audit_log ${where.length ? 'where ' + where.join(' and ') : ''}
       order by ts desc limit $${params.length}`, params);
+  return rows;
+}
+
+// ─── Weekly-session emails (templates + send log) ─────────────────────────────
+async function getEmailTemplates() {
+  await schemaReady();
+  const { rows } = await q('select key, subject, html from email_templates');
+  const o = {}; rows.forEach(r => o[r.key] = { subject: r.subject, html: r.html }); return o;
+}
+async function saveEmailTemplate(key, subject, html) {
+  await schemaReady();
+  await q(`insert into email_templates(key, subject, html) values($1,$2,$3)
+           on conflict (key) do update set subject = excluded.subject, html = excluded.html`,
+    [key, subject, html]);
+  return true;
+}
+async function logEmail(e) {
+  await schemaReady();
+  await q(`insert into email_log(campaign, week_key, client_id, to_email, status, error)
+           values($1,$2,$3,$4,$5,$6)`,
+    [e.campaign, e.weekKey, e.clientId || null, e.toEmail, e.status, e.error || null]);
+}
+async function emailSentSet(campaign, weekKey) {   // emails already sent OK for this campaign+session (dedup)
+  await schemaReady();
+  const { rows } = await q(`select to_email from email_log where campaign=$1 and week_key=$2 and status='sent'`, [campaign, weekKey]);
+  return new Set(rows.map(r => (r.to_email || '').toLowerCase()));
+}
+async function getEmailLog(weekKey) {
+  await schemaReady();
+  const { rows } = weekKey
+    ? await q(`select ts, campaign, week_key, to_email, status, error from email_log where week_key=$1 order by ts desc limit 2000`, [weekKey])
+    : await q(`select ts, campaign, week_key, to_email, status, error from email_log order by ts desc limit 500`);
   return rows;
 }
 
@@ -923,6 +994,8 @@ module.exports = {
   softDelete, restoreClient, restoreAll, permDelete, emptyTrash,
   // Audit log
   addAudit, getAudit,
+  // Weekly-session emails
+  getEmailTemplates, saveEmailTemplate, logEmail, emailSentSet, getEmailLog,
   // Team
   getTeam, addMember, editMember, removeMember,
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
