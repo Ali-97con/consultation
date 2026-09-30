@@ -5774,7 +5774,7 @@ async function sendSessionCampaign(campaign){
   const recips=sessionRecipients();
   if(!recips.length){ toast('لا يوجد مستلمون','⚠️'); return; }
   const label = campaign==='reminder'?'التذكير':'رابط التسجيل';
-  if(!confirm(`إرسال «${label}» إلى ${recips.length} عميل نشط؟\nالتاريخ: ${date}`)) return;
+  toast(`جارِ إرسال «${label}» إلى ${recips.length} مستلم…`,'📤');
   try{ await _putTpl(campaign); }catch(e){ toast('فشل حفظ القالب','⚠️'); return; }
   _sessSending=true;
   const prog=$('sess-progress'); if(prog) prog.style.display='';
