@@ -339,6 +339,14 @@ function htmlToText(html) {
     .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
+// Wrap the template body in a valid, complete HTML document (fixes "HTML errors" spam deductions).
+function wrapEmailHtml(inner) {
+  if (/<html[\s>]/i.test(inner)) return inner;
+  return '<!DOCTYPE html><html dir="rtl" lang="ar"><head>'
+    + '<meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1"><title>الجلسة الأسبوعية</title></head>'
+    + '<body style="margin:0;padding:16px;background:#ffffff">' + inner + '</body></html>';
+}
 async function sendBrevoEmail({ to, toName, subject, html }) {
   const key = process.env.BREVO_API_KEY;
   const senderEmail = process.env.BREVO_SENDER_EMAIL;
@@ -350,8 +358,7 @@ async function sendBrevoEmail({ to, toName, subject, html }) {
     headers: { 'api-key': key, 'content-type': 'application/json', 'accept': 'application/json' },
     body: JSON.stringify({
       sender, to: [{ email: to, name: toName || undefined }], subject,
-      htmlContent: html, textContent: htmlToText(html),   // multipart HTML + plain text
-      // List-Unsubscribe header → strong anti-spam / deliverability signal
+      htmlContent: wrapEmailHtml(html), textContent: htmlToText(html),   // full-document HTML + plain text
       headers: { 'List-Unsubscribe': `<mailto:${senderEmail}?subject=unsubscribe>` },
     }),
   });
