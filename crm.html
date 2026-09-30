@@ -5638,9 +5638,13 @@ async function renderAudit(){
 
 // ═══════════════ WEEKLY SESSION EMAILS (الجلسات الأسبوعية) ═══════════════
 let _sessTpl = null, _sessSending = false;
+let _sessMode='all', _sessSel=new Set(), _sessRecSearch='';
+function sessSelectable(){ return clients.filter(c=>!c.deleted && c.email && /@/.test(c.email)); }
 function sessionRecipients(){
-  return clients.filter(c=>!c.deleted && c.status==='active' && c.email && /@/.test(c.email))
-    .map(c=>({ clientId:c.id, email:(c.email||'').trim(), name:c.name }));
+  const base = _sessMode==='select'
+    ? clients.filter(c=>!c.deleted && _sessSel.has(c.id) && c.email && /@/.test(c.email))
+    : clients.filter(c=>!c.deleted && c.status==='active' && c.email && /@/.test(c.email));
+  return base.map(c=>({ clientId:c.id, email:(c.email||'').trim(), name:c.name }));
 }
 async function renderSessions(){
   $('pg-sessions').innerHTML = `<div class="card" style="padding:24px;text-align:center;color:var(--t3)">جارِ التحميل…</div>`;
@@ -5648,14 +5652,11 @@ async function renderSessions(){
   catch(e){ $('pg-sessions').innerHTML=`<div class="card" style="padding:24px;color:var(--r);text-align:center">تعذّر التحميل: ${esc(e.message||'')}</div>`; return; }
   _renderSessionsBody();
 }
-function _tplBlock(key, num, title, sendLabel){
+function _tplBlock(key, num, title){
   const t=(_sessTpl&&_sessTpl[key])||{subject:'',html:''};
   const vhint = key==='register' ? '{{الاسم}} {{العنوان}} {{التاريخ}} {{الرابط}}' : '{{الاسم}} {{العنوان}} {{التاريخ}}';
-  return `<div class="card mb" style="padding:16px 18px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-      <div style="font-size:13px;font-weight:700">${num} ${title}</div>
-      <button class="btn btn-p" onclick="sendSessionCampaign('${key}')">📤 ${sendLabel}</button>
-    </div>
+  return `<div style="border:1px solid var(--b1);border-radius:10px;padding:14px;margin-bottom:12px">
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">${num} ${title}</div>
     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">الموضوع</label>
     <input class="inp" id="tpl-${key}-subject" value="${esc(t.subject)}" style="margin-bottom:8px"/>
     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">المحتوى (HTML) — المتغيرات: ${vhint}</label>
@@ -5664,35 +5665,90 @@ function _tplBlock(key, num, title, sendLabel){
   </div>`;
 }
 function _renderSessionsBody(){
-  const recips = sessionRecipients();
   const today = new Date().toISOString().slice(0,10);
+  const modeBtn=(m,l)=>`<button class="btn sess-mode-btn ${_sessMode===m?'btn-p':'btn-g'}" data-m="${m}" onclick="setSessMode('${m}')">${l}</button>`;
   $('pg-sessions').innerHTML = `
-    <div class="card mb" style="padding:12px 16px;font-size:11.5px;color:var(--t3)">ℹ️ الإرسال عبر Brevo من <b>${esc(sessionSenderHint())}</b>. تأكّد من ضبط مفاتيح Brevo في متغيرات البيئة على الخادم. المستلمون = العملاء النشطون الذين لديهم بريد إلكتروني.</div>
+    <div class="card mb" style="padding:12px 16px;font-size:11.5px;color:var(--t3)">ℹ️ الإرسال عبر Brevo من <b>${esc(sessionSenderHint())}</b> — املأ التفاصيل ثم أرسل. القوالب محفوظة ومخفية (افتحها للتعديل عند الحاجة).</div>
+
     <div class="card mb" style="padding:16px 18px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:12px">📅 جلسة هذا الأسبوع</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:12px">📅 تفاصيل الجلسة</div>
       <div class="fg" style="margin-bottom:10px"><label>عنوان / موضوع الجلسة</label><input class="inp" id="sess-title" placeholder="مثال: أساسيات الاستثمار الحلال"/></div>
       <div class="fr">
         <div class="fg"><label>الوقت والتاريخ</label><input class="inp" id="sess-date" placeholder="مثال: الأحد 5 أكتوبر، الساعة 9 مساءً" value="${today}" onchange="loadSessionLog()"/></div>
         <div class="fg"><label>رابط التسجيل / الانضمام</label><input class="inp" id="sess-link" placeholder="https://..."/></div>
       </div>
-      <div style="font-size:11px;color:var(--t3);margin-top:6px">💡 «الوقت والتاريخ» نص حر يظهر في {{التاريخ}}. اترك حقل التاريخ يستعمل نصاً واضحاً بالعربية.</div>
-      <div style="margin-top:12px;font-size:12.5px;color:var(--t3)">👥 المستلمون: <b style="color:var(--t1)">${recips.length}</b> عميل نشط لديه بريد إلكتروني</div>
     </div>
+
+    <div class="card mb" style="padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700">👥 المستلمون</div>
+        ${modeBtn('all','كل العملاء النشطين')}
+        ${modeBtn('select','تحديد عملاء')}
+        <span id="sess-reccount" style="margin-inline-start:auto;font-size:12.5px;font-weight:700;color:var(--p2)"></span>
+      </div>
+      <div id="sess-select-wrap" ${_sessMode==='select'?'':'hidden'}>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <input class="inp" id="sess-recsearch" style="max-width:240px" placeholder="🔍 بحث بالاسم أو الهاتف أو البريد..." value="${esc(_sessRecSearch)}" oninput="setSessRecSearch(this.value)"/>
+          <button class="btn btn-g" onclick="selectAllSess()">تحديد الكل (المعروض)</button>
+          <button class="btn btn-g" onclick="clearSessSel()">إلغاء التحديد</button>
+          <span id="sess-selcount" style="font-size:12px;color:var(--t3)"></span>
+        </div>
+        <div id="sess-reclist" style="max-height:300px;overflow-y:auto;border:1px solid var(--b1);border-radius:8px"></div>
+      </div>
+    </div>
+
     <div class="card mb" style="padding:14px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:12.5px;font-weight:600">✉️ إرسال تجريبي إلى</span>
       <input class="inp" id="sess-test-email" style="max-width:230px" placeholder="بريدك للاختبار" value="${esc(sessionSenderHint())}"/>
       <select class="fsl" id="sess-test-camp" style="min-width:120px"><option value="reminder">التذكير</option><option value="register">التسجيل</option></select>
       <button class="btn btn-g" onclick="sendSessionTest()">إرسال تجريبي</button>
     </div>
-    ${_tplBlock('reminder','①','تذكير بموعد الجلسة','إرسال التذكير للجميع')}
-    ${_tplBlock('register','②','التسجيل في الجلسة (بالرابط)','إرسال رابط التسجيل للجميع')}
+
+    <div class="card mb" style="padding:16px 18px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="sendSessionCampaign('reminder')">📤 ① إرسال التذكير للمستلمين</button>
+      <button class="btn btn-p" onclick="sendSessionCampaign('register')">📤 ② إرسال رابط التسجيل للمستلمين</button>
+    </div>
+
+    <div class="card mb" style="padding:14px 16px">
+      <div style="font-size:12.5px;font-weight:700;cursor:pointer;user-select:none" onclick="toggleTplEditor()"><span id="sess-tpl-arrow">▸</span> ⚙️ تعديل قوالب الرسائل (متقدّم)</div>
+      <div id="sess-tpl-wrap" hidden style="margin-top:12px">
+        ${_tplBlock('reminder','①','تذكير بموعد الجلسة')}
+        ${_tplBlock('register','②','التسجيل في الجلسة (بالرابط)')}
+      </div>
+    </div>
+
     <div id="sess-progress" class="card mb" style="padding:14px 16px;display:none"></div>
     <div class="card" style="padding:0;overflow-x:auto">
       <div style="padding:12px 16px;font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center">سجل الإرسال <button class="btn btn-g" onclick="loadSessionLog()" style="padding:3px 10px;font-size:11px">🔄 تحديث</button></div>
       <div id="sess-log"></div>
     </div>`;
+  if(_sessMode==='select') renderSessList();
+  _updateRecCount();
   loadSessionLog();
 }
+function setSessMode(m){
+  _sessMode=m;
+  const w=$('sess-select-wrap'); if(w) w.hidden = (m!=='select');
+  document.querySelectorAll('.sess-mode-btn').forEach(b=>{ const on=b.dataset.m===m; b.classList.toggle('btn-p',on); b.classList.toggle('btn-g',!on); });
+  if(m==='select') renderSessList();
+  _updateRecCount();
+}
+function renderSessList(){
+  const el=$('sess-reclist'); if(!el) return;
+  const q=_sessRecSearch.trim().toLowerCase();
+  const list=sessSelectable().filter(c=>matchNamePhone(c.name,c.phone,q) || (c.email||'').toLowerCase().includes(q)).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  el.innerHTML = list.length ? list.map(c=>`<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--b1);cursor:pointer;font-size:12.5px">
+    <input type="checkbox" onchange="toggleSessClient(${c.id},this.checked)" ${_sessSel.has(c.id)?'checked':''}/>
+    <span style="flex:1;font-weight:600">${esc(c.name)||'—'}</span>
+    <span style="color:var(--t3);font-size:11px;direction:ltr">${esc(c.email)}</span></label>`).join('')
+    : `<div style="padding:16px;text-align:center;color:var(--t3);font-size:12px">لا نتائج</div>`;
+}
+function setSessRecSearch(v){ _sessRecSearch=v; renderSessList(); const el=$('sess-recsearch'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
+function toggleSessClient(id, checked){ if(checked) _sessSel.add(id); else _sessSel.delete(id); _updateRecCount(); }
+function selectAllSess(){ const q=_sessRecSearch.trim().toLowerCase(); sessSelectable().filter(c=>matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q)).forEach(c=>_sessSel.add(c.id)); renderSessList(); _updateRecCount(); }
+function clearSessSel(){ _sessSel.clear(); renderSessList(); _updateRecCount(); }
+function _updateRecCount(){ const n=sessionRecipients().length; const rc=$('sess-reccount'); if(rc) rc.textContent=`${n} مستلم`; const sc=$('sess-selcount'); if(sc) sc.textContent=`${_sessSel.size} محدد`; }
+function toggleTplEditor(){ const w=$('sess-tpl-wrap'); if(!w) return; w.hidden=!w.hidden; const a=$('sess-tpl-arrow'); if(a) a.textContent=w.hidden?'▸':'▾'; }
 function sessionSenderHint(){ try{ return sessionStorage.getItem('ah97_user')||''; }catch(_){ return ''; } }
 async function _putTpl(key){
   const subject=(($('tpl-'+key+'-subject')||{}).value)||'', html=(($('tpl-'+key+'-html')||{}).value)||'';
