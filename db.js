@@ -141,28 +141,28 @@ async function ensureSchema() {
     );
     create index if not exists email_log_week_idx on email_log(week_key, campaign);
   `);
-  // Seed default weekly-session email templates (only if missing)
+  // Seed default weekly-session email templates (only if missing) — plain, personal style (better inbox placement)
   await q(`insert into email_templates(key, subject, html) values($1,$2,$3) on conflict (key) do nothing`,
-    ['reminder', 'تذكير: جلستنا الأسبوعية يوم {{التاريخ}}',
-     '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:1.9">'
-     + '<p>مرحباً {{الاسم}}،</p>'
-     + '<p>نذكّرك بموعد <b>جلستنا الأسبوعية</b> القادمة:</p>'
-     + '<p style="font-size:17px">📅 <b>{{التاريخ}}</b></p>'
-     + '<p>نتطلع لحضورك ومشاركتك.</p>'
-     + '<p style="margin-top:18px">— علي حامد للإستشارات</p>'
-     + '<hr style="border:none;border-top:1px solid #eee;margin:18px 0">'
-     + '<p style="font-size:11px;color:#999">إذا لا ترغب في استقبال هذه الرسائل، <a href="{{الغاء}}" style="color:#999">اضغط هنا لإلغاء الاشتراك</a>.</p></div>']);
+    ['reminder', 'تذكير بموعد الجلسة الأسبوعية — {{التاريخ}}',
+     '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:2">'
+     + '<p>السلام عليكم ورحمة الله وبركاته {{الاسم}}،</p>'
+     + '<p>نذكّركم بموعد <b>الجلسة الأسبوعية</b> ضمن برنامج <b>الاستثمار الحلال</b>، والتي ستُعقد بإذن الله.</p>'
+     + '<p>📌 عنوان الجلسة: <b>{{العنوان}}</b></p>'
+     + '<p>🕓 الوقت والتاريخ: <b>{{التاريخ}}</b></p>'
+     + '<p>لا تفوّتوا هذه الجلسة، وجهّزوا أسئلتكم لمناقشتها بإذن الله.</p>'
+     + '<p>🔗 سيتم إرسال رابط الجلسة لاحقاً.</p>'
+     + '<p>نراكم على خير بإذن الله 🌿</p>'
+     + '<p style="font-size:11px;color:#999">لإلغاء الاشتراك <a href="{{الغاء}}" style="color:#999">اضغط هنا</a>.</p></div>']);
   await q(`insert into email_templates(key, subject, html) values($1,$2,$3) on conflict (key) do nothing`,
-    ['register', 'سجّل الآن في جلسة هذا الأسبوع',
-     '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:1.9">'
-     + '<p>مرحباً {{الاسم}}،</p>'
-     + '<p>سجّل حضورك في <b>جلستنا الأسبوعية</b> عبر الرابط التالي:</p>'
-     + '<p style="margin:18px 0"><a href="{{الرابط}}" style="background:#6366f1;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold">التسجيل الآن</a></p>'
-     + '<p>📅 {{التاريخ}}</p>'
-     + '<p>نراك هناك!</p>'
-     + '<p style="margin-top:18px">— علي حامد للإستشارات</p>'
-     + '<hr style="border:none;border-top:1px solid #eee;margin:18px 0">'
-     + '<p style="font-size:11px;color:#999"><a href="{{الغاء}}" style="color:#999">إلغاء الاشتراك</a></p></div>']);
+    ['register', 'رابط الانضمام لجلسة برنامج الاستثمار الحلال',
+     '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#222;line-height:2">'
+     + '<p>السلام عليكم ورحمة الله وبركاته {{الاسم}}،</p>'
+     + '<p>يسعدنا انضمامكم لجلسة برنامج <b>الاستثمار الحلال</b>:</p>'
+     + '<p>📌 {{العنوان}}</p>'
+     + '<p>🕓 {{التاريخ}}</p>'
+     + '<p>🔗 رابط الانضمام: {{الرابط}}</p>'
+     + '<p>نراكم على خير بإذن الله 🌿</p>'
+     + '<p style="font-size:11px;color:#999">لإلغاء الاشتراك <a href="{{الغاء}}" style="color:#999">اضغط هنا</a>.</p></div>']);
 }
 function schemaReady() { if (!schemaPromise) schemaPromise = ensureSchema(); return schemaPromise; }
 

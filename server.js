@@ -327,7 +327,7 @@ app.get('/api/csm/options', requireCsmOrAdmin, async (_req, res) => {
 
 // ─── Weekly-session emails (Brevo) — admin only ───────────────────────────────
 function renderTpl(str, vars) {
-  return String(str || '').replace(/\{\{\s*(الاسم|التاريخ|الرابط|الغاء)\s*\}\}/g, (_, k) => (vars[k] != null ? vars[k] : ''));
+  return String(str || '').replace(/\{\{\s*(الاسم|التاريخ|الرابط|الغاء|العنوان)\s*\}\}/g, (_, k) => (vars[k] != null ? vars[k] : ''));
 }
 async function sendBrevoEmail({ to, toName, subject, html }) {
   const key = process.env.BREVO_API_KEY;
@@ -374,7 +374,7 @@ app.post('/api/sessions/test', requireAdmin, async (req, res) => {
     if (!to || !/@/.test(to)) return res.status(400).json({ error: 'بريد الاختبار غير صحيح' });
     const tpls = await getEmailTemplates();
     const tpl = tpls[key] || {};
-    const vars = { 'الاسم': 'عميلنا العزيز', 'التاريخ': str(b.date, 60) || '—', 'الرابط': str(b.link, 500) || '#', 'الغاء': unsubLink() };
+    const vars = { 'الاسم': 'عميلنا العزيز', 'التاريخ': str(b.date, 120) || '—', 'الرابط': str(b.link, 500) || '#', 'العنوان': str(b.title, 300) || '—', 'الغاء': unsubLink() };
     await sendBrevoEmail({ to, toName: 'Test', subject: renderTpl(tpl.subject, vars), html: renderTpl(tpl.html, vars) });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -386,8 +386,9 @@ app.post('/api/sessions/send', requireAdmin, async (req, res) => {
     const key = ['reminder', 'register'].includes(b.campaign) ? b.campaign : null;
     if (!key) return res.status(400).json({ error: 'الحملة غير صحيحة' });
     const weekKey = str(b.weekKey, 30) || str(b.date, 30) || new Date().toISOString().slice(0, 10);
-    const date = str(b.date, 60) || '';
+    const date = str(b.date, 120) || '';
     const link = str(b.link, 500) || '';
+    const title = str(b.title, 300) || '';
     if (key === 'register' && !link) return res.status(400).json({ error: 'رابط التسجيل مطلوب' });
     const recipients = Array.isArray(b.recipients) ? b.recipients.slice(0, 60) : [];
     const tpls = await getEmailTemplates();
@@ -398,7 +399,7 @@ app.post('/api/sessions/send', requireAdmin, async (req, res) => {
       const to = str(rcp && rcp.email, 200);
       if (!to || !/@/.test(to)) { skipped++; continue; }
       if (already.has(to.toLowerCase())) { skipped++; continue; }   // already emailed this session+campaign
-      const vars = { 'الاسم': str(rcp.name, 200) || 'عميلنا العزيز', 'التاريخ': date || '—', 'الرابط': link || '#', 'الغاء': unsubLink() };
+      const vars = { 'الاسم': str(rcp.name, 200) || 'عميلنا العزيز', 'التاريخ': date || '—', 'الرابط': link || '#', 'العنوان': title || '—', 'الغاء': unsubLink() };
       try {
         await sendBrevoEmail({ to, toName: str(rcp.name, 200), subject: renderTpl(tpl.subject, vars), html: renderTpl(tpl.html, vars) });
         await logEmail({ campaign: key, weekKey, clientId: rcp.clientId, toEmail: to, status: 'sent' });

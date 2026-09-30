@@ -5650,7 +5650,7 @@ async function renderSessions(){
 }
 function _tplBlock(key, num, title, sendLabel){
   const t=(_sessTpl&&_sessTpl[key])||{subject:'',html:''};
-  const vhint = key==='register' ? '{{الاسم}} {{التاريخ}} {{الرابط}}' : '{{الاسم}} {{التاريخ}}';
+  const vhint = key==='register' ? '{{الاسم}} {{العنوان}} {{التاريخ}} {{الرابط}}' : '{{الاسم}} {{العنوان}} {{التاريخ}}';
   return `<div class="card mb" style="padding:16px 18px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
       <div style="font-size:13px;font-weight:700">${num} ${title}</div>
@@ -5670,10 +5670,12 @@ function _renderSessionsBody(){
     <div class="card mb" style="padding:12px 16px;font-size:11.5px;color:var(--t3)">ℹ️ الإرسال عبر Brevo من <b>${esc(sessionSenderHint())}</b>. تأكّد من ضبط مفاتيح Brevo في متغيرات البيئة على الخادم. المستلمون = العملاء النشطون الذين لديهم بريد إلكتروني.</div>
     <div class="card mb" style="padding:16px 18px">
       <div style="font-size:13px;font-weight:700;margin-bottom:12px">📅 جلسة هذا الأسبوع</div>
+      <div class="fg" style="margin-bottom:10px"><label>عنوان / موضوع الجلسة</label><input class="inp" id="sess-title" placeholder="مثال: أساسيات الاستثمار الحلال"/></div>
       <div class="fr">
-        <div class="fg"><label>تاريخ الجلسة</label><input class="inp" id="sess-date" type="date" value="${today}" onchange="loadSessionLog()"/></div>
+        <div class="fg"><label>الوقت والتاريخ</label><input class="inp" id="sess-date" placeholder="مثال: الأحد 5 أكتوبر، الساعة 9 مساءً" value="${today}" onchange="loadSessionLog()"/></div>
         <div class="fg"><label>رابط التسجيل / الانضمام</label><input class="inp" id="sess-link" placeholder="https://..."/></div>
       </div>
+      <div style="font-size:11px;color:var(--t3);margin-top:6px">💡 «الوقت والتاريخ» نص حر يظهر في {{التاريخ}}. اترك حقل التاريخ يستعمل نصاً واضحاً بالعربية.</div>
       <div style="margin-top:12px;font-size:12.5px;color:var(--t3)">👥 المستلمون: <b style="color:var(--t1)">${recips.length}</b> عميل نشط لديه بريد إلكتروني</div>
     </div>
     <div class="card mb" style="padding:14px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -5704,14 +5706,14 @@ async function saveSessionTpl(key){
 async function sendSessionTest(){
   const to=(($('sess-test-email')||{}).value||'').trim(); if(!to||!/@/.test(to)){ toast('أدخل بريد اختبار صحيح','⚠️'); return; }
   const campaign=($('sess-test-camp')||{}).value||'reminder';
-  const date=($('sess-date')||{}).value||'', link=($('sess-link')||{}).value||'';
-  try{ await _putTpl(campaign); await api('POST','/api/sessions/test',{campaign,to,date,link}); toast('تم إرسال البريد التجريبي ✓','✅'); }
+  const date=($('sess-date')||{}).value||'', link=($('sess-link')||{}).value||'', title=($('sess-title')||{}).value||'';
+  try{ await _putTpl(campaign); await api('POST','/api/sessions/test',{campaign,to,date,link,title}); toast('تم إرسال البريد التجريبي ✓','✅'); }
   catch(e){ toast('فشل الإرسال: '+(e.message||''),'⚠️'); }
 }
 async function sendSessionCampaign(campaign){
   if(_sessSending) return;
-  const date=($('sess-date')||{}).value||'', link=($('sess-link')||{}).value||'';
-  if(!date){ toast('حدد تاريخ الجلسة','⚠️'); return; }
+  const date=($('sess-date')||{}).value||'', link=($('sess-link')||{}).value||'', title=($('sess-title')||{}).value||'';
+  if(!date){ toast('حدد وقت/تاريخ الجلسة','⚠️'); return; }
   if(campaign==='register' && !link){ toast('أدخل رابط التسجيل','⚠️'); return; }
   const recips=sessionRecipients();
   if(!recips.length){ toast('لا يوجد مستلمون','⚠️'); return; }
@@ -5723,7 +5725,7 @@ async function sendSessionCampaign(campaign){
   let sent=0,failed=0,skipped=0,done=0; const chunk=20;
   for(let i=0;i<recips.length;i+=chunk){
     const batch=recips.slice(i,i+chunk);
-    try{ const r=await api('POST','/api/sessions/send',{campaign,weekKey:date,date,link,recipients:batch}); sent+=r.sent||0; failed+=r.failed||0; skipped+=r.skipped||0; }
+    try{ const r=await api('POST','/api/sessions/send',{campaign,weekKey:date,date,link,title,recipients:batch}); sent+=r.sent||0; failed+=r.failed||0; skipped+=r.skipped||0; }
     catch(e){ failed+=batch.length; }
     done+=batch.length; _updateSessProgress(done,recips.length,sent,failed,skipped);
   }
