@@ -338,7 +338,11 @@ async function sendBrevoEmail({ to, toName, subject, html }) {
   const r = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: { 'api-key': key, 'content-type': 'application/json', 'accept': 'application/json' },
-    body: JSON.stringify({ sender, to: [{ email: to, name: toName || undefined }], subject, htmlContent: html }),
+    body: JSON.stringify({
+      sender, to: [{ email: to, name: toName || undefined }], subject, htmlContent: html,
+      // List-Unsubscribe header → strong anti-spam / deliverability signal
+      headers: { 'List-Unsubscribe': `<mailto:${senderEmail}?subject=unsubscribe>` },
+    }),
   });
   if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`Brevo ${r.status}: ${t.slice(0, 200)}`); }
   return r.json().catch(() => ({}));
