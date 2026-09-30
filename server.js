@@ -329,6 +329,16 @@ app.get('/api/csm/options', requireCsmOrAdmin, async (_req, res) => {
 function renderTpl(str, vars) {
   return String(str || '').replace(/\{\{\s*(الاسم|التاريخ|الرابط|الغاء|العنوان)\s*\}\}/g, (_, k) => (vars[k] != null ? vars[k] : ''));
 }
+// Plain-text version from HTML — multipart (HTML + text) is a strong deliverability signal.
+function htmlToText(html) {
+  return String(html || '')
+    .replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, txt) => `${txt.replace(/<[^>]+>/g, '').trim()} ( ${href} )`)
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 async function sendBrevoEmail({ to, toName, subject, html }) {
   const key = process.env.BREVO_API_KEY;
   const senderEmail = process.env.BREVO_SENDER_EMAIL;
@@ -339,7 +349,8 @@ async function sendBrevoEmail({ to, toName, subject, html }) {
     method: 'POST',
     headers: { 'api-key': key, 'content-type': 'application/json', 'accept': 'application/json' },
     body: JSON.stringify({
-      sender, to: [{ email: to, name: toName || undefined }], subject, htmlContent: html,
+      sender, to: [{ email: to, name: toName || undefined }], subject,
+      htmlContent: html, textContent: htmlToText(html),   // multipart HTML + plain text
       // List-Unsubscribe header → strong anti-spam / deliverability signal
       headers: { 'List-Unsubscribe': `<mailto:${senderEmail}?subject=unsubscribe>` },
     }),
