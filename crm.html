@@ -4952,6 +4952,14 @@ function csmEntryHtml(id,n){
 }
 
 let _editingCsm = null; // entry id currently being edited
+function copyPhone(id){
+  const c=clients.find(x=>x.id===id); if(!c||!c.phone) return;
+  const p=c.phone;
+  const done=()=>toast('تم نسخ الرقم: '+p,'📋');
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(p).then(done,()=>_copyFallback(p,done)); } else _copyFallback(p,done); }
+  catch(_){ _copyFallback(p,done); }
+}
+function _copyFallback(text,cb){ try{ const t=document.createElement('textarea'); t.value=text; t.style.position='fixed'; t.style.opacity='0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); cb&&cb(); }catch(_){ toast('تعذّر النسخ','⚠️'); } }
 let _csmDetailPhone = false;   // whether the follow-up modal is in phone-CSM context (call/upgrade options)
 function openCsmDetail(id, phone=false){
   const c=clients.find(x=>x.id===id); if(!c) return;
@@ -4968,7 +4976,12 @@ function openCsmDetail(id, phone=false){
       ${clientAv(c,'dp-av',null,'30px')}
       <div style="flex:1;min-width:0">
         <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(c.name)} ${pauseBadge(c)}</div>
-        <div style="font-size:12px;color:var(--t3)">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px">
+          <span style="font-size:13px;font-weight:600;direction:ltr;user-select:all">${esc(c.phone)||'—'}</span>
+          ${c.phone?`<button class="btn btn-g" style="padding:2px 8px;font-size:10.5px" onclick="copyPhone(${id})" title="نسخ الرقم">📋</button>
+          <a class="btn btn-g" style="padding:2px 8px;font-size:10.5px;text-decoration:none" href="https://wa.me/${(c.phone||'').replace(/[^0-9]/g,'')}" target="_blank" rel="noopener" title="فتح واتساب">💬</a>`:''}
+        </div>
+        <div style="font-size:12px;color:var(--t3);margin-top:2px">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
       </div>
       <button class="btn ${isPaused(c)?'btn-p':'btn-g'}" onclick="${isPaused(c)?`endPause(${id})`:`openPauseDialog(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف':'Pause')}</button>
       <button class="btn btn-p" onclick="openUpsell(${id})">💰 ${LANG==='ar'?'بيع خدمة (Upsell)':'Upsell'}</button>
@@ -6173,7 +6186,11 @@ function computeNotifs(){
     if(!c.contractEnd) return;                          // no contract end date → not in follow-up notifs
     if(daysUntil(c.contractEnd) < 0) return;            // contract ended → skip
     const last=lastCsmDate(c), N=planFollowDays(c.plan), tier=planTier(c.plan);
-    const contacted = !!c.contactedAt && (!last || c.contactedAt.slice(0,10) >= last); // reached out since last observation
+    // "contacted" silences the reminder only for the CURRENT cycle: it must be after the last observation
+    // AND within the last N days — so when the next cycle (N days later) comes due, the 📞 resets.
+    const _cAt = c.contactedAt ? c.contactedAt.slice(0,10) : '';
+    const _cSince = _cAt ? daysSince(_cAt) : null;
+    const contacted = !!_cAt && (!last || _cAt >= last) && _cSince!==null && _cSince < N;
     // One follow-up key per client (NOT per N-day bucket) so hiding it stays hidden across cycles,
     // until a new observation is added (which clears the hidden key — see addCsmEntry).
     if(!last){
