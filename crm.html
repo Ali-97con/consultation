@@ -4972,21 +4972,25 @@ function openCsmDetail(id, phone=false){
   const today=new Date().toISOString().split('T')[0];
   $('csm-title').textContent = c.name;
   $('csm-body').innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-      ${clientAv(c,'dp-av',null,'30px')}
-      <div style="flex:1;min-width:0">
-        <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(c.name)} ${pauseBadge(c)}</div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px">
-          <span style="font-size:13px;font-weight:600;direction:ltr;user-select:all">${esc(c.phone)||'—'}</span>
-          ${c.phone?`<button class="btn btn-g" style="padding:2px 8px;font-size:10.5px" onclick="copyPhone(${id})" title="نسخ الرقم">📋</button>
-          <a class="btn btn-g" style="padding:2px 8px;font-size:10.5px;text-decoration:none" href="https://wa.me/${(c.phone||'').replace(/[^0-9]/g,'')}" target="_blank" rel="noopener" title="فتح واتساب">💬</a>`:''}
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        ${clientAv(c,'dp-av',null,'30px')}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${esc(c.name)} ${pauseBadge(c)}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+            <span style="font-size:13.5px;font-weight:600;direction:ltr;white-space:nowrap;user-select:all">${esc(c.phone)||'—'}</span>
+            ${c.phone?`<button class="btn btn-g" style="padding:1px 7px;font-size:11px;flex-shrink:0" onclick="copyPhone(${id})" title="نسخ الرقم">📋</button>
+            <a class="btn btn-g" style="padding:1px 7px;font-size:11px;text-decoration:none;flex-shrink:0" href="https://wa.me/${(c.phone||'').replace(/[^0-9]/g,'')}" target="_blank" rel="noopener" title="فتح واتساب">💬</a>`:''}
+          </div>
+          <div style="font-size:11.5px;color:var(--t3);margin-top:2px;white-space:nowrap">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
         </div>
-        <div style="font-size:12px;color:var(--t3);margin-top:2px">📅 ${c.regDate?fmtDate(c.regDate):'—'} → ${c.contractEnd?fmtDate(c.contractEnd):'—'}</div>
       </div>
-      <button class="btn ${isPaused(c)?'btn-p':'btn-g'}" onclick="${isPaused(c)?`endPause(${id})`:`openPauseDialog(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف':'Pause')}</button>
-      <button class="btn btn-p" onclick="openUpsell(${id})">💰 ${LANG==='ar'?'بيع خدمة (Upsell)':'Upsell'}</button>
-      <button class="btn btn-g" onclick="closeCsmDetail();openDetail(${id})">👤 ${LANG==='ar'?'الملف الشخصي':'Profile'}</button>
-      <button class="btn btn-g" onclick="exportCsmPdf(${id})">🖨️ ${LANG==='ar'?'تصدير PDF':'Export PDF'}</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ${isPaused(c)?'btn-p':'btn-g'}" onclick="${isPaused(c)?`endPause(${id})`:`openPauseDialog(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف':'Pause')}</button>
+        <button class="btn btn-p" onclick="openUpsell(${id})">💰 ${LANG==='ar'?'بيع خدمة (Upsell)':'Upsell'}</button>
+        <button class="btn btn-g" onclick="closeCsmDetail();openDetail(${id})">👤 ${LANG==='ar'?'الملف الشخصي':'Profile'}</button>
+        <button class="btn btn-g" onclick="exportCsmPdf(${id})">🖨️ ${LANG==='ar'?'تصدير PDF':'Export PDF'}</button>
+      </div>
     </div>
     <div class="card" style="padding:14px;margin-bottom:16px">
       <div style="font-size:12px;font-weight:700;margin-bottom:10px">➕ إضافة متابعة</div>
@@ -6224,12 +6228,22 @@ function updateNotifBadge(){
   if(navBadge){ navBadge.textContent=n; navBadge.style.display=n>0?'inline-flex':'none'; }
 }
 function openClientFromNotif(cid){ openCsmDetail(cid); }
+// Toggle: click once = contacted (silenced this cycle), click again = cancel.
 function markContacted(cid){
   const c=clients.find(x=>x.id===cid); if(!c) return;
-  c.contactedAt=new Date().toISOString();
-  api('PUT',`/api/clients/${cid}`,{contactedAt:c.contactedAt}).catch(e=>console.error(e));
-  renderNotifs(); updateNotifBadge();   // 'contacted' flag stops it from nagging the badge/pop-up
-  toast(LANG==='ar'?'تم التواصل — بانتظار الرد':'Marked contacted','📞');
+  const last=lastCsmDate(c), N=planFollowDays(c.plan);
+  const cAt=c.contactedAt?c.contactedAt.slice(0,10):'';
+  const isContacted = !!cAt && (!last || cAt>=last) && daysSince(cAt)!==null && daysSince(cAt) < N;
+  if(isContacted){                       // undo
+    c.contactedAt='';
+    api('PUT',`/api/clients/${cid}`,{contactedAt:''}).catch(e=>console.error(e));
+    toast(LANG==='ar'?'تم إلغاء التواصل':'Contact cancelled','↩️');
+  }else{                                  // mark contacted
+    c.contactedAt=new Date().toISOString();
+    api('PUT',`/api/clients/${cid}`,{contactedAt:c.contactedAt}).catch(e=>console.error(e));
+    toast(LANG==='ar'?'تم التواصل — بانتظار الرد':'Marked contacted','📞');
+  }
+  renderNotifs(); updateNotifBadge();
 }
 
 let _notifTab = 'CORE'; // 'CORE' | 'PREMIUM' | 'INNER' | 'OTHER' | 'contracts'
@@ -6263,7 +6277,7 @@ function renderNotifs(){
       : {t:`${n.days} يوم`,clr:'var(--y)'};
     const sub = n.type==='followup' ? `${planBadge(n.plan)} · كل ${n.every} يوم` : `${planBadge(n.plan)} · ينتهي ${fmtDate(n.end)}`;
     const contactBtn = n.type!=='followup' ? '' : (n.contacted
-      ? `<span style="font-size:10px;color:var(--g);background:var(--gbg);padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0">✅ بانتظار الرد</span>`
+      ? `<button style="font-size:10px;color:var(--g);background:var(--gbg);border:1px solid var(--g);padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0;cursor:pointer" title="${LANG==='ar'?'اضغط للإلغاء':'Click to cancel'}" onclick="event.stopPropagation();markContacted(${n.cid})">✅ بانتظار الرد ✕</button>`
       : `<button class="btn btn-g" style="padding:4px 9px;font-size:11px;flex-shrink:0" title="${LANG==='ar'?'تم التواصل':'Contacted'}" onclick="event.stopPropagation();markContacted(${n.cid})">📞</button>`);
     return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openClientFromNotif(${n.cid})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
       ${c?clientAv(c):''}
