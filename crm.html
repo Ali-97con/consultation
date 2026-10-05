@@ -529,13 +529,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke-width="2" stroke-linecap="round"/></svg>
           <input id="cl-search" placeholder="اسم / هاتف / بريد..." oninput="renderTable()"/>
         </div>
-        <select class="fsl" id="f-status" onchange="renderTable()">
+        <select class="fsl" id="f-status" onchange="renderTable()" title="حالة العقد">
           <option value="">كل الحالات</option>
-          <option value="active">نشط</option><option value="trial">تجريبي</option>
-          <option value="enrolled">مسجل</option><option value="graduated">متخرج</option>
-          <option value="paused">موقف</option><option value="churned">توقف</option>
-          <option value="lead">محتمل</option><option value="ended">منتهي</option>
-          <option value="refunded">💸 تم ارجاع المبلغ</option>
+          <option value="active">🟢 نشط (عقد جارٍ)</option>
+          <option value="ended">🔚 منتهي</option>
         </select>
         <select class="fsl" id="f-plan" onchange="renderTable()">
           <option value="">كل الخطط</option>
@@ -558,15 +555,14 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
           <option value="paid">✅ مدفوع بالكامل</option>
           <option value="unpaid">⏳ لم يُسدَّد بالكامل</option>
         </select>
-        <select class="fsl" id="f-pause" onchange="renderTable()" title="حالة الإيقاف">
-          <option value="">الكل (إيقاف)</option>
-          <option value="paused">⏸️ موقوف مؤقتاً</option>
-          <option value="notpaused">▶️ غير موقوف</option>
-        </select>
-        <select class="fsl" id="f-ended" onchange="renderTable()" title="حالة العقد">
-          <option value="">الكل (العقد)</option>
-          <option value="ended">🔚 عقد منتهي</option>
-          <option value="ongoing">▶️ عقد جارٍ</option>
+        <select class="fsl" id="f-situation" onchange="renderTable()" title="الوضع">
+          <option value="">كل الأوضاع</option>
+          <option value="normal">عادي (بدون وضع)</option>
+          <option value="paused">⏸️ موقف</option>
+          <option value="trial">تجربة</option>
+          <option value="churned">متوقف</option>
+          <option value="lead">محتمل</option>
+          <option value="refunded">مُسترجع</option>
         </select>
         <select class="fsl" id="f-month" onchange="renderTable()">
           <option value="">كل الشهور</option>
@@ -1683,6 +1679,51 @@ function pauseBadge(c){
   const extra = c.pauseUntil ? ` · ${LANG==='ar'?'حتى':'until'} ${fmtDate(c.pauseUntil)}` : (pausedDays(c)?` · ${pausedDays(c)}${LANG==='ar'?'ي':'d'}`:'');
   return `<span style="font-size:10.5px;font-weight:600;background:#f59e0b22;color:#f59e0b;padding:2px 8px;border-radius:20px;white-space:nowrap">⏸️ ${LANG==='ar'?'موقوف مؤقتاً':'Paused'}${extra}</span>`;
 }
+// ── Two-dimension status model for the client list ──
+// Contract state (الحالة): نشط = ongoing, منتهي = end date passed — computed from the date only.
+// Leads & refunds have no real contract line → only a situation badge.
+function contractState(c){
+  if(!c || c.status==='lead' || c.status==='refunded') return '';
+  if(isPaused(c)) return 'active';   // on hold → contract clock frozen, still counts as ongoing
+  const over = !!c.contractEnd && c.contractEnd < new Date().toISOString().slice(0,10);
+  return over ? 'ended' : 'active';
+}
+// Situation (الوضع): pause (live) + special statuses. '' = normal client (no badge).
+function situationState(c){
+  if(isPaused(c)) return 'paused';
+  if(c){
+    if(c.status==='trial')    return 'trial';
+    if(c.status==='churned')  return 'churned';
+    if(c.status==='lead')     return 'lead';
+    if(c.status==='refunded') return 'refunded';
+  }
+  return '';
+}
+const CONTRACT_LBL = { active:'نشط', ended:'منتهي' };
+const SIT_LBL = { paused:'موقف', trial:'تجربة', churned:'متوقف', lead:'محتمل', refunded:'مُسترجع' };
+const SIT_COL = { trial:'#3b82f6', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171' };
+function contractBadge(c){
+  const s=contractState(c); if(!s) return '';
+  return `<span class="badge ${s==='ended'?'b-end':'b-act'}">${CONTRACT_LBL[s]}</span>`;
+}
+function situationBadge(c){
+  if(isPaused(c)) return pauseBadge(c);
+  const s=situationState(c); if(!s) return '';
+  const col=SIT_COL[s]||'#6b7280';
+  return `<span style="font-size:10.5px;font-weight:600;background:${col}22;color:${col};padding:2px 8px;border-radius:20px;white-space:nowrap">${SIT_LBL[s]}</span>`;
+}
+// Full status cell for a client row: contract badge + situation badge.
+function statusCell(c){
+  const parts=[contractBadge(c), situationBadge(c)].filter(Boolean);
+  return parts.length ? parts.join(' ') : '<span class="badge b-led">—</span>';
+}
+// Plain-text status (CSV export, etc.): "نشط / موقف", "محتمل", …
+function statusText(c){
+  const parts=[]; const cs=contractState(c), ss=situationState(c);
+  if(cs) parts.push(CONTRACT_LBL[cs]);
+  if(ss) parts.push(SIT_LBL[ss]);
+  return parts.join(' / ') || (SL[c.status]||c.status);
+}
 const ini = n => n.trim().split(' ').slice(0,2).map(w=>w[0]).join('');
 const col = i => COLORS[i % COLORS.length];
 // Client avatar: gendered emoji (👨/👩) when sex is set, else colored initials.
@@ -2244,15 +2285,13 @@ function getFiltered() {
   const pt  = ($('f-pay')||{value:''}).value;
   const mo  = ($('f-month')||{value:''}).value;
   const pd  = ($('f-paid')||{value:''}).value;
-  const pz  = ($('f-pause')||{value:''}).value;
-  const fe  = ($('f-ended')||{value:''}).value;
-  const todayStr = new Date().toISOString().slice(0,10);
+  const sit = ($('f-situation')||{value:''}).value;   // '' | 'normal' | paused|trial|churned|lead|refunded
   return clients.filter(c => {
     if (q) {
       const nm = norm(c.name), ph = norm(c.phone), em = norm(c.email);
       if (!nm.includes(q) && !ph.includes(q) && !em.includes(q)) return false;
     }
-    if (st && c.status !== st) return false;
+    if (st && contractState(c) !== st) return false;
     if (pl && c.plan !== pl) return false;
     if (cl && c.closer !== cl) return false;
     if (se && c.setter !== se) return false;
@@ -2260,11 +2299,8 @@ function getFiltered() {
     if (mo && !(c.regDate||'').startsWith(mo)) return false;
     if (pd === 'paid'   && fr(c) > 0) return false;   // fully paid = no remaining
     if (pd === 'unpaid' && fr(c) <= 0) return false;  // still owes the balance
-    if (pz === 'paused'    && !isPaused(c)) return false;
-    if (pz === 'notpaused' &&  isPaused(c)) return false;
-    const contractOver = !!c.contractEnd && c.contractEnd < todayStr;
-    if (fe === 'ended'   && !contractOver) return false;
-    if (fe === 'ongoing' &&  contractOver) return false;
+    if (sit === 'normal' && situationState(c) !== '') return false;
+    if (sit && sit !== 'normal' && situationState(c) !== sit) return false;
     return true;
   }).sort((a,b)=>{
     if (q) {
@@ -2335,7 +2371,7 @@ function renderTable() {
         ${isRef?'—':rem===0?t('paid_full'):(od?'⚠️ ':'')+fmtMoney(rem)}</td>
       <td style="font-size:12px;${S.hiddenCols.has('closer')?'display:none':''}">${c.closer}</td>
       <td style="font-size:12px;color:var(--t2);${S.hiddenCols.has('setter')?'display:none':''}">${c.setter}</td>
-      <td${S.hiddenCols.has('status')?' style="display:none"':''}><span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span>${isPaused(c)?' '+pauseBadge(c):''}</td>
+      <td${S.hiddenCols.has('status')?' style="display:none"':''}>${statusCell(c)}</td>
       <td style="font-size:11.5px;color:var(--t2);${S.hiddenCols.has('regDate')?'display:none':''}">${fmtDate(c.regDate)}</td>
       <td><div class="tda">
         <button class="ab" onclick="openDetail(${c.id})" title="تفاصيل"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
@@ -2455,7 +2491,7 @@ function exportCSV() {
       .map(n => `${n.date||''} : ${n.txt}`)
       .join(' | ');
     rows.push([
-      c.name, c.phone, c.email, SL[c.status]||c.status,
+      c.name, c.phone, c.email, statusText(c),
       c.plan, c.paymentType, fx(c), fr(c),
       c.closer, c.setter, c.regDate, c.lastPayDate||'',
       notesStr,
@@ -3949,7 +3985,7 @@ function openDetail(id) {
       <div class="dp-nm">${esc(c.name)}</div>
       <div class="dp-ph">${esc(c.phone)||'—'}</div>
       <div style="display:flex;gap:5px;flex-wrap:wrap">
-        <span class="badge ${SB[c.status]||'b-led'}">${SL[c.status]||c.status}</span>
+        ${contractBadge(c)}${!isPaused(c)?situationBadge(c):''}
         ${planBadge(c.plan)}
         ${pauseBadge(c)}
         ${isOverdue(c)&&!isPaused(c)?`<span style="font-size:11px;background:var(--rbg);color:var(--r);padding:2px 8px;border-radius:10px;font-weight:600">${t('dp_overdue')}</span>`:''}
@@ -5827,33 +5863,35 @@ async function loadSessionLog(){
     </tr>`).join('')}</tbody></table>` : `<div style="padding:22px;text-align:center;color:var(--t3);font-size:12px">لا سجلّات لهذا التاريخ</div>`;
 }
 
-// ═══════════════ MONTHLY FINANCIAL REPORT (تحليلات → تقرير الشهر المالي) ═══════════════
-let _finMonth = null, _finCmp = null;
-function setFinMonth(v){ _finMonth=v; if(_finCmp===_finMonth) _finCmp=prevMonth(v); renderFinReportBody(); }
-function setFinCmp(v){ _finCmp=v; renderFinReportBody(); }
+// ═══════════════ FINANCIAL REPORT (تحليلات → التقرير المالي) — period from→to + optional comparison ═══════════════
+let _finFrom = null, _finTo = null, _finCompare = false;
+function setFinFrom(v){ _finFrom=v; if(_finTo && _finTo<_finFrom) _finTo=_finFrom; renderFinReportBody(); }
+function setFinTo(v){ _finTo=v; if(_finFrom && _finFrom>_finTo) _finFrom=_finTo; renderFinReportBody(); }
+function toggleFinCompare(v){ _finCompare=!!v; renderFinReportBody(); }
 function openFinReport(){
-  if(_finMonth===null) _finMonth = S.analyticsMonth || new Date().toISOString().slice(0,7);
-  if(_finCmp===null || _finCmp===_finMonth) _finCmp = prevMonth(_finMonth);
+  if(_finFrom===null) _finFrom = S.analyticsMonth || new Date().toISOString().slice(0,7);
+  if(_finTo===null || _finTo<_finFrom) _finTo = _finFrom;
   renderFinReportBody();
   $('fin-report-mo').classList.add('on');
 }
 function closeFinReport(){ $('fin-report-mo').classList.remove('on'); }
 
-function computeFinReport(month){
+function computeFinReport(months){   // months: array of 'YYYY-MM'
+  const inSet = d => !!d && months.includes((d||'').slice(0,7));
   const all = clients.filter(c=>!c.deleted);
   const total = c => (c.customTotal||PLANS[c.plan]||0);
-  const grossM = c => payList(c).reduce((t,[a,d])=>t+((d||'').startsWith(month)?(+a||0):0),0); // cash paid inside the month
+  const grossM = c => payList(c).reduce((t,[a,d])=>t+(inSet(d)?(+a||0):0),0); // cash paid inside the period
   const netM   = c => c.status==='refunded' ? -grossM(c) : grossM(c);
 
-  const newClients = all.filter(c=> (c.regDate||'').startsWith(month) && c.status!=='lead' && c.status!=='refunded');
-  const oldPayers  = all.filter(c=> !(c.regDate||'').startsWith(month) && c.status!=='refunded' && grossM(c)>0);
+  const newClients = all.filter(c=> inSet(c.regDate) && c.status!=='lead' && c.status!=='refunded');
+  const oldPayers  = all.filter(c=> !inSet(c.regDate) && c.status!=='refunded' && grossM(c)>0);
   const refunds    = all.filter(c=> c.status==='refunded' && grossM(c)>0);
 
   const cashNew = newClients.reduce((s,c)=>s+grossM(c),0);
   const cashOld = oldPayers.reduce((s,c)=>s+grossM(c),0);
-  const cashRef = refunds.reduce((s,c)=>s+grossM(c),0);         // magnitude returned this month
-  const upsellM = c => (c.upsells||[]).reduce((t,u)=> t + ((u.date||'').startsWith(month) ? (+u.price||0) : 0), 0);
-  const upsellRev = all.reduce((s,c)=>s+upsellM(c),0);          // upsell sales this month (extra revenue)
+  const cashRef = refunds.reduce((s,c)=>s+grossM(c),0);         // magnitude returned in the period
+  const upsellM = c => (c.upsells||[]).reduce((t,u)=> t + (inSet(u.date) ? (+u.price||0) : 0), 0);
+  const upsellRev = all.reduce((s,c)=>s+upsellM(c),0);          // upsell sales in the period (extra revenue)
   const netCash = cashNew + cashOld + upsellRev - cashRef;
 
   const newContractVal = newClients.reduce((s,c)=>s+total(c),0);
@@ -5863,7 +5901,7 @@ function computeFinReport(month){
   const byPlan={};
   all.forEach(c=>{ const v=netM(c); if(v!==0){ const p=c.plan||'—'; byPlan[p]=(byPlan[p]||0)+v; } });
 
-  return { month, newClients, oldPayers, refunds, cashNew, cashOld, cashRef, upsellRev, netCash,
+  return { months, newClients, oldPayers, refunds, cashNew, cashOld, cashRef, upsellRev, netCash,
            newContractVal, newRemaining, payersCount, byPlan, grossM, total };
 }
 function _finDelta(cur, prev, money){
@@ -5875,15 +5913,20 @@ function _finDelta(cur, prev, money){
 }
 function _finMonthOpts(sel){
   const now=new Date(), ms=[];
-  for(let i=0;i<15;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); ms.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
-  if(!ms.includes(_finMonth)) ms.push(_finMonth);
-  if(!ms.includes(_finCmp)) ms.push(_finCmp);
+  for(let i=0;i<24;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); ms.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  if(_finFrom && !ms.includes(_finFrom)) ms.push(_finFrom);
+  if(_finTo && !ms.includes(_finTo)) ms.push(_finTo);
   return [...new Set(ms)].sort().reverse().map(m=>`<option value="${m}"${m===sel?' selected':''}>${monthLabel(m)}</option>`).join('');
 }
 function renderFinReportBody(){
-  const r=computeFinReport(_finMonth), rc=computeFinReport(_finCmp);
+  const months = _monthsBetween(_finFrom, _finTo);
+  const r = computeFinReport(months);
+  const rc = _finCompare ? computeFinReport(_insPrevPeriod(_finFrom,_finTo)) : null;
+  const curLbl=_insPeriodLabel(_finFrom,_finTo);
+  const prevLbl=rc?_insPeriodLabel(rc.months[0], rc.months[rc.months.length-1]):'';
   const gm=r.grossM, M=fmtMoney;
   const th=x=>`<th style="padding:8px 10px;font-size:10.5px;color:var(--t3);text-align:${x||'right'}">`;
+  const dl=(a,b,money)=> rc?_finDelta(a,b,money):'';
   const kpi=(v,l,delta,c)=>`<div class="kpi" style="padding:11px"><div style="font-size:17px;font-weight:800${c?`;color:${c}`:''}">${v}</div><div style="font-size:10px;color:var(--t3);margin-top:2px">${l}</div>${delta?`<div style="margin-top:2px">${delta}</div>`:''}</div>`;
   // Table A — new clients
   const nc2=r.newClients.slice().sort((a,b)=>gm(b)-gm(a));
@@ -5896,22 +5939,24 @@ function renderFinReportBody(){
 
   $('fin-report-body').innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="font-size:12px;font-weight:600">الشهر</span>
-      <select class="fsl" onchange="setFinMonth(this.value)" style="min-width:150px">${_finMonthOpts(_finMonth)}</select>
-      <span style="font-size:12px;font-weight:600;color:var(--t3)">مقارنة مع</span>
-      <select class="fsl" onchange="setFinCmp(this.value)" style="min-width:150px">${_finMonthOpts(_finCmp)}</select>
+      <span style="font-size:12px;font-weight:600">من</span>
+      <select class="fsl" onchange="setFinFrom(this.value)" style="min-width:130px">${_finMonthOpts(_finFrom)}</select>
+      <span style="font-size:12px;font-weight:600">إلى</span>
+      <select class="fsl" onchange="setFinTo(this.value)" style="min-width:130px">${_finMonthOpts(_finTo)}</select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--t2)"><input type="checkbox" ${_finCompare?'checked':''} onchange="toggleFinCompare(this.checked)" style="cursor:pointer"> مقارنة بالفترة السابقة</label>
       <button class="btn btn-p" style="margin-right:auto" onclick="exportFinReportPdf()">🖨️ تصدير PDF</button>
     </div>
+    <div style="font-size:12px;color:var(--t3);margin-bottom:12px">📅 الفترة: <b style="color:var(--t1)">${curLbl}</b> <span style="color:var(--t3)">(${months.length} ${months.length===1?'شهر':'أشهر'})</span>${rc?` &nbsp;•&nbsp; مقارنة بـ <b style="color:var(--t2)">${prevLbl}</b>`:''}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px;margin-bottom:16px">
-      ${kpi(nc2.length,'عملاء جدد',_finDelta(r.newClients.length,rc.newClients.length,false),'#6366f1')}
-      ${kpi(M(r.netCash),'نقد صافٍ محصّل',_finDelta(r.netCash,rc.netCash,true),'#10b981')}
-      ${kpi(M(r.cashNew),'من العملاء الجدد',_finDelta(r.cashNew,rc.cashNew,true),'#10b981')}
-      ${kpi(M(r.cashOld),'من العملاء القدامى',_finDelta(r.cashOld,rc.cashOld,true),'#0ea5e9')}
-      ${kpi(r.cashRef?('−'+M(r.cashRef)):M(0),'مستردّ هذا الشهر',_finDelta(r.cashRef,rc.cashRef,true),'var(--r)')}
-      ${kpi(M(r.upsellRev),'مبيعات إضافية (Upsell)',_finDelta(r.upsellRev,rc.upsellRev,true),'#10b981')}
-      ${kpi(M(r.newContractVal),'قيمة عقود الجدد',_finDelta(r.newContractVal,rc.newContractVal,true),'var(--bl)')}
-      ${kpi(M(r.newRemaining),'متبقٍ على الجدد',_finDelta(r.newRemaining,rc.newRemaining,true),'var(--r)')}
-      ${kpi(r.payersCount,'عدد الدافعين',_finDelta(r.payersCount,rc.payersCount,false),'var(--y)')}
+      ${kpi(nc2.length,'عملاء جدد',dl(r.newClients.length,rc&&rc.newClients.length,false),'#6366f1')}
+      ${kpi(M(r.netCash),'نقد صافٍ محصّل',dl(r.netCash,rc&&rc.netCash,true),'#10b981')}
+      ${kpi(M(r.cashNew),'من العملاء الجدد',dl(r.cashNew,rc&&rc.cashNew,true),'#10b981')}
+      ${kpi(M(r.cashOld),'من العملاء القدامى',dl(r.cashOld,rc&&rc.cashOld,true),'#0ea5e9')}
+      ${kpi(r.cashRef?('−'+M(r.cashRef)):M(0),'مستردّ في الفترة',dl(r.cashRef,rc&&rc.cashRef,true),'var(--r)')}
+      ${kpi(M(r.upsellRev),'مبيعات إضافية (Upsell)',dl(r.upsellRev,rc&&rc.upsellRev,true),'#10b981')}
+      ${kpi(M(r.newContractVal),'قيمة عقود الجدد',dl(r.newContractVal,rc&&rc.newContractVal,true),'var(--bl)')}
+      ${kpi(M(r.newRemaining),'متبقٍ على الجدد',dl(r.newRemaining,rc&&rc.newRemaining,true),'var(--r)')}
+      ${kpi(r.payersCount,'عدد الدافعين',dl(r.payersCount,rc&&rc.payersCount,false),'var(--y)')}
     </div>
 
     <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">💳 النقد المحصّل حسب الباقة</div>
@@ -5922,7 +5967,7 @@ function renderFinReportBody(){
     <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">🆕 العملاء الجدد (${nc2.length})</div>
     <div class="card" style="padding:0;overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:640px">
       <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">
-        ${th()}العميل</th>${th()}الباقة</th>${th('center')}قيمة العقد</th>${th('center')}محصّل هذا الشهر</th>${th('center')}إجمالي المدفوع</th>${th('center')}المتبقي</th>${th('center')}التسجيل</th>
+        ${th()}العميل</th>${th()}الباقة</th>${th('center')}قيمة العقد</th>${th('center')}محصّل في الفترة</th>${th('center')}إجمالي المدفوع</th>${th('center')}المتبقي</th>${th('center')}التسجيل</th>
       </tr></thead><tbody>
       ${nc2.length?nc2.map(c=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="closeFinReport();openDetail(${c.id})">
         <td style="padding:8px 10px;font-size:12.5px;font-weight:600">${esc(c.name)}</td>
@@ -5932,14 +5977,14 @@ function renderFinReportBody(){
         <td style="padding:8px 10px;text-align:center;font-size:12px">${M(fx(c))}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;color:${fr(c)>0?'var(--r)':'var(--t3)'}">${M(fr(c))}</td>
         <td style="padding:8px 10px;text-align:center;font-size:11px;color:var(--t2)">${c.regDate?fmtDate(c.regDate):'—'}</td></tr>`).join('')
-      :`<tr><td colspan="7" style="padding:22px;text-align:center;color:var(--t3)">لا يوجد عملاء جدد هذا الشهر</td></tr>`}
+      :`<tr><td colspan="7" style="padding:22px;text-align:center;color:var(--t3)">لا يوجد عملاء جدد في هذه الفترة</td></tr>`}
       ${nc2.length?`<tr style="background:var(--hv);font-weight:700"><td style="padding:8px 10px" colspan="2">الإجمالي</td><td style="padding:8px 10px;text-align:center">${M(tA_tot.val)}</td><td style="padding:8px 10px;text-align:center;color:var(--g)">${M(tA_tot.m)}</td><td style="padding:8px 10px;text-align:center">${M(tA_tot.paid)}</td><td style="padding:8px 10px;text-align:center;color:var(--r)">${M(tA_tot.rem)}</td><td></td></tr>`:''}
       </tbody></table></div>
 
     <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">🔁 دفعات من عملاء قدامى (${op2.length})</div>
     <div class="card" style="padding:0;overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:520px">
       <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">
-        ${th()}العميل</th>${th()}الباقة</th>${th('center')}محصّل هذا الشهر</th>${th('center')}إجمالي المدفوع</th>${th('center')}المتبقي</th>
+        ${th()}العميل</th>${th()}الباقة</th>${th('center')}محصّل في الفترة</th>${th('center')}إجمالي المدفوع</th>${th('center')}المتبقي</th>
       </tr></thead><tbody>
       ${op2.length?op2.map(c=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="closeFinReport();openDetail(${c.id})">
         <td style="padding:8px 10px;font-size:12.5px;font-weight:600">${esc(c.name)}</td>
@@ -5947,7 +5992,7 @@ function renderFinReportBody(){
         <td style="padding:8px 10px;text-align:center;font-size:12px;color:var(--g);font-weight:600">${M(gm(c))}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px">${M(fx(c))}</td>
         <td style="padding:8px 10px;text-align:center;font-size:12px;color:${fr(c)>0?'var(--r)':'var(--t3)'}">${M(fr(c))}</td></tr>`).join('')
-      :`<tr><td colspan="5" style="padding:22px;text-align:center;color:var(--t3)">لا توجد دفعات من عملاء قدامى هذا الشهر</td></tr>`}
+      :`<tr><td colspan="5" style="padding:22px;text-align:center;color:var(--t3)">لا توجد دفعات من عملاء قدامى في هذه الفترة</td></tr>`}
       ${op2.length?`<tr style="background:var(--hv);font-weight:700"><td style="padding:8px 10px" colspan="2">الإجمالي</td><td style="padding:8px 10px;text-align:center;color:var(--g)">${M(tB_tot.m)}</td><td style="padding:8px 10px;text-align:center">${M(tB_tot.paid)}</td><td style="padding:8px 10px;text-align:center;color:var(--r)">${M(tB_tot.rem)}</td></tr>`:''}
       </tbody></table></div>
 
@@ -5957,9 +6002,9 @@ function renderFinReportBody(){
       ${r.refunds.map(c=>`<tr style="border-bottom:1px solid var(--b1)"><td style="padding:8px 10px;font-size:12.5px;font-weight:600">${esc(c.name)}</td><td style="padding:8px 10px">${planBadge(c.plan)}</td><td style="padding:8px 10px;text-align:center;color:var(--r);font-weight:600">−${M(gm(c))}</td></tr>`).join('')}
       </tbody></table></div>`:''}
 
-    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">📊 مقارنة: ${monthLabel(_finMonth)} مقابل ${monthLabel(_finCmp)}</div>
+    ${rc?`<div style="font-size:12.5px;font-weight:700;margin-bottom:8px">📊 مقارنة: ${curLbl} مقابل ${prevLbl}</div>
     <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:480px">
-      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">${th()}المؤشر</th>${th('center')}${monthLabel(_finMonth)}</th>${th('center')}${monthLabel(_finCmp)}</th>${th('center')}الفرق</th></tr></thead><tbody>
+      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">${th()}المؤشر</th>${th('center')}${curLbl}</th>${th('center')}${prevLbl}</th>${th('center')}الفرق</th></tr></thead><tbody>
       ${cmpRow('نقد صافٍ محصّل',r.netCash,rc.netCash,true)}
       ${cmpRow('من الجدد',r.cashNew,rc.cashNew,true)}
       ${cmpRow('من القدامى',r.cashOld,rc.cashOld,true)}
@@ -5968,19 +6013,24 @@ function renderFinReportBody(){
       ${cmpRow('عملاء جدد',r.newClients.length,rc.newClients.length,false)}
       ${cmpRow('عدد الدافعين',r.payersCount,rc.payersCount,false)}
       ${cmpRow('قيمة عقود الجدد',r.newContractVal,rc.newContractVal,true)}
-      </tbody></table></div>`;
+      </tbody></table></div>`:''}`;
 }
 function exportFinReportPdf(){
-  const r=computeFinReport(_finMonth), rc=computeFinReport(_finCmp), gm=r.grossM, M=fmtMoney;
+  const months = _monthsBetween(_finFrom, _finTo);
+  const r=computeFinReport(months);
+  const rc=_finCompare?computeFinReport(_insPrevPeriod(_finFrom,_finTo)):null;
+  const curLbl=_insPeriodLabel(_finFrom,_finTo);
+  const prevLbl=rc?_insPeriodLabel(rc.months[0], rc.months[rc.months.length-1]):'';
+  const gm=r.grossM, M=fmtMoney;
   const nc2=r.newClients.slice().sort((a,b)=>gm(b)-gm(a));
   const op2=r.oldPayers.slice().sort((a,b)=>gm(b)-gm(a));
   const tApaid=nc2.reduce((s,c)=>s+fx(c),0), tBpaid=op2.reduce((s,c)=>s+fx(c),0), tBrem=op2.reduce((s,c)=>s+fr(c),0);
   const planRows=Object.entries(r.byPlan).sort((a,b)=>b[1]-a[1]);
   const dlt=(cur,prev)=>{ const d=cur-prev; const pct=prev?Math.round(d/Math.abs(prev)*100):(d?100:0); return `${d>=0?'+':'−'}${M(Math.abs(d))}${prev?` (${d>=0?'+':'−'}${Math.abs(pct)}%)`:''}`; };
   $('print-area').innerHTML=`
-    <h1>التقرير المالي الشهري</h1>
-    <div class="psub">${monthLabel(_finMonth)} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
-    <h3>ملخص الشهر</h3>
+    <h1>التقرير المالي</h1>
+    <div class="psub">${curLbl} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
+    <h3>ملخص الفترة</h3>
     <table class="pt"><tbody>
       <tr><td>عملاء جدد</td><td>${nc2.length}</td></tr>
       <tr><td>نقد صافٍ محصّل</td><td>${M(r.netCash)}</td></tr>
@@ -5995,12 +6045,12 @@ function exportFinReportPdf(){
     <h3>النقد المحصّل حسب الباقة</h3>
     <table class="pt"><tbody>${planRows.map(([p,v])=>`<tr><td>${esc(p)}</td><td>${M(v)}</td></tr>`).join('')||'<tr><td colspan="2">—</td></tr>'}</tbody></table>
     <h3>العملاء الجدد (${nc2.length})</h3>
-    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>قيمة العقد</th><th>محصّل الشهر</th><th>إجمالي المدفوع</th><th>المتبقي</th><th>التسجيل</th></tr></thead><tbody>
+    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>قيمة العقد</th><th>محصّل الفترة</th><th>إجمالي المدفوع</th><th>المتبقي</th><th>التسجيل</th></tr></thead><tbody>
     ${nc2.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.plan||'—')}</td><td>${M(r.total(c))}</td><td>${M(gm(c))}</td><td>${M(fx(c))}</td><td>${M(fr(c))}</td><td>${c.regDate?fmtDate(c.regDate):'—'}</td></tr>`).join('')||'<tr><td colspan="7">—</td></tr>'}
     ${nc2.length?`<tr><td colspan="2"><b>الإجمالي</b></td><td>${M(r.newContractVal)}</td><td>${M(r.cashNew)}</td><td>${M(tApaid)}</td><td>${M(r.newRemaining)}</td><td></td></tr>`:''}
     </tbody></table>
     <h3>دفعات من عملاء قدامى (${op2.length})</h3>
-    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>محصّل الشهر</th><th>إجمالي المدفوع</th><th>المتبقي</th></tr></thead><tbody>
+    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>محصّل الفترة</th><th>إجمالي المدفوع</th><th>المتبقي</th></tr></thead><tbody>
     ${op2.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.plan||'—')}</td><td>${M(gm(c))}</td><td>${M(fx(c))}</td><td>${M(fr(c))}</td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}
     ${op2.length?`<tr><td colspan="2"><b>الإجمالي</b></td><td>${M(r.cashOld)}</td><td>${M(tBpaid)}</td><td>${M(tBrem)}</td></tr>`:''}
     </tbody></table>
@@ -6008,15 +6058,15 @@ function exportFinReportPdf(){
     <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>المبلغ المسترد</th></tr></thead><tbody>
     ${r.refunds.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.plan||'—')}</td><td>−${M(gm(c))}</td></tr>`).join('')}
     </tbody></table>`:''}
-    <h3>مقارنة مع ${monthLabel(_finCmp)}</h3>
-    <table class="pt2"><thead><tr><th>المؤشر</th><th>${monthLabel(_finMonth)}</th><th>${monthLabel(_finCmp)}</th><th>الفرق</th></tr></thead><tbody>
+    ${rc?`<h3>مقارنة مع ${prevLbl}</h3>
+    <table class="pt2"><thead><tr><th>المؤشر</th><th>${curLbl}</th><th>${prevLbl}</th><th>الفرق</th></tr></thead><tbody>
       <tr><td>نقد صافٍ محصّل</td><td>${M(r.netCash)}</td><td>${M(rc.netCash)}</td><td>${dlt(r.netCash,rc.netCash)}</td></tr>
       <tr><td>من الجدد</td><td>${M(r.cashNew)}</td><td>${M(rc.cashNew)}</td><td>${dlt(r.cashNew,rc.cashNew)}</td></tr>
       <tr><td>من القدامى</td><td>${M(r.cashOld)}</td><td>${M(rc.cashOld)}</td><td>${dlt(r.cashOld,rc.cashOld)}</td></tr>
       <tr><td>عملاء جدد</td><td>${r.newClients.length}</td><td>${rc.newClients.length}</td><td>${r.newClients.length-rc.newClients.length>=0?'+':'−'}${Math.abs(r.newClients.length-rc.newClients.length)}</td></tr>
       <tr><td>عدد الدافعين</td><td>${r.payersCount}</td><td>${rc.payersCount}</td><td>${r.payersCount-rc.payersCount>=0?'+':'−'}${Math.abs(r.payersCount-rc.payersCount)}</td></tr>
       <tr><td>قيمة عقود الجدد</td><td>${M(r.newContractVal)}</td><td>${M(rc.newContractVal)}</td><td>${dlt(r.newContractVal,rc.newContractVal)}</td></tr>
-    </tbody></table>`;
+    </tbody></table>`:''}`;
   document.body.classList.add('printing');
   window.print();
   setTimeout(()=>document.body.classList.remove('printing'),400);
