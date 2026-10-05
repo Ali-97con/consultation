@@ -6023,100 +6023,111 @@ function exportFinReportPdf(){
 }
 
 // ═══════════════ SMART INSIGHTS (Phase 1 — deterministic, no AI) ═══════════════
-let _insMonth = null, _insMember = '';
-function setInsMonth(v){ _insMonth=v; renderInsights(); }
+let _insFrom = null, _insTo = null, _insMember = '', _insCompare = false;
+function setInsFrom(v){ _insFrom=v; if(_insTo && _insTo<_insFrom) _insTo=_insFrom; renderInsights(); }
+function setInsTo(v){ _insTo=v; if(_insFrom && _insFrom>_insTo) _insFrom=_insTo; renderInsights(); }
 function setInsMember(v){ _insMember=v; renderInsights(); }
+function toggleInsCompare(v){ _insCompare=!!v; renderInsights(); }
 function prevMonth(ym){ const [y,m]=ym.split('-').map(Number); const d=new Date(y,m-2,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+function _addMonthStr(ym,delta){ let [y,m]=ym.split('-').map(Number); m+=delta; while(m<1){m+=12;y--;} while(m>12){m-=12;y++;} return `${y}-${String(m).padStart(2,'0')}`; }
+function _monthsBetween(from,to){ const out=[]; let cur=from, g=0; while(cur<=to && g<120){ out.push(cur); if(cur===to) break; cur=_addMonthStr(cur,1); g++; } return out; }
+function _insPrevPeriod(from,to){ const n=_monthsBetween(from,to).length; const toPrev=_addMonthStr(from,-1); const fromPrev=_addMonthStr(toPrev,-(n-1)); return _monthsBetween(fromPrev,toPrev); }
+function _insPeriodLabel(from,to){ return from===to ? monthLabel(from) : `${monthLabel(from)} ← ${monthLabel(to)}`; }
 
-function insMemberStats(name, month){
+function insMemberStats(name, months){   // months: array of 'YYYY-MM' (the selected period)
+  const inSet = d => !!d && months.includes(d.slice(0,7));
   let collectedCloser=0, collectedSetter=0, newAsCloser=0, newAsSetter=0, contractClosed=0;
   clients.filter(c=>!c.deleted && c.status!=='refunded').forEach(c=>{
-    const col=payList(c)
-      .filter(([a,d])=>a>0&&d&&d.startsWith(month)).reduce((s,[a])=>s+a,0);
+    const col=payList(c).filter(([a,d])=>a>0&&inSet(d)).reduce((s,[a])=>s+a,0);
     if(c.closer===name) collectedCloser+=col;
     if(c.setter===name) collectedSetter+=col;
-    if((c.regDate||'').startsWith(month)){
+    if(inSet(c.regDate)){
       if(c.closer===name){ newAsCloser++; contractClosed+=(c.customTotal||PLANS[c.plan]||0); }
       if(c.setter===name) newAsSetter++;
     }
   });
-  const p=computeCommissions(month)[name];
+  let comm=0; months.forEach(mo=>{ const p=computeCommissions(mo)[name]; if(p) comm+=p.asSetter+p.asCloser+p.combined; });
   return { collected:collectedCloser+collectedSetter, newClients:newAsCloser+newAsSetter,
-           newAsCloser, newAsSetter, contractValue:contractClosed,
-           commission: p ? (p.asSetter+p.asCloser+p.combined) : 0 };
+           newAsCloser, newAsSetter, contractValue:contractClosed, commission:comm };
 }
 
-function insInsights(cur, pr){
+function insInsights(cur, pr){   // pr may be null (no comparison)
   const out=[];
   const pct=(a,b)=> b>0?Math.round((a-b)/b*100):(a>0?100:0);
-  if(cur.collected>pr.collected && pr.collected>0) out.push({t:'good',x:`📈 التحصيل ارتفع ${pct(cur.collected,pr.collected)}% عن الشهر الماضي — أداء ممتاز 👏`});
-  else if(cur.collected<pr.collected && pr.collected>0) out.push({t:'bad',x:`📉 التحصيل انخفض ${Math.abs(pct(cur.collected,pr.collected))}% عن الشهر الماضي — يستحسن المتابعة`});
-  if(cur.newClients===0) out.push({t:'bad',x:'⚠️ لم يُسجَّل أي عميل جديد هذا الشهر'});
-  else if(cur.newClients>pr.newClients) out.push({t:'good',x:`👍 عملاء جدد أكثر: ${cur.newClients} (مقابل ${pr.newClients} الشهر الماضي)`});
-  else if(cur.newClients<pr.newClients) out.push({t:'bad',x:`📉 عملاء جدد أقل: ${cur.newClients} (مقابل ${pr.newClients} الشهر الماضي)`});
-  if(cur.commission>pr.commission && pr.commission>0) out.push({t:'good',x:`💰 العمولة ارتفعت إلى ${fmtMoney(cur.commission)}`});
-  else if(cur.commission<pr.commission && pr.commission>0) out.push({t:'bad',x:`💰 العمولة انخفضت إلى ${fmtMoney(cur.commission)}`});
-  if(!out.length) out.push({t:'neutral',x:'الأداء مستقر مقارنةً بالشهر الماضي.'});
+  if(pr){
+    if(cur.collected>pr.collected && pr.collected>0) out.push({t:'good',x:`📈 التحصيل ارتفع ${pct(cur.collected,pr.collected)}% عن الفترة السابقة — أداء ممتاز 👏`});
+    else if(cur.collected<pr.collected && pr.collected>0) out.push({t:'bad',x:`📉 التحصيل انخفض ${Math.abs(pct(cur.collected,pr.collected))}% عن الفترة السابقة`});
+    if(cur.newClients>pr.newClients) out.push({t:'good',x:`👍 عملاء جدد أكثر: ${cur.newClients} (مقابل ${pr.newClients})`});
+    else if(cur.newClients<pr.newClients) out.push({t:'bad',x:`📉 عملاء جدد أقل: ${cur.newClients} (مقابل ${pr.newClients})`});
+    if(cur.commission>pr.commission && pr.commission>0) out.push({t:'good',x:`💰 العمولة ارتفعت إلى ${fmtMoney(cur.commission)}`});
+    else if(cur.commission<pr.commission && pr.commission>0) out.push({t:'bad',x:`💰 العمولة انخفضت إلى ${fmtMoney(cur.commission)}`});
+  }
+  if(cur.newClients===0) out.push({t:'bad',x:'⚠️ لم يُسجَّل أي عميل جديد في هذه الفترة'});
+  if(!out.length) out.push({t:'neutral',x: pr?'الأداء مستقر مقارنةً بالفترة السابقة.':'إحصائيات الفترة المحددة.'});
   return out;
 }
 
 function renderInsights(){
-  if(_insMonth===null){
+  const now=new Date(); const curMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  if(_insFrom===null || _insTo===null){
     const ms=[...new Set(clients.map(c=>(c.regDate||'').slice(0,7)).filter(Boolean))].sort().reverse();
-    _insMonth = ms[0] || new Date().toISOString().slice(0,7);
+    const def = ms[0] || curMonth; _insFrom=def; _insTo=def;
   }
-  const month=_insMonth, prev=prevMonth(month);
+  const months=_monthsBetween(_insFrom,_insTo);
+  const cmp = _insCompare ? _insPrevPeriod(_insFrom,_insTo) : null;
   const members=[...new Set([...CLOSERS, ...SETTERS])].filter(Boolean).sort();
-  const now=new Date(); const monthsList=[];
-  for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); monthsList.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
-  if(!monthsList.includes(month)) monthsList.unshift(month);
+  const mlist=[]; for(let i=0;i<18;i++){ mlist.push(_addMonthStr(curMonth,-i)); }
+  if(!mlist.includes(_insFrom)) mlist.push(_insFrom);
+  if(!mlist.includes(_insTo)) mlist.push(_insTo);
+  const uniq=[...new Set(mlist)].sort().reverse();
+  const opt=sel=>uniq.map(m=>`<option value="${m}"${m===sel?' selected':''}>${monthLabel(m)}</option>`).join('');
 
   const controls=`
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span style="font-size:13px;font-weight:600">📊 تحليل الأداء</span>
-    <select class="fsl" onchange="setInsMonth(this.value)" style="min-width:150px">${monthsList.map(m=>`<option value="${m}"${m===month?' selected':''}>${monthLabel(m)}</option>`).join('')}</select>
-    <select class="fsl" onchange="setInsMember(this.value)" style="min-width:190px"><option value="">— اختر مندوباً —</option>${members.map(m=>`<option value="${esc(m)}"${m===_insMember?' selected':''}>${esc(m)}</option>`).join('')}</select>
-    <span style="font-size:11px;color:var(--t3);margin-right:auto">مقارنة ${monthLabel(month)} بـ ${monthLabel(prev)}</span>
+    <span style="font-size:12px;color:var(--t3)">من</span><select class="fsl" onchange="setInsFrom(this.value)" style="min-width:115px">${opt(_insFrom)}</select>
+    <span style="font-size:12px;color:var(--t3)">إلى</span><select class="fsl" onchange="setInsTo(this.value)" style="min-width:115px">${opt(_insTo)}</select>
+    <select class="fsl" onchange="setInsMember(this.value)" style="min-width:170px"><option value="">— اختر مندوباً —</option>${members.map(m=>`<option value="${esc(m)}"${m===_insMember?' selected':''}>${esc(m)}</option>`).join('')}</select>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-right:auto"><input type="checkbox" ${_insCompare?'checked':''} onchange="toggleInsCompare(this.checked)"/> مقارنة بالفترة السابقة</label>
   </div>`;
 
   let body='';
   if(_insMember){
-    const cur=insMemberStats(_insMember,month), pr=insMemberStats(_insMember,prev);
+    const cur=insMemberStats(_insMember,months), pr=cmp?insMemberStats(_insMember,cmp):null;
     const metric=(label,c,p,money)=>{
-      const pc = p>0?Math.round((c-p)/p*100):(c>0?100:0); const up=c>=p; const f=v=>money?fmtMoney(v):v;
-      return `<div class="kpi">
-        <div style="font-size:11px;color:var(--t3);margin-bottom:6px">${label}</div>
-        <div style="font-size:20px;font-weight:800">${f(c)}</div>
-        <div style="font-size:11px;margin-top:5px;color:${p===c?'var(--t3)':up?'var(--g)':'var(--r)'}">${p===c?'—':(up?'▲':'▼')+' '+Math.abs(pc)+'%'} <span style="color:var(--t3)">(${f(p)})</span></div>
-      </div>`;
+      const f=v=>money?fmtMoney(v):v;
+      const delta = (p!=null) ? (()=>{ const pc=p>0?Math.round((c-p)/p*100):(c>0?100:0); const up=c>=p; return `<div style="font-size:11px;margin-top:5px;color:${p===c?'var(--t3)':up?'var(--g)':'var(--r)'}">${p===c?'—':(up?'▲':'▼')+' '+Math.abs(pc)+'%'} <span style="color:var(--t3)">(${f(p)})</span></div>`; })() : '';
+      return `<div class="kpi"><div style="font-size:11px;color:var(--t3);margin-bottom:6px">${label}</div><div style="font-size:20px;font-weight:800">${f(c)}</div>${delta}</div>`;
     };
     body=`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <button class="btn btn-g" style="padding:6px 12px" onclick="setInsMember('')">← ${LANG==='ar'?'رجوع للقائمة':'Back to list'}</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-g" style="padding:6px 12px" onclick="setInsMember('')">← ${LANG==='ar'?'رجوع':'Back'}</button>
       <div class="av" style="background:${col(members.indexOf(_insMember))};width:40px;height:40px;font-size:15px">${ini(_insMember)}</div>
-      <div style="font-size:17px;font-weight:800">${esc(_insMember)}</div>
+      <div><div style="font-size:17px;font-weight:800">${esc(_insMember)}</div><div style="font-size:11px;color:var(--t3)">📅 ${_insPeriodLabel(_insFrom,_insTo)}${cmp?` · مقارنة بـ ${_insPeriodLabel(cmp[0],cmp[cmp.length-1])}`:''}</div></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px">
-      ${metric('عملاء جدد', cur.newClients, pr.newClients, false)}
-      ${metric('المبلغ المحصّل', cur.collected, pr.collected, true)}
-      ${metric('العمولة', cur.commission, pr.commission, true)}
-      ${metric('قيمة العقود المُغلقة', cur.contractValue, pr.contractValue, true)}
+      ${metric('عملاء جدد', cur.newClients, pr?pr.newClients:null, false)}
+      ${metric('المبلغ المحصّل', cur.collected, pr?pr.collected:null, true)}
+      ${metric('العمولة', cur.commission, pr?pr.commission:null, true)}
+      ${metric('قيمة العقود المُغلقة', cur.contractValue, pr?pr.contractValue:null, true)}
     </div>
     <div class="card" style="padding:16px">
       <div style="font-size:13px;font-weight:700;margin-bottom:8px">💡 ملاحظات وتوصيات</div>
       ${insInsights(cur,pr).map(i=>`<div style="padding:7px 0;border-bottom:1px solid var(--b1);font-size:13px;color:${i.t==='good'?'var(--g)':i.t==='bad'?'var(--r)':'var(--t2)'}">${i.x}</div>`).join('')}
     </div>`;
   } else {
-    const rows=members.map(m=>({m, cur:insMemberStats(m,month), pr:insMemberStats(m,prev)}))
-      .filter(r=>r.cur.collected>0||r.cur.newClients>0||r.pr.collected>0||r.pr.newClients>0)
+    const rows=members.map(m=>({m, cur:insMemberStats(m,months), pr:cmp?insMemberStats(m,cmp):null}))
+      .filter(r=>r.cur.collected>0||r.cur.newClients>0||(r.pr&&(r.pr.collected>0||r.pr.newClients>0)))
       .sort((a,b)=>b.cur.collected-a.cur.collected);
     const dcell=(cur,pr,money)=>{
-      const pc=pr>0?Math.round((cur-pr)/pr*100):(cur>0?100:0); const up=cur>=pr; const f=v=>money?fmtMoney(v):v;
+      const f=v=>money?fmtMoney(v):v;
+      if(pr==null) return `<div style="font-weight:700;font-size:12.5px">${f(cur)}</div>`;
+      const pc=pr>0?Math.round((cur-pr)/pr*100):(cur>0?100:0); const up=cur>=pr;
       return `<div style="font-weight:700;font-size:12.5px">${f(cur)}</div><div style="font-size:10px;color:${cur===pr?'var(--t3)':up?'var(--g)':'var(--r)'}">${cur===pr?'—':(up?'▲':'▼')+' '+Math.abs(pc)+'%'}</div>`;
     };
     body=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-      <span style="font-size:12.5px;color:var(--t2)">📊 تقرير الشهر — مقارنة كل مندوب بالشهر الماضي (${monthLabel(month)} مقابل ${monthLabel(prev)})</span>
+      <span style="font-size:12.5px;color:var(--t2)">📊 تقرير الفترة — ${_insPeriodLabel(_insFrom,_insTo)}${cmp?` (مقارنة بـ ${_insPeriodLabel(cmp[0],cmp[cmp.length-1])})`:''}</span>
       <button class="btn btn-p" style="margin-right:auto" onclick="exportInsightsPdf()">🖨️ تصدير PDF</button>
     </div>
     <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:560px">
@@ -6128,10 +6139,10 @@ function renderInsights(){
       </tr></thead><tbody>
       ${rows.length?rows.map(r=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="setInsMember('${esc(r.m)}')" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
         <td style="padding:10px 14px;font-weight:600;font-size:13px">${esc(r.m)}</td>
-        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.newClients,r.pr.newClients,false)}</td>
-        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.collected,r.pr.collected,true)}</td>
-        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.commission,r.pr.commission,true)}</td>
-      </tr>`).join(''):`<tr><td colspan="4" style="padding:30px;text-align:center;color:var(--t3)">لا توجد بيانات لهذا الشهر</td></tr>`}
+        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.newClients,r.pr?r.pr.newClients:null,false)}</td>
+        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.collected,r.pr?r.pr.collected:null,true)}</td>
+        <td style="padding:10px 14px;text-align:center">${dcell(r.cur.commission,r.pr?r.pr.commission:null,true)}</td>
+      </tr>`).join(''):`<tr><td colspan="4" style="padding:30px;text-align:center;color:var(--t3)">لا توجد بيانات لهذه الفترة</td></tr>`}
       </tbody></table></div>
     <div style="font-size:11.5px;color:var(--t3);margin-top:10px;text-align:center">اضغط على أي مندوب لعرض تفاصيله والتوصيات</div>`;
   }
@@ -6139,19 +6150,20 @@ function renderInsights(){
 }
 
 function exportInsightsPdf(){
-  const month=_insMonth||new Date().toISOString().slice(0,7), prev=prevMonth(month);
+  const months=_monthsBetween(_insFrom,_insTo);
+  const cmp = _insCompare ? _insPrevPeriod(_insFrom,_insTo) : null;
   const members=[...new Set([...CLOSERS,...SETTERS])].filter(Boolean).sort();
-  const rows=members.map(m=>({m,cur:insMemberStats(m,month),pr:insMemberStats(m,prev)}))
-    .filter(r=>r.cur.collected>0||r.cur.newClients>0||r.pr.collected>0||r.pr.newClients>0)
+  const rows=members.map(m=>({m,cur:insMemberStats(m,months),pr:cmp?insMemberStats(m,cmp):null}))
+    .filter(r=>r.cur.collected>0||r.cur.newClients>0||(r.pr&&(r.pr.collected>0||r.pr.newClients>0)))
     .sort((a,b)=>b.cur.collected-a.cur.collected);
-  const d=(cur,pr,money)=>{ const pc=pr>0?Math.round((cur-pr)/pr*100):(cur>0?100:0); const f=v=>money?fmtMoney(v):v; return `${f(cur)} (${cur===pr?'—':(cur>=pr?'▲':'▼')+Math.abs(pc)+'%'})`; };
+  const d=(cur,pr,money)=>{ const f=v=>money?fmtMoney(v):v; if(pr==null) return f(cur); const pc=pr>0?Math.round((cur-pr)/pr*100):(cur>0?100:0); return `${f(cur)} (${cur===pr?'—':(cur>=pr?'▲':'▼')+Math.abs(pc)+'%'})`; };
   $('print-area').innerHTML=`
-    <h1>تقرير الأداء الشهري</h1>
-    <div class="psub">${monthLabel(month)} مقابل ${monthLabel(prev)} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
+    <h1>تقرير الأداء</h1>
+    <div class="psub">${_insPeriodLabel(_insFrom,_insTo)}${cmp?` مقابل ${_insPeriodLabel(cmp[0],cmp[cmp.length-1])}`:''} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
     <table class="pt2"><thead><tr><th>المندوب</th><th>عملاء جدد</th><th>المحصّل</th><th>العمولة</th><th>قيمة العقود</th></tr></thead><tbody>
-    ${rows.map(r=>`<tr><td>${esc(r.m)}</td><td>${d(r.cur.newClients,r.pr.newClients,false)}</td><td>${d(r.cur.collected,r.pr.collected,true)}</td><td>${d(r.cur.commission,r.pr.commission,true)}</td><td>${d(r.cur.contractValue,r.pr.contractValue,true)}</td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}
+    ${rows.map(r=>`<tr><td>${esc(r.m)}</td><td>${d(r.cur.newClients,r.pr?r.pr.newClients:null,false)}</td><td>${d(r.cur.collected,r.pr?r.pr.collected:null,true)}</td><td>${d(r.cur.commission,r.pr?r.pr.commission:null,true)}</td><td>${d(r.cur.contractValue,r.pr?r.pr.contractValue:null,true)}</td></tr>`).join('')||'<tr><td colspan="5">—</td></tr>'}
     </tbody></table>
-    <div class="psub" style="margin-top:10px">القيم بين قوسين = التغير مقارنة بالشهر الماضي</div>`;
+    ${cmp?'<div class="psub" style="margin-top:10px">القيم بين قوسين = التغير مقارنة بالفترة السابقة</div>':''}`;
   document.body.classList.add('printing');
   window.print();
   setTimeout(()=>document.body.classList.remove('printing'),400);
