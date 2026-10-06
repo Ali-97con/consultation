@@ -96,7 +96,7 @@ async function ensureSchema() {
     insert into csm_options(kind,label,sort) values
       ('condition','يرد',1),('condition','مايرد',2),('condition','لسا ما بلش',3),('condition','موقف',4),('condition','طلع',5),
       ('follow','مابدأ الدورة',1),('follow','لسا ما خلص الدورة',2),('follow','خلص الدورة',3),('follow','لسا ما بدآ التطبيق',4),('follow','بدآ التطبيق',5),('follow','لسا ما طلع ارباح',6),('follow','طلع ارباح',7),('follow','راضي عن البرنامج',8),('follow','مو راضي عن البرنامج',9),
-      ('phone_condition','رد',1),('phone_condition','ما رد',2),('phone_condition','مشغول',3),('phone_condition','موعد مجدول',4),('phone_condition','رقم خاطئ',5),('phone_condition','طلب معاودة الاتصال',6),
+      ('phone_condition','اكتشاف التقدم',1),('phone_condition','نتيجة محصلة',2),('phone_condition','تحدي او هدف قادم',3),('phone_condition','إحتياج',4),('phone_condition','بيع',5),('phone_condition','غير مهتم حاليا',6),('phone_condition','لا يرد',7),
       ('phone_follow','يريد ترقية',1),('phone_follow','لا يملك ميزانية حالياً',2),('phone_follow','مهتم',3),('phone_follow','غير مهتم',4),('phone_follow','قيد التفكير',5),('phone_follow','تمت الترقية',6)
     on conflict (kind,label) do nothing;
 
@@ -493,9 +493,25 @@ async function updateUpsellNotes(id, upsellNotes) {
 }
 
 // ─── CSM option lists (condition / follow), editable at runtime ────────────────
+// One-time migration: swap the old phone-CSM call outcomes for the new upsell states,
+// without touching any labels the user added manually. Guarded by a marker row.
+const _OLD_PHONE_COND = ['رد','ما رد','مشغول','موعد مجدول','رقم خاطئ','طلب معاودة الاتصال'];
+const _NEW_UPSELL_STATES = ['اكتشاف التقدم','نتيجة محصلة','تحدي او هدف قادم','إحتياج','بيع','غير مهتم حاليا','لا يرد'];
+async function ensureUpsellStates() {
+  await schemaReady();
+  const { rows } = await q("select 1 from csm_options where kind='_migration' and label='upsell_states_v1'");
+  if (rows.length) return false;
+  await q("delete from csm_options where kind='phone_condition' and label = any($1::text[])", [_OLD_PHONE_COND]);
+  for (let i = 0; i < _NEW_UPSELL_STATES.length; i++) {
+    await q("insert into csm_options(kind,label,sort) values('phone_condition',$1,$2) on conflict (kind,label) do nothing", [_NEW_UPSELL_STATES[i], i + 1]);
+  }
+  await q("insert into csm_options(kind,label,sort) values('_migration','upsell_states_v1',0) on conflict (kind,label) do nothing");
+  return true;
+}
 async function getCsmOptions() {
   await schemaReady();
-  const { rows } = await q('select kind, label from csm_options order by kind, sort, label');
+  await ensureUpsellStates();
+  const { rows } = await q("select kind, label from csm_options where kind <> '_migration' order by kind, sort, label");
   const pick = k => rows.filter(r => r.kind === k).map(r => r.label);
   return {
     conditions:      pick('condition'),

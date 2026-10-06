@@ -5335,14 +5335,14 @@ function upsellLatest(c){
 // Mark derived from the latest upsell follow-up (state = call outcome, intent[] = reasons).
 function upsellMark(c){
   const l=upsellLatest(c); if(!l) return '';
-  const inten=l.intent||[], st=l.state||'';
-  if(inten.includes('تمت الترقية')) return 'done';
-  if(inten.includes('مهتم')) return 'hot';
-  if(inten.includes('قيد التفكير')) return 'warm';
-  if(st==='طلب معاودة الاتصال' || st==='موعد مجدول') return 'warm';
-  if(inten.includes('لا يملك ميزانية حالياً')) return 'cold';
-  if(inten.includes('غير مهتم')) return 'no';
-  return '';
+  const it=l.intent||[], st=l.state||'';
+  if(st==='بيع' || it.includes('تمت الترقية')) return 'done';                                        // sold / upgraded → closed
+  if(it.includes('مهتم') || it.includes('يريد ترقية') || st==='إحتياج') return 'hot';                 // interested / need identified → ready
+  if(it.includes('قيد التفكير') || st==='تحدي او هدف قادم' || st==='نتيجة محصلة'
+     || st==='طلب معاودة الاتصال' || st==='موعد مجدول') return 'warm';                                 // follow up soon
+  if(it.includes('لا يملك ميزانية حالياً') || st==='غير مهتم حاليا' || st==='غير مهتم حالياً') return 'cold';
+  if(it.includes('غير مهتم')) return 'no';                                                            // permanently out
+  return '';   // اكتشاف التقدم / لا يرد / … → neutral, stays in the queue
 }
 const UP_MARK = {
   hot:{l:'🔥 جاهز للشراء',c:'#ef4444'}, warm:{l:'🌤️ يحتاج وقت',c:'#f59e0b'},
