@@ -452,6 +452,15 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       فرص البيع (Upsell)
       <span class="nl-b" id="nl-upsell-badge" style="display:none;background:#10b981">0</span>
     </div>
+    <div class="nl" data-v="upcalls" id="nl-upcalls">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      متابعات متأخرة
+      <span class="nl-b" id="nl-upcalls-badge" style="display:none;background:#f59e0b">0</span>
+    </div>
+    <div class="nl" data-v="upanalytics" id="nl-upanalytics">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      تحليلات الأبسيل
+    </div>
     <div class="nl" data-v="audit" id="nl-audit">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
       سجل التعديلات
@@ -627,6 +636,8 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   <div class="pg" id="pg-commissions"></div>
   <div class="pg" id="pg-csm"></div>
   <div class="pg" id="pg-phoneclients"></div>
+  <div class="pg" id="pg-upcalls"></div>
+  <div class="pg" id="pg-upanalytics"></div>
   <div class="pg" id="pg-upgrades"></div>
   <div class="pg" id="pg-audit"></div>
   <div class="pg" id="pg-sessions"></div>
@@ -1224,8 +1235,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'فرص البيع (Upsell)',upgrades:'الترقيات',audit:'سجل التعديلات',sessions:'الجلسات الأسبوعية',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Upsell Opportunities',upgrades:'Upgrades',audit:'Change Log',sessions:'Weekly Sessions',notifs:'Notifications',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'فرص البيع (Upsell)',upcalls:'متابعات متأخرة',upanalytics:'تحليلات الأبسيل',upgrades:'الترقيات',audit:'سجل التعديلات',sessions:'الجلسات الأسبوعية',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Upsell Opportunities',upcalls:'Overdue Callbacks',upanalytics:'Upsell Analytics',upgrades:'Upgrades',audit:'Change Log',sessions:'Weekly Sessions',notifs:'Notifications',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref', ended:'b-end' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171', ended:'#94a3b8' };
@@ -1530,7 +1541,7 @@ let UPSELL_SERVICES = [];   // [{name, price}] loaded from the server
 function applyCsmRestrictions() {
   if (!isCsm()) return;
   // CSM sees only the follow-up section (can still open client profiles from it)
-  ['overview','clients','analytics','insights','team','commissions','users','trash','phoneclients','upgrades','audit','sessions'].forEach(v => {
+  ['overview','clients','analytics','insights','team','commissions','users','trash','phoneclients','upcalls','upanalytics','upgrades','audit','sessions'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1577,7 +1588,7 @@ function closeMobMenu() {
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, users, trash + orphaned section headers
-  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash','phoneclients','upgrades','audit','sessions'].forEach(v => {
+  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash','phoneclients','upcalls','upanalytics','upgrades','audit','sessions'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1891,7 +1902,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, phoneclients:renderPhoneClients, upgrades:renderUpgrades, audit:renderAudit, sessions:renderSessions, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, phoneclients:renderPhoneClients, upcalls:renderOverdue, upanalytics:renderUpsellAnalytics, upgrades:renderUpgrades, audit:renderAudit, sessions:renderSessions, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -5382,12 +5393,13 @@ function upsellSuggestion(c){
   return 'باقة مكالمات إضافية أو خدمة';
 }
 
-// Daily-alert badge on the nav (admin + sales role).
+// Nav badges (admin + sales role): daily upsell worklist + overdue callbacks.
 function updateUpsellBadge(){
-  const b=$('nl-upsell-badge'); if(!b) return;
-  if(!(isAdmin()||isCsmPhone())){ b.style.display='none'; return; }
-  const n=upsellTodayList().length;
-  b.textContent=n; b.style.display=n>0?'inline-flex':'none';
+  const allowed=isAdmin()||isCsmPhone();
+  const b=$('nl-upsell-badge');
+  if(b){ if(!allowed){ b.style.display='none'; } else { const n=upsellTodayList().length; b.textContent=n; b.style.display=n>0?'inline-flex':'none'; } }
+  const ob=$('nl-upcalls-badge');
+  if(ob){ if(!allowed){ ob.style.display='none'; } else { const n=(typeof upsellOverdueList==='function')?upsellOverdueList().length:0; ob.textContent=n; ob.style.display=n>0?'inline-flex':'none'; } }
 }
 // One-click flag from CSM: mark/unmark an active client as an upsell prospect → shows in the ⭐ محتمل tab.
 function toggleUpsellProspect(id){
@@ -5514,7 +5526,12 @@ function renderPhoneClients(){
           ${th('center')}#</th>${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}النقاط</th>${th('center')}انتهى</th>${th('center')}مكالمات متبقية</th>${th()}رجوع</th>${th('center')}إجراءات</th>
         </tr></thead><tbody>${rows}</tbody></table></div>`;
   }
+  const overdueN=(typeof upsellOverdueList==='function')?upsellOverdueList().length:0;
   $('pg-phoneclients').innerHTML = `
+  ${overdueN?`<div class="card mb" style="padding:10px 16px;background:#ef444411;border:1px solid #ef444455;display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer" onclick="nav('upcalls')">
+    <span style="font-size:13px;font-weight:700;color:var(--r)">⏰ لديك ${overdueN} متابعة متأخرة</span>
+    <span style="font-size:11.5px;color:var(--t3)">مواعيد رجوع تجاوزت تاريخها — اضغط للفتح</span>
+  </div>`:''}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin-bottom:14px">
     ${kpi(pool.length,'فرص متاحة (منتهية)','#6366f1')}
     ${kpi(prospectCount,'محتملون (نشطون)','#8b5cf6')}
@@ -5682,6 +5699,116 @@ function delUpsellEntry(id,entryId){
   openUpsellDetail(id); updateUpsellBadge();
 }
 function closeUpsellDetail(){ $('upselldetail-mo').classList.remove('on'); if(S.view==='phoneclients') renderPhoneClients(); }
+
+// ═══════════════ UPSELL — overdue callbacks (متابعات متأخرة) ═══════════════
+function upsellNextDue(c){ const l=upsellLatest(c); return l && l.nextDate ? l.nextDate : null; }
+function _upCallEligible(c){ return !c.deleted && !upsellExcluded(c) && !['done','no'].includes(upsellMark(c)); }
+function upsellOverdueList(){ return clients.filter(c=>_upCallEligible(c) && (()=>{ const nd=upsellNextDue(c); return nd && daysUntil(nd)<0; })()).sort((a,b)=>daysUntil(upsellNextDue(a))-daysUntil(upsellNextDue(b))); }
+function upsellDueTodayList(){ return clients.filter(c=>_upCallEligible(c) && (()=>{ const nd=upsellNextDue(c); return nd && daysUntil(nd)===0; })()).sort((a,b)=>upsellPriority(b)-upsellPriority(a)); }
+let _ovSearch='';
+function setOvSearch(v){ _ovSearch=v; renderOverdue(); const el=$('ov-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
+function renderOverdue(){
+  updateUpsellBadge();
+  const q=_ovSearch.trim().toLowerCase();
+  const inS=c=>matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q);
+  const overdue=upsellOverdueList().filter(inS), due=upsellDueTodayList().filter(inS);
+  const th=x=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
+  const kpi=(v,l,c)=>`<div class="kpi" style="padding:11px"><div style="font-size:20px;font-weight:800;color:${c}">${v}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${l}</div></div>`;
+  const rowHtml=(c,overdueMode)=>{ const nd=upsellNextDue(c), d=daysUntil(nd);
+    return `<tr style="border-bottom:1px solid var(--b1)">
+      <td style="padding:10px 12px;font-size:12.5px"><span style="font-weight:600;cursor:pointer;color:var(--p2)" onclick="openUpsellDetail(${c.id})">${esc(c.name)||'—'}</span>${upsellMark(c)?' '+upsellMarkBadge(c):''}</td>
+      <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap;direction:ltr">${esc(c.phone)||'—'}</td>
+      <td style="padding:10px 12px">${planBadge(c.plan)}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;white-space:nowrap">${nd?fmtDate(nd):'—'}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;font-weight:700;color:${overdueMode?'var(--r)':'var(--y)'};white-space:nowrap">${overdueMode?`متأخر ${-d} يوم`:'اليوم'}</td>
+      <td style="padding:10px 12px;text-align:center;white-space:nowrap">
+        <button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpsellDetail(${c.id})" title="ملف البيع">📊</button>
+        <a class="btn btn-g" style="padding:4px 9px;font-size:11px;text-decoration:none" href="https://wa.me/${(c.phone||'').replace(/[^0-9]/g,'')}" target="_blank" rel="noopener" title="واتساب">💬</a>
+      </td></tr>`; };
+  const table=(list,overdueMode,empty)=>`<div class="card" style="padding:0;overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:620px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}الموعد</th>${th('center')}الحالة</th>${th('center')}إجراءات</th></tr></thead>
+      <tbody>${list.length?list.map(c=>rowHtml(c,overdueMode)).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">${empty}</td></tr>`}</tbody></table></div>`;
+  $('pg-upcalls').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+      ${kpi(overdue.length,'رجوع متأخر','#ef4444')}
+      ${kpi(due.length,'رجوع اليوم','#f59e0b')}
+    </div>
+    <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <input class="inp" id="ov-search" style="max-width:240px" placeholder="🔍 بحث بالاسم أو رقم الهاتف..." value="${esc(_ovSearch)}" oninput="setOvSearch(this.value)"/>
+      <span style="font-size:11.5px;color:var(--t3);margin-right:auto">المواعيد التي حدّدتها في متابعة الأبسيل وتجاوزت تاريخها</span>
+    </div>
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;color:var(--r)">⏰ رجوع متأخر (${overdue.length}) — الأكثر تأخّراً أولاً</div>
+    ${table(overdue,true,'لا توجد مواعيد متأخرة 🎉')}
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;color:var(--y)">📅 رجوع اليوم (${due.length})</div>
+    ${table(due,false,'لا توجد مواعيد اليوم')}`;
+}
+
+// ═══════════════ UPSELL — analytics / conversion (تحليلات الأبسيل) ═══════════════
+function clientConverted(c){ return (c.upsells||[]).length>0 || (c.upgrades||[]).length>0; }
+function clientWorked(c){ return !!c.upsellContactedAt || (c.upsellNotes||[]).length>0 || clientConverted(c); }
+function upsellRevenueOf(c, mo){ const inM=d=>!mo||(d||'').slice(0,7)===mo;
+  return (c.upsells||[]).reduce((s,x)=>s+(inM(x.date)?(+x.price||0):0),0) + (c.upgrades||[]).reduce((s,x)=>s+(inM(x.date)?Math.max(0,(x.newTotal||0)-(x.oldPrice||0)):0),0); }
+function upsellSalesCountOf(c, mo){ const inM=d=>!mo||(d||'').slice(0,7)===mo; return (c.upsells||[]).filter(x=>inM(x.date)).length + (c.upgrades||[]).filter(x=>inM(x.date)).length; }
+function upsellTouchedInMonth(c, mo){ return (c.upsellNotes||[]).some(n=>(n.date||'').slice(0,7)===mo) || (!!c.upsellContactedAt && c.upsellContactedAt.slice(0,7)===mo); }
+function renderUpsellAnalytics(){
+  const active=clients.filter(c=>!c.deleted);
+  const worked=active.filter(c=>clientWorked(c) && !upsellExcluded(c));
+  const convertedN=worked.filter(clientConverted).length;
+  const workedN=worked.length;
+  const convRate=workedN?Math.round(convertedN/workedN*100):0;
+  const totalRev=active.reduce((s,c)=>s+upsellRevenueOf(c),0);
+  // monthly (last 12)
+  const now=new Date(), months=[]; for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  const monthly=months.map(mo=>{ let touches=0,conv=0,sales=0,rev=0; active.forEach(c=>{ const touched=upsellTouchedInMonth(c,mo); const sc=upsellSalesCountOf(c,mo); if(touched){ touches++; if(sc>0) conv++; } sales+=sc; rev+=upsellRevenueOf(c,mo); }); return {mo,touches,conv,sales,rev,rate:touches?Math.round(conv/touches*100):0}; });
+  const maxRev=Math.max(1,...monthly.map(m=>m.rev));
+  // by plan
+  const planStats={}; active.forEach(c=>{ (c.upsells||[]).forEach(u=>{ const t=planTier(c.plan); (planStats[t]=planStats[t]||{sales:0,rev:0}).sales++; planStats[t].rev+=(+u.price||0); }); (c.upgrades||[]).forEach(u=>{ const t=planTier(u.from)||planTier(c.plan); (planStats[t]=planStats[t]||{sales:0,rev:0}).sales++; planStats[t].rev+=Math.max(0,(u.newTotal||0)-(u.oldPrice||0)); }); });
+  // score bands (calibration)
+  const bands=[[80,999,'80+'],[60,80,'60–79'],[40,60,'40–59'],[20,40,'20–39'],[0,20,'0–19']];
+  const bandStats=bands.map(([lo,hi,lbl])=>{ const inB=worked.filter(c=>{ const s=upsellScore(c); return s>=lo && s<hi; }); const conv=inB.filter(clientConverted).length; return {lbl,n:inB.length,conv,rate:inB.length?Math.round(conv/inB.length*100):0}; });
+  const kpi=(v,l,c)=>`<div class="kpi" style="padding:12px"><div style="font-size:22px;font-weight:800;color:${c}">${v}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${l}</div></div>`;
+  const th=x=>`<th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
+  const bar=(pct,clr)=>`<div style="height:7px;background:var(--bg);border-radius:20px;overflow:hidden;min-width:60px"><div style="height:100%;width:${Math.min(100,pct)}%;background:${clr}"></div></div>`;
+  $('pg-upanalytics').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
+      ${kpi(workedN,'عملاء تم العمل عليهم','#6366f1')}
+      ${kpi(convertedN,'تحويلات (بيع/ترقية)','#10b981')}
+      ${kpi(convRate+'%','نسبة التحويل','#8b5cf6')}
+      ${kpi(fmtMoney(totalRev),'الإيراد المُضاف','#10b981')}
+    </div>
+
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">📅 حسب الشهر (آخر 12 شهراً)</div>
+    <div class="card" style="padding:0;overflow-x:auto;margin-bottom:18px"><table style="width:100%;border-collapse:collapse;min-width:620px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">${th()}الشهر</th>${th('center')}تواصل</th>${th('center')}مبيعات</th>${th('center')}الإيراد</th>${th('center')}نسبة التحويل</th><th style="padding:9px 12px;width:120px"></th></tr></thead>
+      <tbody>${monthly.map(m=>`<tr style="border-bottom:1px solid var(--b1)">
+        <td style="padding:9px 12px;font-size:12px;white-space:nowrap">${monthLabel(m.mo)}</td>
+        <td style="padding:9px 12px;text-align:center;font-size:12px">${m.touches}</td>
+        <td style="padding:9px 12px;text-align:center;font-size:12px;font-weight:600">${m.sales}</td>
+        <td style="padding:9px 12px;text-align:center;font-size:12px;color:var(--g);font-weight:700">${fmtMoney(m.rev)}</td>
+        <td style="padding:9px 12px;text-align:center;font-size:12px">${m.rate}%</td>
+        <td style="padding:9px 12px">${bar(Math.round(m.rev/maxRev*100),'#10b981')}</td></tr>`).join('')}</tbody></table></div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:6px">
+      <div>
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">🎯 التحويل حسب تدرّج النقاط <span style="font-size:10.5px;color:var(--t3);font-weight:400">(لمعايرة الأوزان)</span></div>
+        <div class="card" style="padding:12px 14px">
+          ${bandStats.map(b=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+            <span style="font-size:12px;font-weight:700;min-width:48px">${b.lbl}</span>
+            <div style="flex:1">${bar(b.rate,'#8b5cf6')}</div>
+            <span style="font-size:11.5px;color:var(--t2);min-width:92px;text-align:left">${b.rate}% · ${b.conv}/${b.n}</span>
+          </div>`).join('')}
+          <div style="font-size:10.5px;color:var(--t3);margin-top:6px">إذا كانت الشرائح الأعلى تُحوِّل أكثر ⇒ الأوزان جيّدة. وإلا، نعدّل الأوزان.</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">💼 حسب الباقة</div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">${th()}الباقة</th>${th('center')}مبيعات</th>${th('center')}الإيراد</th></tr></thead>
+          <tbody>${['CORE','PREMIUM','INNER','OTHER'].filter(t=>planStats[t]).map(t=>`<tr style="border-bottom:1px solid var(--b1)"><td style="padding:10px 12px;font-size:12.5px;font-weight:600">${t}</td><td style="padding:10px 12px;text-align:center;font-size:12px">${planStats[t].sales}</td><td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--g);font-weight:700">${fmtMoney(planStats[t].rev)}</td></tr>`).join('')||`<tr><td colspan="3" style="padding:22px;text-align:center;color:var(--t3)">لا مبيعات بعد</td></tr>`}</tbody></table>
+        </div>
+      </div>
+    </div>`;
+}
 
 // ── Plan upgrade modal ──
 let _upgradeId = null;
@@ -6576,7 +6703,14 @@ function computeNotifs(){
         out.push({ key:`${c.id}:fu`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:since, every:N, noFollow:false, contacted });
     }
   });
-  const order = { followup:0, ended:1, '3d':2, '15d':3 };
+  // Overdue upsell callbacks (admin + sales role only) — surfaced at the top.
+  if(isAdmin()||isCsmPhone()){
+    clients.filter(c=>!c.deleted && !upsellExcluded(c) && !['done','no'].includes(upsellMark(c))).forEach(c=>{
+      const nd=upsellNextDue(c); if(!nd) return; const d=daysUntil(nd);
+      if(d!==null && d<0) out.push({ key:c.id+':upcall', cid:c.id, type:'upcall', name:c.name, plan:c.plan, days:d, nextDate:nd });
+    });
+  }
+  const order = { upcall:0, followup:1, ended:2, '3d':3, '15d':4 };
   return out.sort((a,b)=>(order[a.type]-order[b.type]) || (b.days-a.days));
 }
 function getHiddenNotifs(){ try{ return new Set(JSON.parse(localStorage.getItem('notif_hidden')||'[]')); }catch(_){ return new Set(); } }
@@ -6630,11 +6764,14 @@ function renderNotifs(){
   const q=_notifSearch.trim();
   const all=notifVisible().filter(n=>matchNamePhone(n.name, (clients.find(c=>c.id===n.cid)||{}).phone, q));
   const followAll   = all.filter(n=>n.type==='followup');
-  const contractAll = all.filter(n=>n.type!=='followup');
+  const contractAll = all.filter(n=>['ended','3d','15d'].includes(n.type));
+  const upcallAll   = all.filter(n=>n.type==='upcall');
   const tabBtn=(id,label,count)=>`<button class="btn ${_notifTab===id?'btn-p':'btn-g'}" onclick="setNotifTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
   const tierCount=t=>followAll.filter(n=>n.tier===t).length;
   const tierTitle={CORE:'🔵 CORE — متابعة كل 5 أيام',PREMIUM:'🟣 PREMIUM — متابعة كل 8 أيام',INNER:'🟠 INNER — متابعة كل 10 أيام',OTHER:'⚪ أخرى — متابعة كل 7 أيام'};
-  const sections = _notifTab==='contracts'
+  const sections = _notifTab==='upsell'
+    ? [ {items:upcallAll, title:'🎯 متابعات أبسيل متأخرة'} ]
+    : _notifTab==='contracts'
     ? [
         {items:contractAll.filter(n=>n.type==='ended'), title:'🔴 عقود منتهية'},
         {items:contractAll.filter(n=>n.type==='3d'),    title:'🟠 تنتهي خلال 3 أيام'},
@@ -6643,14 +6780,18 @@ function renderNotifs(){
     : [ {items:followAll.filter(n=>n.tier===_notifTab), title:tierTitle[_notifTab]||''} ];
   const itemHtml=(n)=>{
     const c=clients.find(x=>x.id===n.cid);
+    const onClick = n.type==='upcall' ? `openUpsellDetail(${n.cid})` : `openClientFromNotif(${n.cid})`;
     const right = n.type==='ended' ? {t:`منذ ${-n.days} يوم`,clr:'var(--r)'}
+      : n.type==='upcall' ? {t:`متأخر ${-n.days} يوم`,clr:'var(--r)'}
       : n.type==='followup' ? (n.noFollow ? {t:'لم تبدأ المتابعة',clr:'var(--r)'} : {t:`منذ ${n.days} يوم`,clr:'var(--p2)'})
       : {t:`${n.days} يوم`,clr:'var(--y)'};
-    const sub = n.type==='followup' ? `${planBadge(n.plan)} · كل ${n.every} يوم` : `${planBadge(n.plan)} · ينتهي ${fmtDate(n.end)}`;
+    const sub = n.type==='followup' ? `${planBadge(n.plan)} · كل ${n.every} يوم`
+      : n.type==='upcall' ? `${planBadge(n.plan)} · موعد ${fmtDate(n.nextDate)}`
+      : `${planBadge(n.plan)} · ينتهي ${fmtDate(n.end)}`;
     const contactBtn = n.type!=='followup' ? '' : (n.contacted
       ? `<button style="font-size:10px;color:var(--g);background:var(--gbg);border:1px solid var(--g);padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0;cursor:pointer" title="${LANG==='ar'?'اضغط للإلغاء':'Click to cancel'}" onclick="event.stopPropagation();markContacted(${n.cid})">✅ بانتظار الرد ✕</button>`
       : `<button class="btn btn-g" style="padding:4px 9px;font-size:11px;flex-shrink:0" title="${LANG==='ar'?'تم التواصل':'Contacted'}" onclick="event.stopPropagation();markContacted(${n.cid})">📞</button>`);
-    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openClientFromNotif(${n.cid})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
+    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="${onClick}" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
       ${c?clientAv(c):''}
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600">${esc(n.name)}</div>
@@ -6668,6 +6809,7 @@ function renderNotifs(){
     ${tabBtn('INNER','🟠 INNER',tierCount('INNER'))}
     ${tabBtn('OTHER','⚪ أخرى',tierCount('OTHER'))}
     ${tabBtn('contracts','📅 نهاية العقود',contractAll.length)}
+    ${upcallAll.length?tabBtn('upsell','🎯 أبسيل متأخر',upcallAll.length):''}
     <input class="inp" id="notif-search" style="max-width:200px" placeholder="🔍 بحث بالاسم..." value="${esc(_notifSearch)}" oninput="setNotifSearch(this.value)"/>
     <button class="btn btn-g" style="margin-right:auto" onclick="markTabSeen()">✓ تحديد المعروض كمقروء</button>
   </div>
