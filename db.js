@@ -484,6 +484,14 @@ async function updateCsmNotes(id, csmNotes) {
   return r.rowCount > 0;
 }
 
+// Upsell follow-up log (dedicated, separate from csmNotes) — used by the sales/upsell workspace.
+async function updateUpsellNotes(id, upsellNotes) {
+  await ready();
+  const r = await q(`update clients set data = jsonb_set(data, '{upsellNotes}', $2::jsonb) where id = $1`,
+    [id, j(upsellNotes)]);
+  return r.rowCount > 0;
+}
+
 // ─── CSM option lists (condition / follow), editable at runtime ────────────────
 async function getCsmOptions() {
   await schemaReady();
@@ -1004,7 +1012,7 @@ module.exports = {
   // Contracts (files in Postgres, many per client)
   addContract, getContractById, deleteContractById,
   // CSM (customer success) follow-up
-  updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
+  updateCsmNotes, updateUpsellNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   // Upsell services + purchases
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   // Sessions (Postgres-backed, serverless-safe)

@@ -12,7 +12,7 @@ const {
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan, importData,
   addContract, getContractById, deleteContractById,
-  updateCsmNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
+  updateCsmNotes, updateUpsellNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
@@ -231,6 +231,25 @@ app.put('/api/clients/:id/csm-notes', requireCsmOrAdmin, async (req, res) => {
     }));
     await updateCsmNotes(+req.params.id, notes);
     audit(req, 'csm.note', 'client', +req.params.id, 'تحديث متابعة نجاح العملاء', { count: notes.length });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Upsell follow-up log (admin + csm + sales) — dedicated to the sales workspace ──
+app.put('/api/clients/:id/upsell-notes', requireCsmOrAdmin, async (req, res) => {
+  try {
+    const notes = (req.body.notes || []).slice(0, 1000).map(n => ({
+      id:        n.id,
+      date:      str(n.date, 30),
+      state:     str(n.state, 80),
+      intent:    Array.isArray(n.intent) ? n.intent.slice(0, 30).map(f => str(f, 80)) : [],
+      text:      str(n.text, 5000),
+      nextDate:  str(n.nextDate, 30),
+      author:    str(n.author, 100),
+      createdAt: str(n.createdAt, 40),
+    }));
+    await updateUpsellNotes(+req.params.id, notes);
+    audit(req, 'client.upsell.follow', 'client', +req.params.id, 'متابعة أبسيل', { count: notes.length });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

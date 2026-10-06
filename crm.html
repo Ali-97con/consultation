@@ -446,14 +446,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       التنبيهات
       <span class="nl-b" id="nl-notif-badge" style="display:none;background:var(--r)">0</span>
     </div>
-    <div class="ns" id="ns-phone">المتابعة الهاتفية</div>
+    <div class="ns" id="ns-phone">المبيعات</div>
     <div class="nl" data-v="phoneclients" id="nl-phoneclients">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
-      قائمة العملاء
-    </div>
-    <div class="nl" data-v="upgrades" id="nl-upgrades">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
-      الترقيات
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+      فرص البيع (Upsell)
+      <span class="nl-b" id="nl-upsell-badge" style="display:none;background:#10b981">0</span>
     </div>
     <div class="nl" data-v="audit" id="nl-audit">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
@@ -738,6 +735,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div id="upsell-opts-body" style="padding:18px;max-height:70vh;overflow-y:auto"></div>
   </div>
 </div>
+<!-- UPSELL CLIENT COCKPIT -->
+<div class="mo" id="upselldetail-mo" onclick="if(event.target===this)closeUpsellDetail()">
+  <div class="mbox" style="max-width:680px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:#10b98122;display:flex;align-items:center;justify-content:center;flex-shrink:0">🎯</div>
+      <h3 id="upselldetail-title">ملف البيع</h3>
+      <button class="mcls" onclick="closeUpsellDetail()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="upselldetail-body" style="padding:18px;max-height:80vh;overflow-y:auto"></div>
+  </div>
+</div>
 <!-- CONTRACT PAUSE dialog -->
 <div class="mo" id="pause-mo" onclick="if(event.target===this)closePauseDialog()">
   <div class="mbox" style="max-width:430px;width:100%">
@@ -816,6 +824,8 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         <option value="refunded">💸 تم ارجاع المبلغ</option>
       </select></div>
       <div class="fg"><label>📅 نهاية العقد</label><input class="inp" id="m-contract-end" type="date"/></div></div>
+      <div class="fr"><div class="fg"><label>📞 إجمالي المكالمات</label><input class="inp" id="m-calls-total" type="number" min="0" placeholder="مثال: 4"/></div>
+      <div class="fg"><label>📞 المكالمات المستخدمة</label><input class="inp" id="m-calls-done" type="number" min="0" placeholder="مثال: 2"/></div></div>
       <div class="fg" style="margin-bottom:10px">
         <label>📎 مستند العقد (PDF أو صورة)</label>
         <input type="file" id="m-contract-file" accept="application/pdf,image/*" multiple style="display:none" onchange="onModalContractPick(this)"/>
@@ -1214,8 +1224,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'قائمة العملاء (متابعة هاتفية)',upgrades:'الترقيات',audit:'سجل التعديلات',sessions:'الجلسات الأسبوعية',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Clients (Phone CSM)',upgrades:'Upgrades',audit:'Change Log',sessions:'Weekly Sessions',notifs:'Notifications',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'فرص البيع (Upsell)',upgrades:'الترقيات',audit:'سجل التعديلات',sessions:'الجلسات الأسبوعية',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Upsell Opportunities',upgrades:'Upgrades',audit:'Change Log',sessions:'Weekly Sessions',notifs:'Notifications',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref', ended:'b-end' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171', ended:'#94a3b8' };
@@ -1551,7 +1561,7 @@ function applyCsmPhoneRestrictions() {
   const username = sessionStorage.getItem('ah97_user') || 'CSM';
   const uNm = document.querySelector('.u-nm'), uRl = document.querySelector('.u-rl'), uAv = document.querySelector('.u-av');
   if (uNm) uNm.textContent = username;
-  if (uRl) uRl.textContent = 'CSM هاتفي · AH97';
+  if (uRl) uRl.textContent = 'مبيعات (Upsell) · AH97';
   if (uAv) uAv.textContent = (username[0] || 'C').toUpperCase();
 }
 
@@ -1649,6 +1659,7 @@ async function initApp() {
     if (_isCsm) nav('csm'); else if (_isCsmPhone) nav('phoneclients'); else if (_isCoach) nav('clients'); else renderOverview();
     if (!_limited) api('POST','/api/csm/ensure-follow-start').catch(()=>{}); // seed follow-up counters (admin only)
     updateNotifBadge();
+    updateUpsellBadge();
     if (!_isCoach) setTimeout(showNotifPopup, 400);
   } catch(e) {
     console.error(e);
@@ -4599,6 +4610,8 @@ function openModal(id=null) {
     if($('m-channel')) $('m-channel').value=c.channel||'outbound';
     if($('m-sex')) $('m-sex').value=c.sex||'';
     if($('m-contract-end')) $('m-contract-end').value=c.contractEnd||'';
+    if($('m-calls-total')) $('m-calls-total').value=(c.callsTotal!=null?c.callsTotal:'');
+    if($('m-calls-done')) $('m-calls-done').value=(c.callsDone!=null?c.callsDone:'');
     $('m-notes').value=c.notes.map(n=>n.txt).join('\n');
   } else {
     ['m-name','m-phone','m-email','m-notes'].forEach(id=>{if($(id))$(id).value='';});
@@ -4607,6 +4620,8 @@ function openModal(id=null) {
     if($('m-channel')) $('m-channel').value='outbound';
     if($('m-sex')) $('m-sex').value='';
     if($('m-contract-end')) $('m-contract-end').value='';
+    if($('m-calls-total')) $('m-calls-total').value='';
+    if($('m-calls-done')) $('m-calls-done').value='';
     $('m-reg').value=new Date().toISOString().split('T')[0];
     const cpr=$('custom-plan-row'); if(cpr) cpr.style.display='none';
     // Reset total field and discount on new client
@@ -4658,6 +4673,8 @@ async function saveClient() {
     channel:$('m-channel')?$('m-channel').value:'outbound',
     sex:$('m-sex')?$('m-sex').value:'',
     contractEnd:$('m-contract-end')?$('m-contract-end').value:'',
+    callsTotal:$('m-calls-total')&&$('m-calls-total').value!==''?+$('m-calls-total').value:undefined,
+    callsDone:$('m-calls-done')&&$('m-calls-done').value!==''?+$('m-calls-done').value:undefined,
     regDate:$('m-reg').value||new Date().toISOString().split('T')[0],
     lastPayDate:pd.filter(Boolean).slice(-1)[0]||'',
   };
@@ -5024,6 +5041,7 @@ function openCsmDetail(id, phone=false){
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ${isPaused(c)?'btn-p':'btn-g'}" onclick="${isPaused(c)?`endPause(${id})`:`openPauseDialog(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف':'Pause')}</button>
         <button class="btn btn-p" onclick="openUpsell(${id})">💰 ${LANG==='ar'?'بيع خدمة (Upsell)':'Upsell'}</button>
+        <button class="btn btn-g" onclick="closeCsmDetail();openUpsellDetail(${id})">🎯 ${LANG==='ar'?'متابعة أبسيل':'Upsell follow-up'}</button>
         <button class="btn btn-g" onclick="closeCsmDetail();openDetail(${id})">👤 ${LANG==='ar'?'الملف الشخصي':'Profile'}</button>
         <button class="btn btn-g" onclick="exportCsmPdf(${id})">🖨️ ${LANG==='ar'?'تصدير PDF':'Export PDF'}</button>
       </div>
@@ -5288,99 +5306,335 @@ function exportCsmPdf(id){
   setTimeout(()=>document.body.classList.remove('printing'),400);
 }
 
-// ═══════════════ PHONE-CSM: broad client list ═══════════════
-let _pcSearch = '', _pcMonth = new Date().toISOString().slice(0,7), _pcPlan = '', _pcScope = '';
-function setPcSearch(v){ _pcSearch = v; renderPhoneClients(); const el=$('pc-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
-function setPcMonth(v){ _pcMonth = v; renderPhoneClients(); }
-function setPcPlan(v){ _pcPlan = (_pcPlan===v ? '' : v); renderPhoneClients(); }
-function setPcScope(v){ _pcScope = (_pcScope===v ? '' : v); renderPhoneClients(); }
-const PC_WANT_UPGRADE = 'يريد ترقية';
-function pcWantsUpgrade(c){ const l=csmLatest(c); return !!l && (l.follow||[]).includes(PC_WANT_UPGRADE); }
+// ═══════════════ UPSELL / SALES WORKSPACE (المبيعات) ═══════════════
+// Target pool = ENDED-contract clients, pre-ranked by potential so we never work alphabetically.
+// Active clients are marked opportunistically during normal CSM; the daily alert = top N "due".
+const UP_TODAY_N = 10;
+let _upTab = 'today';     // today | hot | opp | upgrade | renew | history
+let _upSearch = '';
+function setUpTab(v){ _upTab = v; renderPhoneClients(); }
+function setUpSearch(v){ _upSearch = v; renderPhoneClients(); const el=$('up-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
 function nextTierPlan(plan){
   const t = planTier(plan);
   if(t==='CORE') return 'PREMIUM';
   if(t==='PREMIUM') return 'INNER CIRCLE';
-  return null;   // INNER / OTHER: no further upgrade
+  return null;   // INNER / OTHER: no further plan upgrade (still sell call-packs / services)
 }
-function renderPhoneClients(){
-  const q = _pcSearch.trim().toLowerCase();
-  const sexLbl = s => s==='male'?'ذكر':s==='female'?'أنثى':'—';
-  const th = (x,extra='')=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'};${extra}">`;
-  // search-filtered set (plan KPIs count on this so they always show totals)
-  const searchList = clients.filter(c=>!c.deleted).filter(c => matchNamePhone(c.name, c.phone, q) || (c.email||'').toLowerCase().includes(q));
-  const base = searchList.filter(c => planTierMatch(c.plan, _pcPlan));
-  const followedM = base.filter(c => csmFollowedInMonth(c, _pcMonth)).length;
-  const kFig = {
-    all: base.length,
-    core: searchList.filter(c=>planTier(c.plan)==='CORE').length,
-    premium: searchList.filter(c=>planTier(c.plan)==='PREMIUM').length,
-    done: followedM,
-    none: base.length - followedM,
-    wantupgrade: base.filter(pcWantsUpgrade).length,
-  };
-  // apply scope, then sort by contract-start date (newest first)
-  let rowsData = base.filter(c=>{
-    if(_pcScope==='done') return csmFollowedInMonth(c,_pcMonth);
-    if(_pcScope==='none') return !csmFollowedInMonth(c,_pcMonth);
-    if(_pcScope==='wantupgrade') return pcWantsUpgrade(c);
-    return true;
-  }).sort((a,b)=>{
-    const da=a.regDate||'', db=b.regDate||'';
-    if(da===db) return (a.name||'').localeCompare(b.name||'');
-    return db.localeCompare(da);   // newest contract start first
+
+// ── per-client upsell signals ──
+function callsRemaining(c){ const t=+c.callsTotal||0, u=+c.callsDone||0; return t>0 ? Math.max(0, t-u) : null; }
+function csmTagsOf(c){ return (c.csmNotes||[]).flatMap(n=>n.follow||[]); }
+function upProfit(c){ const t=csmTagsOf(c); return t.includes('طلع ارباح')||t.includes('طلع أرباح'); }
+function upNotSatisfied(c){ return csmTagsOf(c).includes('مو راضي عن البرنامج'); }
+function endedDays(c){ const d=daysUntil(c.contractEnd); return d===null?null:-d; }   // days since the contract ended (>0 past)
+
+function upsellLatest(c){
+  const ns=(c.upsellNotes||[]); if(!ns.length) return null;
+  return ns.slice().sort((a,b)=>(b.date||b.createdAt||'').localeCompare(a.date||a.createdAt||''))[0];
+}
+// Mark derived from the latest upsell follow-up (state = call outcome, intent[] = reasons).
+function upsellMark(c){
+  const l=upsellLatest(c); if(!l) return '';
+  const inten=l.intent||[], st=l.state||'';
+  if(inten.includes('تمت الترقية')) return 'done';
+  if(inten.includes('مهتم')) return 'hot';
+  if(inten.includes('قيد التفكير')) return 'warm';
+  if(st==='طلب معاودة الاتصال' || st==='موعد مجدول') return 'warm';
+  if(inten.includes('لا يملك ميزانية حالياً')) return 'cold';
+  if(inten.includes('غير مهتم')) return 'no';
+  return '';
+}
+const UP_MARK = {
+  hot:{l:'🔥 جاهز للشراء',c:'#ef4444'}, warm:{l:'🌤️ يحتاج وقت',c:'#f59e0b'},
+  cold:{l:'❄️ بارد',c:'#0ea5e9'}, no:{l:'🚫 غير مهتم',c:'#6b7280'}, done:{l:'🎉 تمّ البيع',c:'#10b981'}
+};
+function upsellMarkBadge(c){ const m=upsellMark(c); if(!m) return ''; const o=UP_MARK[m]; return `<span style="font-size:10px;font-weight:600;background:${o.c}22;color:${o.c};padding:2px 8px;border-radius:20px;white-space:nowrap">${o.l}</span>`; }
+
+// Potential score (0–100) — transparent, with breakdown.
+function upsellScoreParts(c){
+  const p=[], t=planTier(c.plan);
+  if(t==='CORE') p.push(['باقة CORE',30]); else if(t==='PREMIUM') p.push(['باقة PREMIUM',18]); else if(t==='INNER') p.push(['باقة INNER',10]);
+  if(fr(c)<=0) p.push(['أنهى الدفع',15]);
+  if(upProfit(c)) p.push(['حقّق أرباحاً',20]);
+  if(!(c.upsells||[]).length && !(c.upgrades||[]).length) p.push(['لم يُعرض عليه شيء',12]);
+  const ed=endedDays(c);
+  if(ed!==null){ if(ed<=30) p.push(['انتهى حديثاً (≤30ي)',18]); else if(ed<=90) p.push(['انتهى (≤90ي)',10]); else p.push(['انتهى سابقاً',3]); }
+  const rem=callsRemaining(c); if(rem!==null && rem<=1) p.push(['استنفد مكالماته',10]);
+  if(fx(c)>=5000) p.push(['عميل عالي القيمة',5]);
+  return p;
+}
+function upsellScore(c){ return upsellScoreParts(c).reduce((s,[,v])=>s+v,0); }
+function upsellExcluded(c){ return upNotSatisfied(c); }
+function upsellPool(){ return clients.filter(c=>!c.deleted && contractState(c)==='ended' && !upsellExcluded(c) && !['done','no'].includes(upsellMark(c))); }
+function upsellDue(c){ const l=upsellLatest(c); if(!l) return true; if(l.nextDate) return daysUntil(l.nextDate)<=0; return true; }
+function upsellPriority(c){
+  const m=upsellMark(c), due=upsellDue(c);
+  const tier = (m==='hot'&&due)?4 : (m==='warm'&&due)?3 : (!m)?2 : 1;
+  return tier*1000 + upsellScore(c);
+}
+function upsellTodayList(){ return upsellPool().filter(upsellDue).sort((a,b)=>upsellPriority(b)-upsellPriority(a)).slice(0,UP_TODAY_N); }
+function upsellSuggestion(c){
+  const t=planTier(c.plan), rem=callsRemaining(c);
+  if(t==='CORE') return upProfit(c) ? 'CORE + حقّق أرباحاً → اقترح الترقية إلى PREMIUM' : 'الترقية إلى PREMIUM';
+  if(t==='PREMIUM') return 'الترقية إلى INNER CIRCLE';
+  if(rem!==null && rem<=1) return 'استنفد مكالماته → باقة مكالمات / تجديد';
+  return 'باقة مكالمات إضافية أو خدمة';
+}
+
+// Daily-alert badge on the nav (admin + sales role).
+function updateUpsellBadge(){
+  const b=$('nl-upsell-badge'); if(!b) return;
+  if(!(isAdmin()||isCsmPhone())){ b.style.display='none'; return; }
+  const n=upsellTodayList().length;
+  b.textContent=n; b.style.display=n>0?'inline-flex':'none';
+}
+
+function upsellHistoryHtml(){
+  const items=[];
+  clients.filter(c=>!c.deleted).forEach(c=>{
+    (c.upgrades||[]).forEach(u=>items.push({kind:'ترقية',date:u.date,cid:c.id,client:c.name,label:`${esc(u.from||'—')} → ${esc(u.to||'—')}`,amount:Math.max(0,(u.newTotal||0)-(u.oldPrice||0)),by:u.by}));
+    (c.upsells||[]).forEach(u=>items.push({kind:'خدمة',date:u.date,cid:c.id,client:c.name,label:esc(u.type||'—'),amount:u.price||0,by:u.author}));
   });
-  const now=new Date(); const months=['all']; for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
-  if(!months.includes(_pcMonth)) months.push(_pcMonth);
-  const kpi=(fig,label,color,scopeKey,planKey)=>{
-    const active = (scopeKey!==undefined && _pcScope===scopeKey) || (planKey!==undefined && _pcPlan===planKey);
-    const click = scopeKey!==undefined ? `onclick="setPcScope('${scopeKey}')"` : planKey!==undefined ? `onclick="setPcPlan('${planKey}')"` : '';
-    return `<div class="kpi" style="padding:11px;${click?'cursor:pointer;':''}${active?`box-shadow:inset 0 0 0 2px ${color};`:''}" ${click}><div style="font-size:19px;font-weight:800;color:${color}">${fig}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${label}</div></div>`;
-  };
-  const rows = rowsData.length ? rowsData.map(c=>{
-    const canUp = !!nextTierPlan(c.plan);
-    const nameCell = `<span style="font-weight:600;cursor:pointer;color:var(--p2)" onclick="openCsmDetail(${c.id}, true)" title="فتح صفحة المتابعة">${esc(c.name)||'—'}</span>`;
-    return `<tr style="border-bottom:1px solid var(--b1)">
-      <td style="padding:10px 12px;font-size:12.5px">${nameCell}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap;direction:ltr">${esc(c.phone)||'—'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--t2);direction:ltr">${esc(c.email)||'—'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--t2)">${sexLbl(c.sex)}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--t2)">${esc(c.closer)||'—'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--t2)">${esc(c.setter)||'—'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${c.regDate?fmtDate(c.regDate):'—'}</td>
-      <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${c.contractEnd?fmtDate(c.contractEnd):'—'}</td>
-      <td style="padding:10px 12px">${planBadge(c.plan)}${pcWantsUpgrade(c)?` <span style="font-size:9.5px;background:var(--pbg);color:var(--p2);padding:1px 6px;border-radius:10px">يريد ترقية</span>`:''}</td>
-      <td style="padding:10px 12px;text-align:center;white-space:nowrap">
-        <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openDetail(${c.id})" title="الملف">👤</button>
-        <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openCsmDetail(${c.id}, true)" title="متابعة">📝</button>
-        ${canUp?`<button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpgrade(${c.id})" title="ترقية">⬆️</button>`:''}
-      </td></tr>`;
-  }).join('') : `<tr><td colspan="10" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء مطابقون</td></tr>`;
+  items.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const total=items.reduce((s,i)=>s+i.amount,0);
+  const th=x=>`<th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
+  const rows=items.length?items.map(i=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openUpsellDetail(${i.cid})">
+      <td style="padding:9px 12px;font-size:11.5px;color:var(--t2);white-space:nowrap">${i.date?fmtDate(i.date):'—'}</td>
+      <td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(i.client)||'—'}</td>
+      <td style="padding:9px 12px"><span style="font-size:10px;font-weight:600;background:${i.kind==='ترقية'?'#6366f122;color:#6366f1':'#10b98122;color:#10b981'};padding:2px 8px;border-radius:20px">${i.kind}</span></td>
+      <td style="padding:9px 12px;font-size:12px">${i.label}</td>
+      <td style="padding:9px 12px;text-align:center;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(i.amount)}</td>
+      <td style="padding:9px 12px;font-size:11px;color:var(--t3)">${esc(i.by||'')}</td>
+    </tr>`).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">لا توجد مبيعات بعد</td></tr>`;
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+      <div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800;color:#6366f1">${items.length}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">عدد العمليات</div></div>
+      <div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800;color:var(--g)">${fmtMoney(total)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">قيمة مضافة إجمالية</div></div>
+    </div>
+    <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:680px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">${th()}التاريخ</th>${th()}العميل</th>${th()}النوع</th>${th()}التفاصيل</th>${th('center')}القيمة</th>${th()}بواسطة</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+}
+
+function upsellTabList(){
+  const q=_upSearch.trim().toLowerCase();
+  const inSearch=c=>matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q);
+  let list;
+  if(_upTab==='today') list=upsellTodayList();
+  else if(_upTab==='hot') list=clients.filter(c=>!c.deleted && !upsellExcluded(c) && upsellMark(c)==='hot');
+  else if(_upTab==='opp') list=upsellPool().filter(c=>!upsellMark(c));
+  else if(_upTab==='upgrade') list=upsellPool().filter(c=>!!nextTierPlan(c.plan));
+  else if(_upTab==='renew') list=upsellPool().filter(c=>{ const r=callsRemaining(c), ed=endedDays(c); return (r!==null&&r<=1)||(ed!==null&&ed<=90); });
+  else list=[];
+  return list.filter(inSearch).sort((a,b)=>upsellPriority(b)-upsellPriority(a));
+}
+
+function renderPhoneClients(){
+  updateUpsellBadge();
+  const th=(x)=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
+  const pool=upsellPool();
+  const hotCount=clients.filter(c=>!c.deleted && !upsellExcluded(c) && upsellMark(c)==='hot').length;
+  const dueCount=pool.filter(upsellDue).length;
+  const addedRev=clients.filter(c=>!c.deleted).reduce((s,c)=>s+(c.upsells||[]).reduce((t,u)=>t+(u.price||0),0)+(c.upgrades||[]).reduce((t,u)=>t+Math.max(0,(u.newTotal||0)-(u.oldPrice||0)),0),0);
+  const kpi=(v,l,c)=>`<div class="kpi" style="padding:11px"><div style="font-size:19px;font-weight:800;color:${c}">${v}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${l}</div></div>`;
+  const tabs=[['today','🎯 أبسيل اليوم'],['hot','🔥 جاهز'],['opp','⭐ فرص عالية'],['upgrade','🆙 ترقية'],['renew','🔁 تجديد/باقات'],['history','🗂️ السجل']];
+  const tabBtn=([id,l])=>`<button class="btn ${_upTab===id?'btn-p':'btn-g'}" onclick="setUpTab('${id}')">${l}</button>`;
+  let body;
+  if(_upTab==='history'){ body=upsellHistoryHtml(); }
+  else {
+    const list=upsellTabList();
+    const rows=list.length?list.map((c,i)=>{
+      const sc=upsellScore(c), ed=endedDays(c), rem=callsRemaining(c), l=upsellLatest(c);
+      const canUp=!!nextTierPlan(c.plan);
+      return `<tr style="border-bottom:1px solid var(--b1)">
+        <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--t3);font-weight:700">${i+1}</td>
+        <td style="padding:10px 12px;font-size:12.5px"><span style="font-weight:600;cursor:pointer;color:var(--p2)" onclick="openUpsellDetail(${c.id})" title="فتح ملف البيع">${esc(c.name)||'—'}</span>${upsellMark(c)?' '+upsellMarkBadge(c):''}</td>
+        <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap;direction:ltr">${esc(c.phone)||'—'}</td>
+        <td style="padding:10px 12px">${planBadge(c.plan)}</td>
+        <td style="padding:10px 12px;text-align:center"><span style="display:inline-block;min-width:34px;font-size:13px;font-weight:800;color:${sc>=60?'#10b981':sc>=40?'#f59e0b':'var(--t2)'}">${sc}</span></td>
+        <td style="padding:10px 12px;text-align:center;font-size:11.5px;color:var(--t2);white-space:nowrap">${ed!==null?`منذ ${ed} ي`:'—'}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:11.5px;color:${rem!==null&&rem<=1?'var(--r)':'var(--t2)'}">${rem!==null?rem:'—'}</td>
+        <td style="padding:10px 12px;font-size:11px;color:var(--t3);white-space:nowrap">${l&&l.nextDate?('↩︎ '+fmtDate(l.nextDate)):'—'}</td>
+        <td style="padding:10px 12px;text-align:center;white-space:nowrap">
+          <button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpsellDetail(${c.id})" title="ملف البيع / متابعة">📊</button>
+          ${canUp?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openUpgrade(${c.id})" title="ترقية الباقة">⬆️</button>`:''}
+          <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openUpsell(${c.id})" title="إضافة خدمة / باقة">➕</button>
+        </td></tr>`;
+    }).join(''):`<tr><td colspan="9" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء في هذه القائمة</td></tr>`;
+    const banner = _upTab==='today'
+      ? `<div class="card mb" style="padding:12px 16px;background:linear-gradient(135deg,#10b98111,#6366f111);border:1px solid #10b98155;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:14px;font-weight:800">🎯 قائمة اليوم للأبسيل: ${list.length} ${list.length===1?'عميل':'عملاء'}</span>
+          <span style="font-size:11.5px;color:var(--t3)">(العملاء المنتهية عقودهم، مرتّبون حسب الأولوية — ابدأ من الأعلى)</span>
+        </div>`:'';
+    body=`${banner}
+      <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:820px">
+        <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+          ${th('center')}#</th>${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}النقاط</th>${th('center')}انتهى</th>${th('center')}مكالمات متبقية</th>${th()}رجوع</th>${th('center')}إجراءات</th>
+        </tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
   $('pg-phoneclients').innerHTML = `
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px;margin-bottom:14px">
-    ${kpi(kFig.all,'إجمالي العملاء','#6366f1','')}
-    ${kpi(kFig.core,'CORE','#0ea5e9',undefined,'CORE')}
-    ${kpi(kFig.premium,'PREMIUM','#8b5cf6',undefined,'PREMIUM')}
-    ${kpi(kFig.done,`تمت متابعتهم (${csmMonthLabel(_pcMonth)})`,'#10b981','done')}
-    ${kpi(kFig.none,`بدون متابعة (${csmMonthLabel(_pcMonth)})`,'#f59e0b','none')}
-    ${kpi(kFig.wantupgrade,'يريدون ترقية','var(--p2)','wantupgrade')}
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin-bottom:14px">
+    ${kpi(pool.length,'فرص متاحة (منتهية)','#6366f1')}
+    ${kpi(hotCount,'جاهزون للشراء','#ef4444')}
+    ${kpi(dueCount,'مستحقّ التواصل','#f59e0b')}
+    ${kpi(fmtMoney(addedRev),'قيمة مضافة (أبسيل+ترقية)','#10b981')}
   </div>
-  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <input class="inp" id="pc-search" style="max-width:230px" placeholder="🔍 بحث بالاسم أو الهاتف أو البريد..." value="${esc(_pcSearch)}" oninput="setPcSearch(this.value)"/>
-    <select class="fsl" onchange="setPcMonth(this.value)" style="min-width:120px" title="شهر المتابعة">${months.map(m=>`<option value="${m}"${m===_pcMonth?' selected':''}>${csmMonthLabel(m)}</option>`).join('')}</select>
-    <select class="fsl" onchange="setPcPlan(this.value)" style="min-width:120px" title="الباقة">${[['','كل الباقات'],['CORE','CORE'],['PREMIUM','PREMIUM'],['INNER','INNER']].map(([v,l])=>`<option value="${v}"${_pcPlan===v?' selected':''}>${l}</option>`).join('')}</select>
-    <select class="fsl" onchange="setPcScope(this.value)" style="min-width:170px" title="حسب المتابعة">${[['','كل العملاء'],['done','تمت متابعتهم هذا الشهر'],['none','بدون متابعة هذا الشهر'],['wantupgrade','يريدون ترقية']].map(([v,l])=>`<option value="${v}"${_pcScope===v?' selected':''}>${l}</option>`).join('')}</select>
-    <span style="font-size:12px;color:var(--t3)">${rowsData.length} عميل</span>
-    <button class="btn btn-g" style="margin-right:auto" onclick="openCsmOpts(true)" title="إدارة قوائم الاتصال والترقية">⚙️ القوائم</button>
+  <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    ${tabs.map(tabBtn).join('')}
+    <input class="inp" id="up-search" style="max-width:220px;margin-right:auto" placeholder="🔍 بحث بالاسم أو الهاتف..." value="${esc(_upSearch)}" oninput="setUpSearch(this.value)"/>
+    <button class="btn btn-g" onclick="openCsmOpts(true)" title="إدارة حالات ونوايا الأبسيل">⚙️ القوائم</button>
   </div>
-  <div class="card" style="padding:0;overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;min-width:900px">
-      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
-        ${th()}الاسم</th>${th()}الهاتف</th>${th()}البريد</th>${th('center')}الجنس</th>${th()}Closer</th>${th()}Setter</th>${th()}بداية العقد ▼</th>${th()}نهاية العقد</th>${th()}الباقة</th>${th('center')}إجراءات</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+  ${body}`;
+}
+
+// ═══════════════ UPSELL — client cockpit + follow-up ═══════════════
+let _upsDetailId=null, _editingUps=null;
+function openUpsellDetail(id){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  _upsDetailId=id; _editingUps=null;
+  const today=new Date().toISOString().split('T')[0];
+  const stateOpts=CSM_OPTS.phoneConditions||[], intentOpts=CSM_OPTS.phoneFollows||[];
+  const notes=(c.upsellNotes||[]).slice().sort((a,b)=>(b.date||b.createdAt||'').localeCompare(a.date||a.createdAt||''));
+  const sc=upsellScore(c), parts=upsellScoreParts(c);
+  const ed=endedDays(c), rem=callsRemaining(c), tot=+c.callsTotal||0, used=+c.callsDone||0;
+  const planTotal=c.customTotal||PLANS[c.plan]||0;
+  const csmL=csmLatest(c), csmN=(c.csmNotes||[]).length, csmTags=[...new Set(csmTagsOf(c))];
+  const ups=(c.upsells||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const ug=(c.upgrades||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const box='background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:12px 14px';
+  const krow=(k,v,clr)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0"><span style="color:var(--t3)">${k}</span><span style="font-weight:700${clr?`;color:${clr}`:''}">${v}</span></div>`;
+  $('upselldetail-title').textContent=c.name;
+  $('upselldetail-body').innerHTML = `
+    <!-- header -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      ${clientAv(c,'dp-av',null,'28px')}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:16px;font-weight:700;display:flex;align-items:center;gap:7px;flex-wrap:wrap">${esc(c.name)} ${contractBadge(c)} ${upsellMarkBadge(c)}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+          <span style="font-size:13px;font-weight:600;direction:ltr;white-space:nowrap;user-select:all">${esc(c.phone)||'—'}</span>
+          ${c.phone?`<button class="btn btn-g" style="padding:1px 7px;font-size:11px" onclick="copyPhone(${id})" title="نسخ">📋</button>
+          <a class="btn btn-g" style="padding:1px 7px;font-size:11px;text-decoration:none" href="https://wa.me/${(c.phone||'').replace(/[^0-9]/g,'')}" target="_blank" rel="noopener" title="واتساب">💬</a>`:''}
+        </div>
+        <div style="font-size:11.5px;color:var(--t3);margin-top:2px">${planBadge(c.plan)} · ${ed!==null?`انتهى منذ ${ed} يوم`:'عقد غير محدد'} · ${esc(c.closer||'—')}</div>
+      </div>
+    </div>
+    <!-- pitch -->
+    <div style="${box};margin-bottom:12px;border-color:#10b98155;background:#10b98111">
+      <div style="font-size:11px;color:var(--t3);margin-bottom:3px">💡 الاقتراح</div>
+      <div style="font-size:13px;font-weight:700;color:#10b981">${upsellSuggestion(c)}</div>
+    </div>
+    <!-- grid: score / calls / money -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px">
+      <div style="${box}">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px"><span style="font-size:26px;font-weight:800;color:${sc>=60?'#10b981':sc>=40?'#f59e0b':'var(--t2)'}">${sc}</span><span style="font-size:11px;color:var(--t3)">نقاط الأولوية</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">${parts.map(([k,v])=>`<span style="font-size:10px;background:var(--bg);border:1px solid var(--b2);border-radius:20px;padding:2px 7px">${k} <b style="color:var(--g)">+${v}</b></span>`).join('')||'<span style="font-size:11px;color:var(--t3)">—</span>'}</div>
+      </div>
+      <div style="${box}">
+        <div style="font-size:11px;color:var(--t3);margin-bottom:6px">📞 المكالمات</div>
+        ${tot>0?`<div style="font-size:12.5px;margin-bottom:6px">استُخدم <b>${used}</b> من <b>${tot}</b> · متبقٍ <b style="color:${rem<=1?'var(--r)':'var(--g)'}">${rem}</b></div>
+          <div style="height:8px;background:var(--bg);border-radius:20px;overflow:hidden"><div style="height:100%;width:${tot?Math.min(100,Math.round(used/tot*100)):0}%;background:#6366f1"></div></div>`
+          :`<div style="font-size:12px;color:var(--t3)">غير مسجّل — <span style="cursor:pointer;color:var(--p2)" onclick="closeUpsellDetail();openModal(${c.id})">أضف من ملف العميل</span></div>`}
+      </div>
+      <div style="${box}">
+        <div style="font-size:11px;color:var(--t3);margin-bottom:6px">💳 المالية</div>
+        ${krow('إجمالي مدفوع (LTV)',fmtMoney(fx(c)),'var(--g)')}
+        ${krow('قيمة الباقة',fmtMoney(planTotal))}
+        ${krow('متبقٍ',fmtMoney(fr(c)),fr(c)>0?'var(--r)':'var(--t3)')}
+      </div>
+    </div>
+    <!-- CSM recap -->
+    <div style="${box};margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:6px">📊 ملخّص متابعة نجاح العملاء (CSM)</div>
+      ${csmN?`${krow('عدد المتابعات',csmN)}${krow('آخر متابعة',csmL&&(csmL.date)?fmtDate(csmL.date):'—')}${krow('آخر حالة',esc((csmL&&csmL.condition)||'—'))}
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">${csmTags.length?csmTags.map(t=>`<span style="font-size:10px;background:var(--bg);border:1px solid var(--b2);border-radius:20px;padding:2px 7px">${esc(t)}</span>`).join(''):'<span style="font-size:11px;color:var(--t3)">لا وسوم</span>'}</div>`
+        :`<div style="font-size:12px;color:var(--t3)">لا توجد متابعة CSM سابقة</div>`}
+    </div>
+    <!-- actions -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${nextTierPlan(c.plan)?`<button class="btn btn-p" onclick="openUpgrade(${id})">🆙 ترقية الباقة</button>`:''}
+      <button class="btn btn-p" onclick="openUpsell(${id})">➕ خدمة / باقة مكالمات</button>
+      <button class="btn btn-g" onclick="closeUpsellDetail();openDetail(${id})">👤 الملف الكامل</button>
+    </div>
+    ${(ups.length||ug.length)?`<div style="font-size:12px;font-weight:700;margin-bottom:8px">🗂️ سجل المبيعات (${ups.length+ug.length})</div>
+      <div style="margin-bottom:16px">
+        ${ug.map(u=>`<div style="background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:9px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div style="font-size:12.5px;font-weight:600">🆙 ${esc(u.from||'—')} → ${esc(u.to||'—')}</div><div style="font-size:11px;color:var(--t3)">📅 ${u.date?fmtDate(u.date):'—'}${u.by?' · '+esc(u.by):''}</div></div><span style="font-size:13px;font-weight:800;color:var(--g)">+${fmtMoney(Math.max(0,(u.newTotal||0)-(u.oldPrice||0)))}</span></div>`).join('')}
+        ${ups.map(u=>`<div style="background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:9px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div style="font-size:12.5px;font-weight:600">💰 ${esc(u.type||'—')}</div><div style="font-size:11px;color:var(--t3)">📅 ${u.date?fmtDate(u.date):'—'}${u.author?' · '+esc(u.author):''}</div></div><span style="font-size:13px;font-weight:800;color:var(--g)">${fmtMoney(u.price||0)}</span></div>`).join('')}
+      </div>`:''}
+    <!-- follow-up form -->
+    <div class="card" style="padding:14px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:10px">➕ متابعة الأبسيل</div>
+      <div class="fr"><div class="fg"><label>التاريخ</label><input class="inp" id="ups-f-date" type="date" value="${today}"/></div>
+      <div class="fg"><label>نتيجة الاتصال</label><select class="inp" id="ups-f-state"><option value="">—</option>${stateOpts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></div></div>
+      <div class="fg" style="margin-top:10px"><label>النية / السبب (يمكن اختيار أكثر من واحد)</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${intentOpts.map(o=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;background:var(--hv);border:1px solid var(--b1);padding:5px 9px;border-radius:8px;cursor:pointer"><input type="checkbox" class="ups-f-intent" value="${esc(o)}"/> ${esc(o)}</label>`).join('')}</div>
+      </div>
+      <div class="fr" style="margin-top:10px"><div class="fg"><label>ملاحظة</label><textarea class="inp" id="ups-f-note" rows="2" placeholder="ماذا قال العميل..."></textarea></div>
+      <div class="fg"><label>تذكير بمعاودة الاتصال (اختياري)</label><input class="inp" id="ups-f-next" type="date"/></div></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-p" id="ups-save-btn" onclick="addUpsellEntry(${id})">💾 حفظ المتابعة</button>
+        <button class="btn btn-g" id="ups-cancel-btn" style="display:none" onclick="cancelEditUps(${id})">إلغاء التعديل</button>
+      </div>
+    </div>
+    <div style="font-size:12px;font-weight:700;margin-bottom:8px">📋 سجل متابعة الأبسيل (${notes.length})</div>
+    <div>${notes.length?notes.map(n=>upsellEntryHtml(id,n)).join(''):`<div style="color:var(--t3);font-size:12px;padding:8px 0">لا توجد متابعات بعد</div>`}</div>`;
+  $('upselldetail-mo').classList.add('on');
+}
+function upsellEntryHtml(id,n){
+  const intent=(n.intent||[]).map(x=>`<span style="font-size:10px;background:var(--bg);border:1px solid var(--b2);border-radius:20px;padding:2px 7px">${esc(x)}</span>`).join(' ');
+  return `<div style="background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">
+      <div style="font-size:11px;color:var(--t3)">${esc(n.author||'')} · ${n.date?fmtDate(n.date):(n.createdAt?fmtDate(n.createdAt.slice(0,10)):'—')}${n.nextDate?` · ↩︎ ${fmtDate(n.nextDate)}`:''}</div>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-g" style="padding:2px 7px;font-size:10px" onclick="startEditUps(${id},${n.id})">✏️</button>
+        <button class="btn btn-r" style="padding:2px 7px;font-size:10px" onclick="delUpsellEntry(${id},${n.id})">🗑️</button>
+      </div>
+    </div>
+    ${n.state?`<div style="font-size:12.5px;font-weight:600;margin-bottom:3px">${esc(n.state)}</div>`:''}
+    ${intent?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">${intent}</div>`:''}
+    ${n.text?`<div style="font-size:12.5px;white-space:pre-wrap">${esc(n.text)}</div>`:''}
   </div>`;
 }
+function startEditUps(id,entryId){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  const n=(c.upsellNotes||[]).find(x=>x.id===entryId); if(!n) return;
+  _editingUps=entryId;
+  if($('ups-f-date')) $('ups-f-date').value=n.date||'';
+  if($('ups-f-state')) $('ups-f-state').value=n.state||'';
+  document.querySelectorAll('.ups-f-intent').forEach(chk=>{ chk.checked=(n.intent||[]).includes(chk.value); });
+  if($('ups-f-note')) $('ups-f-note').value=n.text||'';
+  if($('ups-f-next')) $('ups-f-next').value=n.nextDate||'';
+  const b=$('ups-save-btn'); if(b) b.textContent='✏️ تحديث المتابعة';
+  const cb=$('ups-cancel-btn'); if(cb) cb.style.display='';
+  const f=$('ups-f-date'); if(f) f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function cancelEditUps(id){ _editingUps=null; openUpsellDetail(id); }
+function addUpsellEntry(id){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  const date=($('ups-f-date')||{}).value||'', state=($('ups-f-state')||{}).value||'';
+  const intent=[...document.querySelectorAll('.ups-f-intent:checked')].map(e=>e.value);
+  const text=(($('ups-f-note')||{}).value||'').trim();
+  const nextDate=($('ups-f-next')||{}).value||'';
+  if(!date && !state && !intent.length && !text){ toast('أدخل بيانات المتابعة','⚠️'); return; }
+  if(_editingUps){
+    const n=(c.upsellNotes||[]).find(x=>x.id===_editingUps);
+    if(n){ n.date=date; n.state=state; n.intent=intent; n.text=text; n.nextDate=nextDate; }
+    _editingUps=null;
+  } else {
+    const entry={ id:Date.now(), date, state, intent, text, nextDate, author:sessionStorage.getItem('ah97_user')||'', createdAt:new Date().toISOString() };
+    c.upsellNotes=[...(c.upsellNotes||[]), entry];
+  }
+  api('PUT',`/api/clients/${id}/upsell-notes`,{notes:c.upsellNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
+  openUpsellDetail(id); updateUpsellBadge();
+  if(S.view==='phoneclients') renderPhoneClients();
+  toast('تم حفظ متابعة الأبسيل','✅');
+}
+function delUpsellEntry(id,entryId){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  if(!confirm('حذف هذه المتابعة؟')) return;
+  c.upsellNotes=(c.upsellNotes||[]).filter(n=>n.id!==entryId);
+  api('PUT',`/api/clients/${id}/upsell-notes`,{notes:c.upsellNotes}).catch(e=>console.error(e));
+  openUpsellDetail(id); updateUpsellBadge();
+}
+function closeUpsellDetail(){ $('upselldetail-mo').classList.remove('on'); if(S.view==='phoneclients') renderPhoneClients(); }
 
 // ── Plan upgrade modal ──
 let _upgradeId = null;
@@ -5501,6 +5755,8 @@ async function confirmUpgrade(){
     closeUpgrade();
     toast('تمت ترقية الباقة ✓','✅');
     if(typeof logActivity==='function') logActivity('⬆️','ترقية باقة',`${r.c.name}: ${r.plan}`);
+    updateUpsellBadge();
+    if($('upselldetail-mo').classList.contains('on')) openUpsellDetail(r.c.id);
     if(S.view==='phoneclients') renderPhoneClients(); else if(S.view==='upgrades') renderUpgrades();
   }catch(e){ toast('فشل الترقية: '+(e.message||''),'⚠️'); }
 }
@@ -5545,14 +5801,18 @@ async function saveUpsell(){
   closeUpsell();
   toast('تم تسجيل البيع ✓','✅');
   if(typeof logActivity==='function') logActivity('💰','بيع خدمة',`${c.name}: ${type}`);
+  updateUpsellBadge();
+  if($('upselldetail-mo').classList.contains('on')) openUpsellDetail(c.id);
   if($('csm-mo').classList.contains('on')) openCsmDetail(c.id, _csmDetailPhone);
+  if(S.view==='phoneclients') renderPhoneClients();
 }
 async function delUpsell(id, upId){
   const c=clients.find(x=>x.id===id); if(!c) return;
   if(!confirm('حذف هذا البيع؟')) return;
   c.upsells=(c.upsells||[]).filter(u=>u.id!==upId);
   try{ await api('PUT',`/api/clients/${id}/upsells`,{upsells:c.upsells}); }catch(e){ toast('خطأ','❌'); return; }
-  openCsmDetail(id, _csmDetailPhone);
+  if($('upselldetail-mo').classList.contains('on')) openUpsellDetail(id);
+  else openCsmDetail(id, _csmDetailPhone);
 }
 function closeUpsell(){ $('upsell-mo').classList.remove('on'); _upsellId=null; }
 
@@ -5634,6 +5894,8 @@ async function undoUpgrade(cid){
   await reloadClients();
   toast('تم إلغاء الترقية ✓','↩️');
   if(typeof logActivity==='function') logActivity('↩️','إلغاء ترقية',c.name);
+  updateUpsellBadge();
+  if($('upselldetail-mo').classList.contains('on')) openUpsellDetail(cid);
   if(S.view==='upgrades') renderUpgrades(); else if(S.view==='phoneclients') renderPhoneClients(); else if(S.view==='clients') renderTable();
 }
 
@@ -5641,7 +5903,7 @@ async function undoUpgrade(cid){
 let _auditFilter = '';
 function setAuditFilter(v){ _auditFilter = v; renderAudit(); }
 const AUDIT_ACTIONS = {
-  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة','client.upgrade.undo':'إلغاء ترقية','client.upsell':'بيع خدمة (Upsell)','client.pause':'إيقاف مؤقت','client.resume':'استئناف العقد',
+  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة','client.upgrade.undo':'إلغاء ترقية','client.upsell':'بيع خدمة (Upsell)','client.upsell.follow':'متابعة أبسيل','client.pause':'إيقاف مؤقت','client.resume':'استئناف العقد',
   'csm.note':'متابعة CSM','plan.update':'تعديل باقة','plan.delete':'حذف باقة','plan.create':'إضافة باقة',
   'user.create':'إضافة مستخدم','user.update':'تعديل مستخدم','user.delete':'حذف مستخدم',
   'session.send':'إرسال بريد جلسة','session.template':'تعديل قالب بريد',
@@ -6467,7 +6729,7 @@ async function renderUsers() {
             <select id="u-role" style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--b2);border-radius:8px;padding:9px 12px;color:var(--t1);font-size:13px">
               <option value="coach">Coach — يرى العملاء والملاحظات فقط</option>
               <option value="csm">CSM — متابعة نجاح العملاء</option>
-              <option value="csm_phone">CSM هاتفي — متابعة + ترقية الباقات</option>
+              <option value="csm_phone">مبيعات (Upsell) — فرص البيع والترقيات</option>
               <option value="admin">مشرف — صلاحيات كاملة</option>
             </select>
           </div>
