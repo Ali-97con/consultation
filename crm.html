@@ -1791,14 +1791,23 @@ function fmtDate(d) {
   if (LANG === 'ar') {
     if (diff === 0) return 'اليوم';
     if (diff === 1) return 'أمس';
-    if (diff < 7) return `قبل ${diff} أيام`;
+    if (diff > 1 && diff < 7) return `قبل ${diff} أيام`;   // only recent PAST dates
     return dt.toLocaleDateString('ar-SA-u-nu-latn', {day:'numeric',month:'short',year:'numeric'});
   } else {
     if (diff === 0) return 'Today';
     if (diff === 1) return 'Yesterday';
-    if (diff < 7) return `${diff} days ago`;
+    if (diff > 1 && diff < 7) return `${diff} days ago`;
     return dt.toLocaleDateString('en-US', {day:'numeric',month:'short',year:'numeric'});
   }
+}
+// Contract-end label (future-aware): "متبقي X يوم" / "ينتهي اليوم" / "منتهٍ منذ X يوم" / absolute date for far dates.
+function contractEndCell(ce){
+  if(!ce) return '—';
+  const d=daysUntil(ce); if(d===null) return '—';
+  if(d<0)  return LANG==='ar'?`منتهٍ منذ ${-d} يوم`:`ended ${-d}d ago`;
+  if(d===0) return LANG==='ar'?'ينتهي اليوم':'ends today';
+  if(d<=30) return LANG==='ar'?`متبقي ${d} يوم`:`${d}d left`;
+  return new Date(ce).toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{day:'numeric',month:'short',year:'numeric'});
 }
 
 function fmtMoney(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
@@ -5010,7 +5019,7 @@ function renderCsm(){
         return `<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openCsmDetail(${c.id})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
           <td style="padding:11px 14px"><div style="display:flex;align-items:center;gap:10px">${clientAv(c)}<span style="font-weight:600;font-size:13px">${esc(c.name)}</span></div></td>
           <td style="padding:11px 14px;font-size:12px;color:var(--t2)">${c.regDate?fmtDate(c.regDate):'—'}</td>
-          <td style="padding:11px 14px;font-size:12px;color:${expired?'var(--r)':soon?'var(--y)':'var(--t2)'};font-weight:${soon||expired?'700':'400'}">${c.contractEnd?fmtDate(c.contractEnd)+(soon?` · ${d}ي`:expired?' · منتهٍ':''):'—'}</td>
+          <td style="padding:11px 14px;font-size:12px;color:${expired?'var(--r)':soon?'var(--y)':'var(--t2)'};font-weight:${soon||expired?'700':'400'}">${contractEndCell(c.contractEnd)}</td>
           <td style="padding:11px 14px">${condBadge(l&&l.condition)}</td>
           <td style="padding:11px 14px;font-size:12px;color:var(--t2)">${l&&l.date?`${fmtDate(l.date)} <span style="color:var(--t3);font-size:10px">· ${agoLabel(l.date)}</span>`:'—'}</td>
           <td style="padding:11px 14px;text-align:center;font-size:12px;color:var(--t3)">${(c.csmNotes||[]).length||'—'}</td>
