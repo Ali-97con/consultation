@@ -461,14 +461,15 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
       تحليلات الأبسيل
     </div>
+    <div class="ns" id="ns-sessions">جلسات</div>
+    <div class="nl" data-v="sessions" id="nl-sessions">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+      الجلسات الأسبوعية
+    </div>
     <div class="ns" id="ns-sys">النظام</div>
     <div class="nl" data-v="audit" id="nl-audit">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
       سجل التعديلات
-    </div>
-    <div class="nl" data-v="sessions" id="nl-sessions">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-      الجلسات الأسبوعية
     </div>
     <div class="nl" data-v="users" id="nl-users">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
@@ -1564,7 +1565,7 @@ function applyCsmRestrictions() {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
-  ['ns-team','ns-sys','ns-main','ns-phone'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  ['ns-team','ns-sys','ns-main','ns-phone','ns-sessions'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
   document.querySelectorAll('button').forEach(btn => {
     const oc = btn.getAttribute('onclick') || '';
     if (oc === 'openModal()' || oc === 'window.print()' || oc === 'exportCSV()') btn.style.display = 'none';
@@ -1583,7 +1584,7 @@ function applyCsmPhoneRestrictions() {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
-  ['ns-team','ns-csm','ns-sys','ns-main'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  ['ns-team','ns-csm','ns-sys','ns-main','ns-sessions'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
   document.querySelectorAll('button').forEach(btn => {
     const oc = btn.getAttribute('onclick') || '';
     if (oc === 'openModal()' || oc === 'window.print()' || oc === 'exportCSV()') btn.style.display = 'none';
@@ -1611,7 +1612,7 @@ function applyCoachRestrictions() {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
-  ['ns-team','ns-csm','ns-sys','ns-phone'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
+  ['ns-team','ns-csm','ns-sys','ns-phone','ns-sessions'].forEach(id => { const el=$(''+id); if(el) el.style.display='none'; });
   // Hide topbar action buttons (add client, print, export)
   document.querySelectorAll('button').forEach(btn => {
     const oc = btn.getAttribute('onclick') || '';
