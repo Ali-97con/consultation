@@ -757,6 +757,25 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div id="upselldetail-body" style="padding:18px;max-height:80vh;overflow-y:auto"></div>
   </div>
 </div>
+<!-- UPSELL stale-alert delete (2 options) -->
+<div class="mo" id="upstale-mo" style="z-index:700" onclick="if(event.target===this)closeStaleDelete()">
+  <div class="mbox" style="max-width:420px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:#ef444422;display:flex;align-items:center;justify-content:center;flex-shrink:0">🗑️</div>
+      <h3>حذف التنبيه</h3>
+      <button class="mcls" onclick="closeStaleDelete()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div style="padding:18px">
+      <div style="font-size:13px;color:var(--t2);margin-bottom:14px">تنبيه: <b id="upstale-name"></b></div>
+      <button class="btn btn-g" style="width:100%;justify-content:flex-start;margin-bottom:10px;padding:12px 14px;text-align:right" onclick="snoozeUpsellAlert(_staleId)">
+        <span style="font-size:18px">⏰</span><div style="margin-inline-start:8px"><div style="font-weight:700;font-size:13px">تأجيل — ذكّرني بعد 7 أيام</div><div style="font-size:11px;color:var(--t3)">يختفي الآن ويعود بعد أسبوع</div></div>
+      </button>
+      <button class="btn btn-g" style="width:100%;justify-content:flex-start;padding:12px 14px;text-align:right;border-color:#ef444455" onclick="disableUpsellAlert(_staleId)">
+        <span style="font-size:18px">🚫</span><div style="margin-inline-start:8px"><div style="font-weight:700;font-size:13px;color:var(--r)">حذف نهائي — تعطيل لهذا العميل</div><div style="font-size:11px;color:var(--t3)">لا تنبّهني عنه مجدداً (يعود تلقائياً إذا أضفت متابعة)</div></div>
+      </button>
+    </div>
+  </div>
+</div>
 <!-- CONTRACT PAUSE dialog -->
 <div class="mo" id="pause-mo" onclick="if(event.target===this)closePauseDialog()">
   <div class="mbox" style="max-width:430px;width:100%">
@@ -5399,7 +5418,7 @@ function updateUpsellBadge(){
   const b=$('nl-upsell-badge');
   if(b){ if(!allowed){ b.style.display='none'; } else { const n=upsellTodayList().length; b.textContent=n; b.style.display=n>0?'inline-flex':'none'; } }
   const ob=$('nl-upcalls-badge');
-  if(ob){ if(!allowed){ ob.style.display='none'; } else { const n=(typeof upsellOverdueList==='function')?upsellOverdueList().length:0; ob.textContent=n; ob.style.display=n>0?'inline-flex':'none'; } }
+  if(ob){ if(!allowed){ ob.style.display='none'; } else { const n=(typeof upsellStaleList==='function')?upsellStaleList().length:0; ob.textContent=n; ob.style.display=n>0?'inline-flex':'none'; } }
 }
 // One-click flag from CSM: mark/unmark an active client as an upsell prospect → shows in the ⭐ محتمل tab.
 function toggleUpsellProspect(id){
@@ -5526,11 +5545,11 @@ function renderPhoneClients(){
           ${th('center')}#</th>${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}النقاط</th>${th('center')}انتهى</th>${th('center')}مكالمات متبقية</th>${th()}رجوع</th>${th('center')}إجراءات</th>
         </tr></thead><tbody>${rows}</tbody></table></div>`;
   }
-  const overdueN=(typeof upsellOverdueList==='function')?upsellOverdueList().length:0;
+  const overdueN=(typeof upsellStaleList==='function')?upsellStaleList().length:0;
   $('pg-phoneclients').innerHTML = `
   ${overdueN?`<div class="card mb" style="padding:10px 16px;background:#ef444411;border:1px solid #ef444455;display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer" onclick="nav('upcalls')">
     <span style="font-size:13px;font-weight:700;color:var(--r)">⏰ لديك ${overdueN} متابعة متأخرة</span>
-    <span style="font-size:11.5px;color:var(--t3)">مواعيد رجوع تجاوزت تاريخها — اضغط للفتح</span>
+    <span style="font-size:11.5px;color:var(--t3)">عملاء مرّ ${UP_STALE_DAYS}+ أيام دون متابعة — اضغط للفتح</span>
   </div>`:''}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin-bottom:14px">
     ${kpi(pool.length,'فرص متاحة (منتهية)','#6366f1')}
@@ -5686,7 +5705,12 @@ function addUpsellEntry(id){
     c.upsellNotes=[...(c.upsellNotes||[]), entry];
   }
   api('PUT',`/api/clients/${id}/upsell-notes`,{notes:c.upsellNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
-  if(!c.upsellContactedAt){ c.upsellContactedAt=new Date().toISOString(); api('PUT',`/api/clients/${id}`,{upsellContactedAt:c.upsellContactedAt}).catch(e=>console.error(e)); }  // any follow-up = reached out → moves to تم الاتصال
+  // Any follow-up = actively working the client → mark contacted, re-enable cadence alerts, clear snooze.
+  const patch={};
+  if(!c.upsellContactedAt){ c.upsellContactedAt=new Date().toISOString(); patch.upsellContactedAt=c.upsellContactedAt; }
+  if(c.upsellAlertOff){ c.upsellAlertOff=false; patch.upsellAlertOff=false; }
+  if(c.upsellSnoozeUntil){ c.upsellSnoozeUntil=''; patch.upsellSnoozeUntil=''; }
+  if(Object.keys(patch).length) api('PUT',`/api/clients/${id}`,patch).catch(e=>console.error(e));
   openUpsellDetail(id); updateUpsellBadge();
   if(S.view==='phoneclients') renderPhoneClients();
   toast('تم حفظ متابعة الأبسيل','✅');
@@ -5700,48 +5724,69 @@ function delUpsellEntry(id,entryId){
 }
 function closeUpsellDetail(){ $('upselldetail-mo').classList.remove('on'); if(S.view==='phoneclients') renderPhoneClients(); }
 
-// ═══════════════ UPSELL — overdue callbacks (متابعات متأخرة) ═══════════════
+// ═══════════════ UPSELL — stale follow-ups alert (متابعات متأخرة) ═══════════════
+// Alert when ≥7 days pass since the last contact/follow-up WITHOUT a new follow-up.
+// A future-scheduled callback (nextDate) suspends the alert until that date passes.
+const UP_STALE_DAYS = 7;
 function upsellNextDue(c){ const l=upsellLatest(c); return l && l.nextDate ? l.nextDate : null; }
-function _upCallEligible(c){ return !c.deleted && !upsellExcluded(c) && !['done','no'].includes(upsellMark(c)); }
-function upsellOverdueList(){ return clients.filter(c=>_upCallEligible(c) && (()=>{ const nd=upsellNextDue(c); return nd && daysUntil(nd)<0; })()).sort((a,b)=>daysUntil(upsellNextDue(a))-daysUntil(upsellNextDue(b))); }
-function upsellDueTodayList(){ return clients.filter(c=>_upCallEligible(c) && (()=>{ const nd=upsellNextDue(c); return nd && daysUntil(nd)===0; })()).sort((a,b)=>upsellPriority(b)-upsellPriority(a)); }
+function upsellEngaged(c){ return !!c.upsellContactedAt || (c.upsellNotes||[]).length>0; }
+function upsellLastActivity(c){
+  const ds=[];
+  (c.upsellNotes||[]).forEach(n=>{ if(n.date) ds.push(n.date.slice(0,10)); else if(n.createdAt) ds.push(n.createdAt.slice(0,10)); });
+  if(c.upsellContactedAt) ds.push(c.upsellContactedAt.slice(0,10));
+  ds.sort(); return ds.length ? ds[ds.length-1] : null;
+}
+function upsellStale(c){
+  if(c.deleted || upsellExcluded(c) || c.upsellAlertOff) return false;
+  if(['done','no'].includes(upsellMark(c))) return false;
+  if(!upsellEngaged(c)) return false;
+  if(c.upsellSnoozeUntil && daysUntil(c.upsellSnoozeUntil) > 0) return false;    // snoozed
+  const nd=upsellNextDue(c); if(nd && daysUntil(nd) > 0) return false;            // future callback planned → respect it
+  const la=upsellLastActivity(c); if(!la) return false;
+  return daysSince(la) >= UP_STALE_DAYS;
+}
+function upsellStaleList(){ return clients.filter(upsellStale).sort((a,b)=>daysSince(upsellLastActivity(b))-daysSince(upsellLastActivity(a))); }
+function upsellStaleReason(c){ return (c.upsellNotes||[]).length===0 ? 'بعد الاتصال — لا متابعة بعد' : 'لا متابعة جديدة'; }
 let _ovSearch='';
 function setOvSearch(v){ _ovSearch=v; renderOverdue(); const el=$('ov-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
 function renderOverdue(){
   updateUpsellBadge();
   const q=_ovSearch.trim().toLowerCase();
   const inS=c=>matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q);
-  const overdue=upsellOverdueList().filter(inS), due=upsellDueTodayList().filter(inS);
+  const list=upsellStaleList().filter(inS);
   const th=x=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
-  const kpi=(v,l,c)=>`<div class="kpi" style="padding:11px"><div style="font-size:20px;font-weight:800;color:${c}">${v}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${l}</div></div>`;
-  const rowHtml=(c,overdueMode)=>{ const nd=upsellNextDue(c), d=daysUntil(nd);
+  const rows = list.length ? list.map(c=>{ const la=upsellLastActivity(c), d=daysSince(la);
     return `<tr style="border-bottom:1px solid var(--b1)">
       <td style="padding:10px 12px;font-size:12.5px"><span style="font-weight:600;cursor:pointer;color:var(--p2)" onclick="openUpsellDetail(${c.id})">${esc(c.name)||'—'}</span>${upsellMark(c)?' '+upsellMarkBadge(c):''}</td>
       <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap;direction:ltr">${esc(c.phone)||'—'}</td>
       <td style="padding:10px 12px">${planBadge(c.plan)}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:12px;white-space:nowrap">${nd?fmtDate(nd):'—'}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:12px;font-weight:700;color:${overdueMode?'var(--r)':'var(--y)'};white-space:nowrap">${overdueMode?`متأخر ${-d} يوم`:'اليوم'}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;white-space:nowrap">${la?fmtDate(la):'—'}</td>
+      <td style="padding:10px 12px;text-align:center;font-size:12px;font-weight:700;color:var(--r);white-space:nowrap">منذ ${d} يوم</td>
+      <td style="padding:10px 12px;font-size:11px;color:var(--t3);white-space:nowrap">${upsellStaleReason(c)}</td>
       <td style="padding:10px 12px;text-align:center;white-space:nowrap">
-        <button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpsellDetail(${c.id})" title="ملف البيع">📊</button>
+        <button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpsellDetail(${c.id})" title="سجّل متابعة">📊 متابعة</button>
         <a class="btn btn-g" style="padding:4px 9px;font-size:11px;text-decoration:none" href="https://wa.me/${(c.phone||'').replace(/[^0-9]/g,'')}" target="_blank" rel="noopener" title="واتساب">💬</a>
-      </td></tr>`; };
-  const table=(list,overdueMode,empty)=>`<div class="card" style="padding:0;overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:620px">
-      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}الموعد</th>${th('center')}الحالة</th>${th('center')}إجراءات</th></tr></thead>
-      <tbody>${list.length?list.map(c=>rowHtml(c,overdueMode)).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">${empty}</td></tr>`}</tbody></table></div>`;
+        <button class="btn btn-r" style="padding:4px 9px;font-size:11px" onclick="openStaleDelete(${c.id})" title="حذف التنبيه">✕</button>
+      </td></tr>`; }).join('') : `<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--t3)">لا توجد متابعات متأخرة 🎉</td></tr>`;
   $('pg-upcalls').innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">
-      ${kpi(overdue.length,'رجوع متأخر','#ef4444')}
-      ${kpi(due.length,'رجوع اليوم','#f59e0b')}
+      <div class="kpi" style="padding:12px"><div style="font-size:22px;font-weight:800;color:#ef4444">${list.length}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">متابعات متأخرة (≥ ${UP_STALE_DAYS} أيام)</div></div>
     </div>
     <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <input class="inp" id="ov-search" style="max-width:240px" placeholder="🔍 بحث بالاسم أو رقم الهاتف..." value="${esc(_ovSearch)}" oninput="setOvSearch(this.value)"/>
-      <span style="font-size:11.5px;color:var(--t3);margin-right:auto">المواعيد التي حدّدتها في متابعة الأبسيل وتجاوزت تاريخها</span>
+      <span style="font-size:11.5px;color:var(--t3);margin-right:auto">تنبيه عند مرور ${UP_STALE_DAYS} أيام على آخر اتصال/متابعة دون إضافة متابعة جديدة</span>
     </div>
-    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;color:var(--r)">⏰ رجوع متأخر (${overdue.length}) — الأكثر تأخّراً أولاً</div>
-    ${table(overdue,true,'لا توجد مواعيد متأخرة 🎉')}
-    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;color:var(--y)">📅 رجوع اليوم (${due.length})</div>
-    ${table(due,false,'لا توجد مواعيد اليوم')}`;
+    <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:680px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}آخر نشاط</th>${th('center')}المدة</th>${th()}السبب</th>${th('center')}إجراءات</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
 }
+// Delete an alert from the page → 2 options.
+let _staleId=null;
+function openStaleDelete(id){ _staleId=id; const c=clients.find(x=>x.id===id); if($('upstale-name')) $('upstale-name').textContent=c?c.name:''; $('upstale-mo').classList.add('on'); }
+function closeStaleDelete(){ $('upstale-mo').classList.remove('on'); _staleId=null; }
+function disableUpsellAlert(id){ const c=clients.find(x=>x.id===id); if(!c) return; c.upsellAlertOff=true; api('PUT',`/api/clients/${id}`,{upsellAlertOff:true}).catch(e=>console.error(e)); toast('تم تعطيل التنبيه لهذا العميل 🚫','🚫'); closeStaleDelete(); _refreshUpAlerts(); }
+function snoozeUpsellAlert(id){ const c=clients.find(x=>x.id===id); if(!c) return; c.upsellSnoozeUntil=_addDaysStr(new Date().toISOString().slice(0,10), UP_STALE_DAYS); api('PUT',`/api/clients/${id}`,{upsellSnoozeUntil:c.upsellSnoozeUntil}).catch(e=>console.error(e)); toast(`سيُذكّرك بعد ${UP_STALE_DAYS} أيام ⏰`,'⏰'); closeStaleDelete(); _refreshUpAlerts(); }
+function _refreshUpAlerts(){ updateUpsellBadge(); updateNotifBadge(); if(S.view==='upcalls') renderOverdue(); if(S.view==='notifs') renderNotifs(); if(S.view==='phoneclients') renderPhoneClients(); }
 
 // ═══════════════ UPSELL — analytics / conversion (تحليلات الأبسيل) ═══════════════
 function clientConverted(c){ return (c.upsells||[]).length>0 || (c.upgrades||[]).length>0; }
@@ -5758,8 +5803,11 @@ function renderUpsellAnalytics(){
   const convRate=workedN?Math.round(convertedN/workedN*100):0;
   const totalRev=active.reduce((s,c)=>s+upsellRevenueOf(c),0);
   // monthly (last 12)
-  const now=new Date(), months=[]; for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
-  const monthly=months.map(mo=>{ let touches=0,conv=0,sales=0,rev=0; active.forEach(c=>{ const touched=upsellTouchedInMonth(c,mo); const sc=upsellSalesCountOf(c,mo); if(touched){ touches++; if(sc>0) conv++; } sales+=sc; rev+=upsellRevenueOf(c,mo); }); return {mo,touches,conv,sales,rev,rate:touches?Math.round(conv/touches*100):0}; });
+  const now=new Date(), curMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const months=[]; for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  let monthly=months.map(mo=>{ let touches=0,conv=0,sales=0,rev=0; active.forEach(c=>{ const touched=upsellTouchedInMonth(c,mo); const sc=upsellSalesCountOf(c,mo); if(touched){ touches++; if(sc>0) conv++; } sales+=sc; rev+=upsellRevenueOf(c,mo); }); return {mo,touches,conv,sales,rev,rate:touches?Math.round(conv/touches*100):0}; });
+  monthly=monthly.filter(m=>m.touches||m.sales||m.rev);                         // only months with activity
+  if(!monthly.length) monthly=[{mo:curMonth,touches:0,conv:0,sales:0,rev:0,rate:0}];   // start clean with the current month
   const maxRev=Math.max(1,...monthly.map(m=>m.rev));
   // by plan
   const planStats={}; active.forEach(c=>{ (c.upsells||[]).forEach(u=>{ const t=planTier(c.plan); (planStats[t]=planStats[t]||{sales:0,rev:0}).sales++; planStats[t].rev+=(+u.price||0); }); (c.upgrades||[]).forEach(u=>{ const t=planTier(u.from)||planTier(c.plan); (planStats[t]=planStats[t]||{sales:0,rev:0}).sales++; planStats[t].rev+=Math.max(0,(u.newTotal||0)-(u.oldPrice||0)); }); });
@@ -6703,11 +6751,11 @@ function computeNotifs(){
         out.push({ key:`${c.id}:fu`, cid:c.id, type:'followup', tier, name:c.name, plan:c.plan, days:since, every:N, noFollow:false, contacted });
     }
   });
-  // Overdue upsell callbacks (admin + sales role only) — surfaced at the top.
+  // Stale upsell follow-ups (admin + sales role only) — surfaced at the top.
   if(isAdmin()||isCsmPhone()){
-    clients.filter(c=>!c.deleted && !upsellExcluded(c) && !['done','no'].includes(upsellMark(c))).forEach(c=>{
-      const nd=upsellNextDue(c); if(!nd) return; const d=daysUntil(nd);
-      if(d!==null && d<0) out.push({ key:c.id+':upcall', cid:c.id, type:'upcall', name:c.name, plan:c.plan, days:d, nextDate:nd });
+    clients.filter(upsellStale).forEach(c=>{
+      const la=upsellLastActivity(c), d=daysSince(la);
+      out.push({ key:c.id+':upcall', cid:c.id, type:'upcall', name:c.name, plan:c.plan, days:-d, lastAct:la });
     });
   }
   const order = { upcall:0, followup:1, ended:2, '3d':3, '15d':4 };
@@ -6782,11 +6830,11 @@ function renderNotifs(){
     const c=clients.find(x=>x.id===n.cid);
     const onClick = n.type==='upcall' ? `openUpsellDetail(${n.cid})` : `openClientFromNotif(${n.cid})`;
     const right = n.type==='ended' ? {t:`منذ ${-n.days} يوم`,clr:'var(--r)'}
-      : n.type==='upcall' ? {t:`متأخر ${-n.days} يوم`,clr:'var(--r)'}
+      : n.type==='upcall' ? {t:`بدون متابعة ${-n.days} يوم`,clr:'var(--r)'}
       : n.type==='followup' ? (n.noFollow ? {t:'لم تبدأ المتابعة',clr:'var(--r)'} : {t:`منذ ${n.days} يوم`,clr:'var(--p2)'})
       : {t:`${n.days} يوم`,clr:'var(--y)'};
     const sub = n.type==='followup' ? `${planBadge(n.plan)} · كل ${n.every} يوم`
-      : n.type==='upcall' ? `${planBadge(n.plan)} · موعد ${fmtDate(n.nextDate)}`
+      : n.type==='upcall' ? `${planBadge(n.plan)} · آخر نشاط ${fmtDate(n.lastAct)}`
       : `${planBadge(n.plan)} · ينتهي ${fmtDate(n.end)}`;
     const contactBtn = n.type!=='followup' ? '' : (n.contacted
       ? `<button style="font-size:10px;color:var(--g);background:var(--gbg);border:1px solid var(--g);padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0;cursor:pointer" title="${LANG==='ar'?'اضغط للإلغاء':'Click to cancel'}" onclick="event.stopPropagation();markContacted(${n.cid})">✅ بانتظار الرد ✕</button>`
