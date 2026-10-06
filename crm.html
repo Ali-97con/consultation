@@ -703,7 +703,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   </div>
 </div>
 <!-- PLAN UPGRADE (phone-CSM / admin) -->
-<div class="mo" id="upgrade-mo" onclick="if(event.target===this)closeUpgrade()">
+<div class="mo" id="upgrade-mo" style="z-index:560" onclick="if(event.target===this)closeUpgrade()">
   <div class="mbox" style="max-width:460px;width:100%">
     <div class="mh">
       <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">⬆️</div>
@@ -714,7 +714,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   </div>
 </div>
 <!-- UPSELL: record a service sale -->
-<div class="mo" id="upsell-mo" onclick="if(event.target===this)closeUpsell()">
+<div class="mo" id="upsell-mo" style="z-index:560" onclick="if(event.target===this)closeUpsell()">
   <div class="mbox" style="max-width:460px;width:100%">
     <div class="mh">
       <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">💰</div>
@@ -725,7 +725,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   </div>
 </div>
 <!-- UPSELL: manage services list (admin) -->
-<div class="mo" id="upsell-opts-mo" onclick="if(event.target===this)$('upsell-opts-mo').classList.remove('on')">
+<div class="mo" id="upsell-opts-mo" style="z-index:570" onclick="if(event.target===this)$('upsell-opts-mo').classList.remove('on')">
   <div class="mbox" style="max-width:480px;width:100%">
     <div class="mh">
       <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">🧾</div>
