@@ -5040,7 +5040,6 @@ function openCsmDetail(id, phone=false){
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ${isPaused(c)?'btn-p':'btn-g'}" onclick="${isPaused(c)?`endPause(${id})`:`openPauseDialog(${id})`}">${isPaused(c)?'▶️ '+(LANG==='ar'?'استئناف':'Resume'):'⏸️ '+(LANG==='ar'?'إيقاف':'Pause')}</button>
-        <button class="btn btn-p" onclick="openUpsell(${id})">💰 ${LANG==='ar'?'بيع خدمة (Upsell)':'Upsell'}</button>
         ${contractState(c)==='active'?`<button class="btn ${c.upsellProspect?'btn-p':'btn-g'}" onclick="toggleUpsellProspect(${id})" title="${LANG==='ar'?'يظهر في قائمة محتمل':'Shows in the Prospect list'}">${c.upsellProspect?'⭐ '+(LANG==='ar'?'محتمل ✓':'Prospect ✓'):'⭐ '+(LANG==='ar'?'تحديد كمحتمل':'Mark prospect')}</button>`:''}
         <button class="btn btn-g" onclick="closeCsmDetail();openUpsellDetail(${id})">🎯 ${LANG==='ar'?'متابعة أبسيل':'Upsell follow-up'}</button>
         <button class="btn btn-g" onclick="closeCsmDetail();openDetail(${id})">👤 ${LANG==='ar'?'الملف الشخصي':'Profile'}</button>
@@ -5373,7 +5372,8 @@ function upsellPriority(c){
   const tier = (m==='hot'&&due)?4 : (m==='warm'&&due)?3 : (!m)?2 : 1;
   return tier*1000 + upsellScore(c);
 }
-function upsellTodayList(){ return upsellPool().filter(upsellDue).sort((a,b)=>upsellPriority(b)-upsellPriority(a)).slice(0,UP_TODAY_N); }
+// Pending worklist: due + not yet contacted. No cap → un-worked clients carry over and accumulate day to day.
+function upsellTodayList(){ return upsellPool().filter(c=>upsellDue(c) && !upsellContacted(c)).sort((a,b)=>upsellPriority(b)-upsellPriority(a)); }
 function upsellSuggestion(c){
   const t=planTier(c.plan), rem=callsRemaining(c);
   if(t==='CORE') return upProfit(c) ? 'CORE + حقّق أرباحاً → اقترح الترقية إلى PREMIUM' : 'الترقية إلى PREMIUM';
@@ -5400,10 +5400,22 @@ function toggleUpsellProspect(id){
   if($('upselldetail-mo') && $('upselldetail-mo').classList.contains('on')) openUpsellDetail(id);
   if(S.view==='phoneclients') renderPhoneClients();
 }
+// "تم الاتصال": removes a client from أبسيل اليوم / محتمل and moves them to the تم الاتصال list (until resolved).
+function upsellContacted(c){ return !!c.upsellContactedAt; }
+function markUpsellContacted(id, val){
+  const c=clients.find(x=>x.id===id); if(!c) return;
+  c.upsellContactedAt = val ? new Date().toISOString() : '';
+  api('PUT',`/api/clients/${id}`,{upsellContactedAt:c.upsellContactedAt}).catch(e=>console.error(e));
+  toast(val?'تم نقله إلى «تم الاتصال» 📞':'رجع إلى القائمة ↩︎','📞');
+  updateUpsellBadge();
+  if($('upselldetail-mo') && $('upselldetail-mo').classList.contains('on')) openUpsellDetail(id);
+  if(S.view==='phoneclients') renderPhoneClients();
+}
 
 function upsellHistoryHtml(){
+  const q=_upSearch.trim().toLowerCase();
   const items=[];
-  clients.filter(c=>!c.deleted).forEach(c=>{
+  clients.filter(c=>!c.deleted && (matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q))).forEach(c=>{
     (c.upgrades||[]).forEach(u=>items.push({kind:'ترقية',date:u.date,cid:c.id,client:c.name,label:`${esc(u.from||'—')} → ${esc(u.to||'—')}`,amount:Math.max(0,(u.newTotal||0)-(u.oldPrice||0)),by:u.by}));
     (c.upsells||[]).forEach(u=>items.push({kind:'خدمة',date:u.date,cid:c.id,client:c.name,label:esc(u.type||'—'),amount:u.price||0,by:u.author}));
   });
@@ -5432,7 +5444,8 @@ function upsellTabList(){
   const inSearch=c=>matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q);
   let list;
   if(_upTab==='today') list=upsellTodayList();
-  else if(_upTab==='prospect') list=clients.filter(c=>!c.deleted && contractState(c)==='active' && c.upsellProspect && !upsellExcluded(c));   // active clients flagged during CSM
+  else if(_upTab==='prospect') list=clients.filter(c=>!c.deleted && contractState(c)==='active' && c.upsellProspect && !upsellExcluded(c) && !upsellContacted(c));   // active flagged, not yet contacted
+  else if(_upTab==='contacted') list=clients.filter(c=>!c.deleted && !upsellExcluded(c) && upsellContacted(c) && !['done','no'].includes(upsellMark(c)) && (contractState(c)==='ended' || (contractState(c)==='active' && c.upsellProspect)));  // reached out, follow-up in progress
   else if(_upTab==='opp') list=clients.filter(c=>!c.deleted && contractState(c)==='ended' && !upsellExcluded(c));                           // all non-active, ranked
   else if(_upTab==='upgrade') list=upsellPool().filter(c=>!!nextTierPlan(c.plan));
   else if(_upTab==='renew') list=upsellPool().filter(c=>{ const r=callsRemaining(c), ed=endedDays(c); return (r!==null&&r<=1)||(ed!==null&&ed<=90); });
@@ -5446,10 +5459,11 @@ function renderPhoneClients(){
   const th=(x)=>`<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
   const pool=upsellPool();
   const prospectCount=upsellProspectCount();
-  const dueCount=pool.filter(upsellDue).length;
+  const dueCount=upsellTodayList().length;
+  const contactedCount=clients.filter(c=>!c.deleted && !upsellExcluded(c) && upsellContacted(c) && !['done','no'].includes(upsellMark(c)) && (contractState(c)==='ended' || (contractState(c)==='active' && c.upsellProspect))).length;
   const addedRev=clients.filter(c=>!c.deleted).reduce((s,c)=>s+(c.upsells||[]).reduce((t,u)=>t+(u.price||0),0)+(c.upgrades||[]).reduce((t,u)=>t+Math.max(0,(u.newTotal||0)-(u.oldPrice||0)),0),0);
   const kpi=(v,l,c)=>`<div class="kpi" style="padding:11px"><div style="font-size:19px;font-weight:800;color:${c}">${v}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${l}</div></div>`;
-  const tabs=[['today','🎯 أبسيل اليوم'],['prospect','⭐ محتمل'],['opp','📊 ترتيب فرص'],['upgrade','🆙 احتمالية ترقية'],['renew','🔁 تجديد باقات'],['history','🗂️ السجل']];
+  const tabs=[['today','🎯 أبسيل اليوم'],['prospect','⭐ محتمل'],['contacted','📞 تم الاتصال'],['opp','📊 ترتيب فرص'],['upgrade','🆙 احتمالية ترقية'],['renew','🔁 تجديد باقات'],['history','🗂️ السجل']];
   const tabBtn=([id,l])=>`<button class="btn ${_upTab===id?'btn-p':'btn-g'}" onclick="setUpTab('${id}')">${l}</button>`;
   let body;
   if(_upTab==='history'){ body=upsellHistoryHtml(); }
@@ -5468,6 +5482,8 @@ function renderPhoneClients(){
         <td style="padding:10px 12px;text-align:center;font-size:11.5px;color:${rem!==null&&rem<=1?'var(--r)':'var(--t2)'}">${rem!==null?rem:'—'}</td>
         <td style="padding:10px 12px;font-size:11px;color:var(--t3);white-space:nowrap">${l&&l.nextDate?('↩︎ '+fmtDate(l.nextDate)):'—'}</td>
         <td style="padding:10px 12px;text-align:center;white-space:nowrap">
+          ${(_upTab==='today'||_upTab==='prospect')?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px;color:#0ea5e9;border-color:#0ea5e9" onclick="markUpsellContacted(${c.id},true)" title="تم الاتصال — نقل إلى قائمة «تم الاتصال»">📞 تم</button>`:''}
+          ${_upTab==='contacted'?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="markUpsellContacted(${c.id},false)" title="رجوع للقائمة">↩︎</button>`:''}
           <button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpsellDetail(${c.id})" title="ملف البيع / متابعة">📊</button>
           ${canUp?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openUpgrade(${c.id})" title="ترقية الباقة">⬆️</button>`:''}
           <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openUpsell(${c.id})" title="إضافة خدمة / باقة">➕</button>
@@ -5475,13 +5491,18 @@ function renderPhoneClients(){
     }).join(''):`<tr><td colspan="9" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء في هذه القائمة</td></tr>`;
     const banner = _upTab==='today'
       ? `<div class="card mb" style="padding:12px 16px;background:linear-gradient(135deg,#10b98111,#6366f111);border:1px solid #10b98155;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span style="font-size:14px;font-weight:800">🎯 قائمة اليوم للأبسيل: ${list.length} ${list.length===1?'عميل':'عملاء'}</span>
-          <span style="font-size:11.5px;color:var(--t3)">(العملاء المنتهية عقودهم، مرتّبون حسب الأولوية — ابدأ من الأعلى)</span>
+          <span style="font-size:14px;font-weight:800">🎯 بانتظار التواصل: ${list.length} ${list.length===1?'عميل':'عملاء'}</span>
+          <span style="font-size:11.5px;color:var(--t3)">(العملاء المنتهية عقودهم، مرتّبون حسب الأولوية — عند الاتصال اضغط «📞 تم» فينتقل إلى قائمة «تم الاتصال»)</span>
         </div>`
       : _upTab==='prospect'
       ? `<div class="card mb" style="padding:12px 16px;background:#8b5cf611;border:1px solid #8b5cf655;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span style="font-size:14px;font-weight:800">⭐ محتملون: ${list.length}</span>
-          <span style="font-size:11.5px;color:var(--t3)">(عملاء نشطون تم تحديدهم كمحتملين للأبسيل من صفحة متابعة CSM)</span>
+          <span style="font-size:11.5px;color:var(--t3)">(عملاء نشطون تم تحديدهم كمحتملين من متابعة CSM — عند الاتصال اضغط «📞 تم»)</span>
+        </div>`
+      : _upTab==='contacted'
+      ? `<div class="card mb" style="padding:12px 16px;background:#0ea5e911;border:1px solid #0ea5e955;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:14px;font-weight:800">📞 تم الاتصال: ${list.length}</span>
+          <span style="font-size:11.5px;color:var(--t3)">(عملاء تواصلت معهم — تابِع معهم هنا؛ «↩︎» لإرجاعهم للقائمة)</span>
         </div>`
       : _upTab==='opp'
       ? `<div class="card mb" style="padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -5497,12 +5518,13 @@ function renderPhoneClients(){
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin-bottom:14px">
     ${kpi(pool.length,'فرص متاحة (منتهية)','#6366f1')}
     ${kpi(prospectCount,'محتملون (نشطون)','#8b5cf6')}
-    ${kpi(dueCount,'مستحقّ التواصل','#f59e0b')}
+    ${kpi(dueCount,'بانتظار التواصل','#f59e0b')}
+    ${kpi(contactedCount,'تم الاتصال','#0ea5e9')}
     ${kpi(fmtMoney(addedRev),'قيمة مضافة (أبسيل+ترقية)','#10b981')}
   </div>
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     ${tabs.map(tabBtn).join('')}
-    <input class="inp" id="up-search" style="max-width:220px;margin-right:auto" placeholder="🔍 بحث بالاسم أو الهاتف..." value="${esc(_upSearch)}" oninput="setUpSearch(this.value)"/>
+    <input class="inp" id="up-search" style="max-width:240px;margin-right:auto" placeholder="🔍 بحث بالاسم أو رقم الهاتف..." value="${esc(_upSearch)}" oninput="setUpSearch(this.value)"/>
     <button class="btn btn-g" onclick="openCsmOpts(true)" title="إدارة حالات ونوايا الأبسيل">⚙️ القوائم</button>
   </div>
   ${body}`;
@@ -5575,6 +5597,7 @@ function openUpsellDetail(id){
       ${nextTierPlan(c.plan)?`<button class="btn btn-p" onclick="openUpgrade(${id})">🆙 ترقية الباقة</button>`:''}
       <button class="btn btn-p" onclick="openUpsell(${id})">➕ خدمة / باقة مكالمات</button>
       ${contractState(c)==='active'?`<button class="btn ${c.upsellProspect?'btn-p':'btn-g'}" onclick="toggleUpsellProspect(${id})">${c.upsellProspect?'⭐ محتمل ✓':'⭐ تحديد كمحتمل'}</button>`:''}
+      ${upsellContacted(c)?`<button class="btn btn-g" onclick="markUpsellContacted(${id},false)" title="إرجاع إلى قائمة الانتظار">↩︎ إرجاع للقائمة</button>`:`<button class="btn btn-g" style="color:#0ea5e9;border-color:#0ea5e9" onclick="markUpsellContacted(${id},true)">📞 تم الاتصال</button>`}
       <button class="btn btn-g" onclick="closeUpsellDetail();openDetail(${id})">👤 الملف الكامل</button>
     </div>
     ${(ups.length||ug.length)?`<div style="font-size:12px;font-weight:700;margin-bottom:8px">🗂️ سجل المبيعات (${ups.length+ug.length})</div>
@@ -5646,6 +5669,7 @@ function addUpsellEntry(id){
     c.upsellNotes=[...(c.upsellNotes||[]), entry];
   }
   api('PUT',`/api/clients/${id}/upsell-notes`,{notes:c.upsellNotes}).catch(e=>{ toast('خطأ في الحفظ','❌'); console.error(e); });
+  if(!c.upsellContactedAt){ c.upsellContactedAt=new Date().toISOString(); api('PUT',`/api/clients/${id}`,{upsellContactedAt:c.upsellContactedAt}).catch(e=>console.error(e)); }  // any follow-up = reached out → moves to تم الاتصال
   openUpsellDetail(id); updateUpsellBadge();
   if(S.view==='phoneclients') renderPhoneClients();
   toast('تم حفظ متابعة الأبسيل','✅');
