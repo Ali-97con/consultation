@@ -5480,18 +5480,48 @@ function upsellHistoryHtml(){
       <tbody>${rows}</tbody></table></div>`;
 }
 
+const UP_EXPIRE_DAYS = 15;   // pre-expiry renewal window
+function upsellExpiringList(){ return clients.filter(c=>!c.deleted && contractState(c)==='active' && !upsellExcluded(c) && !['done','no'].includes(upsellMark(c)) && !upsellContacted(c) && (()=>{ const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=UP_EXPIRE_DAYS; })()); }
+function upsellContactedList(){ return clients.filter(c=>!c.deleted && !upsellExcluded(c) && upsellContacted(c) && !['done','no'].includes(upsellMark(c))); }   // any reached-out client, follow-up in progress
+// "كل العملاء" tab filters
+let _allStatus='', _allPlan='', _allMonth='', _allContacted='', _allUpsold='';
+function setAllStatus(v){ _allStatus=v; renderPhoneClients(); }
+function setAllPlan(v){ _allPlan=v; renderPhoneClients(); }
+function setAllMonth(v){ _allMonth=v; renderPhoneClients(); }
+function setAllContacted(v){ _allContacted=v; renderPhoneClients(); }
+function setAllUpsold(v){ _allUpsold=v; renderPhoneClients(); }
+function upsellAllList(){
+  return clients.filter(c=>{
+    if(c.deleted) return false;
+    if(_allStatus==='active' && contractState(c)!=='active') return false;
+    if(_allStatus==='ended'  && contractState(c)!=='ended')  return false;
+    if(_allPlan && planTier(c.plan)!==_allPlan) return false;
+    if(_allMonth && (c.regDate||'').slice(0,7)!==_allMonth) return false;
+    if(_allContacted==='yes' && !upsellContacted(c)) return false;
+    if(_allContacted==='no'  &&  upsellContacted(c)) return false;
+    const upsold=(c.upsells||[]).length>0 || (c.upgrades||[]).length>0;
+    if(_allUpsold==='yes' && !upsold) return false;
+    if(_allUpsold==='no'  &&  upsold) return false;
+    return true;
+  });
+}
 function upsellTabList(){
   const q=_upSearch.trim().toLowerCase();
   const inSearch=c=>matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q);
   let list;
   if(_upTab==='today') list=upsellTodayList();
   else if(_upTab==='prospect') list=clients.filter(c=>!c.deleted && contractState(c)==='active' && c.upsellProspect && !upsellExcluded(c) && !upsellContacted(c));   // active flagged, not yet contacted
-  else if(_upTab==='contacted') list=clients.filter(c=>!c.deleted && !upsellExcluded(c) && upsellContacted(c) && !['done','no'].includes(upsellMark(c)) && (contractState(c)==='ended' || (contractState(c)==='active' && c.upsellProspect)));  // reached out, follow-up in progress
-  else if(_upTab==='opp') list=clients.filter(c=>!c.deleted && contractState(c)==='ended' && !upsellExcluded(c));                           // all non-active, ranked
+  else if(_upTab==='expiring') list=upsellExpiringList();                                    // active, contract ending ≤15 days
+  else if(_upTab==='contacted') list=upsellContactedList();                                  // reached out, follow-up in progress
+  else if(_upTab==='opp') list=clients.filter(c=>!c.deleted && contractState(c)==='ended' && !upsellExcluded(c));   // all non-active, ranked
   else if(_upTab==='upgrade') list=upsellPool().filter(c=>!!nextTierPlan(c.plan));
   else if(_upTab==='renew') list=upsellPool().filter(c=>{ const r=callsRemaining(c), ed=endedDays(c); return (r!==null&&r<=1)||(ed!==null&&ed<=90); });
+  else if(_upTab==='all') list=upsellAllList();
   else list=[];
-  return list.filter(inSearch).sort((a,b)=>upsellPriority(b)-upsellPriority(a));
+  list=list.filter(inSearch);
+  if(_upTab==='all') return list.sort((a,b)=>(b.regDate||'').localeCompare(a.regDate||''));   // newest contract start first
+  if(_upTab==='expiring') return list.sort((a,b)=>(daysUntil(a.contractEnd)??999)-(daysUntil(b.contractEnd)??999));   // soonest first
+  return list.sort((a,b)=>upsellPriority(b)-upsellPriority(a));
 }
 function upsellProspectCount(){ return clients.filter(c=>!c.deleted && contractState(c)==='active' && c.upsellProspect && !upsellExcluded(c)).length; }
 
@@ -5501,29 +5531,31 @@ function renderPhoneClients(){
   const pool=upsellPool();
   const prospectCount=upsellProspectCount();
   const dueCount=upsellTodayList().length;
-  const contactedCount=clients.filter(c=>!c.deleted && !upsellExcluded(c) && upsellContacted(c) && !['done','no'].includes(upsellMark(c)) && (contractState(c)==='ended' || (contractState(c)==='active' && c.upsellProspect))).length;
+  const contactedCount=upsellContactedList().length;
   const addedRev=clients.filter(c=>!c.deleted).reduce((s,c)=>s+(c.upsells||[]).reduce((t,u)=>t+(u.price||0),0)+(c.upgrades||[]).reduce((t,u)=>t+Math.max(0,(u.newTotal||0)-(u.oldPrice||0)),0),0);
   const kpi=(v,l,c)=>`<div class="kpi" style="padding:11px"><div style="font-size:19px;font-weight:800;color:${c}">${v}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${l}</div></div>`;
-  const tabs=[['today','🎯 أبسيل اليوم'],['prospect','⭐ محتمل'],['contacted','📞 تم الاتصال'],['opp','📊 ترتيب فرص'],['upgrade','🆙 احتمالية ترقية'],['renew','🔁 تجديد باقات'],['history','🗂️ السجل']];
+  const tabs=[['today','🎯 أبسيل اليوم'],['prospect','⭐ محتمل'],['expiring','⏳ تنتهي قريباً'],['contacted','📞 تم الاتصال'],['opp','📊 ترتيب فرص'],['upgrade','🆙 احتمالية ترقية'],['renew','🔁 تجديد باقات'],['all','📇 كل العملاء'],['history','🗂️ السجل']];
   const tabBtn=([id,l])=>`<button class="btn ${_upTab===id?'btn-p':'btn-g'}" onclick="setUpTab('${id}')">${l}</button>`;
   let body;
   if(_upTab==='history'){ body=upsellHistoryHtml(); }
   else {
     const list=upsellTabList();
+    const regMonths=[...new Set(clients.filter(c=>!c.deleted).map(c=>(c.regDate||'').slice(0,7)).filter(Boolean))].sort().reverse();
+    const selOpt=(v,cur,l)=>`<option value="${v}"${v===cur?' selected':''}>${l}</option>`;
     const rows=list.length?list.map((c,i)=>{
       const sc=upsellScore(c), ed=endedDays(c), rem=callsRemaining(c), l=upsellLatest(c);
       const canUp=!!nextTierPlan(c.plan);
       return `<tr style="border-bottom:1px solid var(--b1)">
         <td style="padding:10px 12px;text-align:center;font-size:12px;color:var(--t3);font-weight:700">${i+1}</td>
-        <td style="padding:10px 12px;font-size:12.5px"><span style="font-weight:600;cursor:pointer;color:var(--p2)" onclick="openUpsellDetail(${c.id})" title="فتح ملف البيع">${esc(c.name)||'—'}</span>${c.upsellProspect?' <span style="font-size:10px;font-weight:600;background:#8b5cf622;color:#8b5cf6;padding:2px 8px;border-radius:20px">⭐ محتمل</span>':''}${upsellMark(c)?' '+upsellMarkBadge(c):''}</td>
+        <td style="padding:10px 12px;font-size:12.5px"><span style="font-weight:600;cursor:pointer;color:var(--p2)" onclick="openUpsellDetail(${c.id})" title="فتح ملف البيع">${esc(c.name)||'—'}</span>${_upTab==='all'&&contractBadge(c)?' '+contractBadge(c):''}${c.upsellProspect?' <span style="font-size:10px;font-weight:600;background:#8b5cf622;color:#8b5cf6;padding:2px 8px;border-radius:20px">⭐ محتمل</span>':''}${upsellMark(c)?' '+upsellMarkBadge(c):''}</td>
         <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap;direction:ltr">${esc(c.phone)||'—'}</td>
         <td style="padding:10px 12px">${planBadge(c.plan)}</td>
         <td style="padding:10px 12px;text-align:center"><span style="display:inline-block;min-width:34px;font-size:13px;font-weight:800;color:${sc>=60?'#10b981':sc>=40?'#f59e0b':'var(--t2)'}">${sc}</span></td>
-        <td style="padding:10px 12px;text-align:center;font-size:11.5px;color:var(--t2);white-space:nowrap">${ed!==null?`منذ ${ed} ي`:'—'}</td>
+        <td style="padding:10px 12px;text-align:center;font-size:11.5px;white-space:nowrap;color:${ed!==null?'var(--t2)':(contractState(c)==='active'&&daysUntil(c.contractEnd)!==null&&daysUntil(c.contractEnd)<=15?'var(--y)':'var(--t2)')}">${ed!==null?`منذ ${ed} ي`:(contractState(c)==='active'&&c.contractEnd?`يتبقّى ${daysUntil(c.contractEnd)} ي`:'—')}</td>
         <td style="padding:10px 12px;text-align:center;font-size:11.5px;color:${rem!==null&&rem<=1?'var(--r)':'var(--t2)'}">${rem!==null?rem:'—'}</td>
         <td style="padding:10px 12px;font-size:11px;color:var(--t3);white-space:nowrap">${l&&l.nextDate?('↩︎ '+fmtDate(l.nextDate)):'—'}</td>
         <td style="padding:10px 12px;text-align:center;white-space:nowrap">
-          ${(_upTab==='today'||_upTab==='prospect')?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px;color:#0ea5e9;border-color:#0ea5e9" onclick="markUpsellContacted(${c.id},true)" title="تم الاتصال — نقل إلى قائمة «تم الاتصال»">📞 تم</button>`:''}
+          ${(_upTab==='today'||_upTab==='prospect'||_upTab==='expiring')?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px;color:#0ea5e9;border-color:#0ea5e9" onclick="markUpsellContacted(${c.id},true)" title="تم الاتصال — نقل إلى قائمة «تم الاتصال»">📞 تم</button>`:''}
           ${_upTab==='contacted'?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="markUpsellContacted(${c.id},false)" title="رجوع للقائمة">↩︎</button>`:''}
           <button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpsellDetail(${c.id})" title="ملف البيع / متابعة">📊</button>
           ${canUp?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openUpgrade(${c.id})" title="ترقية الباقة">⬆️</button>`:''}
@@ -5545,14 +5577,28 @@ function renderPhoneClients(){
           <span style="font-size:14px;font-weight:800">📞 تم الاتصال: ${list.length}</span>
           <span style="font-size:11.5px;color:var(--t3)">(عملاء تواصلت معهم — تابِع معهم هنا؛ «↩︎» لإرجاعهم للقائمة)</span>
         </div>`
+      : _upTab==='expiring'
+      ? `<div class="card mb" style="padding:12px 16px;background:#f59e0b11;border:1px solid #f59e0b55;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:14px;font-weight:800">⏳ تنتهي خلال ≤ ${UP_EXPIRE_DAYS} يوم: ${list.length}</span>
+          <span style="font-size:11.5px;color:var(--t3)">(عملاء نشطون قرب انتهاء العقد — تواصل للتجديد/الترقية؛ عند الاتصال اضغط «📞 تم»)</span>
+        </div>`
       : _upTab==='opp'
       ? `<div class="card mb" style="padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span style="font-size:12.5px;color:var(--t3)">📊 كل العملاء غير النشطين (منتهية عقودهم)، مرتّبون حسب الأولوية — ${list.length} عميل</span>
+        </div>`
+      : _upTab==='all'
+      ? `<div class="card mb" style="padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <select class="fsl" onchange="setAllStatus(this.value)" title="الحالة">${selOpt('',_allStatus,'كل الحالات')}${selOpt('active',_allStatus,'نشط')}${selOpt('ended',_allStatus,'منتهي')}</select>
+          <select class="fsl" onchange="setAllPlan(this.value)" title="الباقة">${selOpt('',_allPlan,'كل الباقات')}${selOpt('CORE',_allPlan,'CORE')}${selOpt('PREMIUM',_allPlan,'PREMIUM')}${selOpt('INNER',_allPlan,'INNER')}</select>
+          <select class="fsl" onchange="setAllMonth(this.value)" title="شهر التسجيل">${selOpt('',_allMonth,'كل شهور التسجيل')}${regMonths.map(m=>selOpt(m,_allMonth,monthLabel(m))).join('')}</select>
+          <select class="fsl" onchange="setAllContacted(this.value)" title="التواصل للأبسيل">${selOpt('',_allContacted,'التواصل (الكل)')}${selOpt('yes',_allContacted,'تم التواصل')}${selOpt('no',_allContacted,'لم يتم')}</select>
+          <select class="fsl" onchange="setAllUpsold(this.value)" title="أبسيل/ترقية سابقة">${selOpt('',_allUpsold,'أبسيل سابق (الكل)')}${selOpt('yes',_allUpsold,'سبق له')}${selOpt('no',_allUpsold,'لم يسبق')}</select>
+          <span style="font-size:12px;color:var(--t3);margin-right:auto">${list.length} عميل · مرتّبون حسب بداية العقد (الأحدث أولاً)</span>
         </div>`:'';
     body=`${banner}
       <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:820px">
         <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
-          ${th('center')}#</th>${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}النقاط</th>${th('center')}انتهى</th>${th('center')}مكالمات متبقية</th>${th()}رجوع</th>${th('center')}إجراءات</th>
+          ${th('center')}#</th>${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}النقاط</th>${th('center')}العقد</th>${th('center')}مكالمات متبقية</th>${th()}رجوع</th>${th('center')}إجراءات</th>
         </tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   const overdueN=(typeof upsellStaleList==='function')?upsellStaleList().length:0;
