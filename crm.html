@@ -5483,13 +5483,14 @@ function upsellHistoryHtml(){
 const UP_EXPIRE_DAYS = 15;   // pre-expiry renewal window
 function upsellExpiringList(){ return clients.filter(c=>!c.deleted && contractState(c)==='active' && !upsellExcluded(c) && !['done','no'].includes(upsellMark(c)) && !upsellContacted(c) && (()=>{ const d=daysUntil(c.contractEnd); return d!==null && d>=0 && d<=UP_EXPIRE_DAYS; })()); }
 function upsellContactedList(){ return clients.filter(c=>!c.deleted && !upsellExcluded(c) && upsellContacted(c) && !['done','no'].includes(upsellMark(c))); }   // any reached-out client, follow-up in progress
-// "كل العملاء" tab filters
-let _allStatus='', _allPlan='', _allMonth='', _allContacted='', _allUpsold='';
+// "كل العملاء" tab filters + sort
+let _allStatus='', _allPlan='', _allMonth='', _allContacted='', _allUpsold='', _allSort='', _allSortDir=1;
 function setAllStatus(v){ _allStatus=v; renderPhoneClients(); }
 function setAllPlan(v){ _allPlan=v; renderPhoneClients(); }
 function setAllMonth(v){ _allMonth=v; renderPhoneClients(); }
 function setAllContacted(v){ _allContacted=v; renderPhoneClients(); }
 function setAllUpsold(v){ _allUpsold=v; renderPhoneClients(); }
+function setAllSort(k){ if(_allSort===k){ _allSortDir=-_allSortDir; } else { _allSort=k; _allSortDir=(k==='score'||k==='calls')?-1:1; } renderPhoneClients(); }
 function upsellAllList(){
   return clients.filter(c=>{
     if(c.deleted) return false;
@@ -5519,7 +5520,19 @@ function upsellTabList(){
   else if(_upTab==='all') list=upsellAllList();
   else list=[];
   list=list.filter(inSearch);
-  if(_upTab==='all') return list.sort((a,b)=>(b.regDate||'').localeCompare(a.regDate||''));   // newest contract start first
+  if(_upTab==='all'){
+    const d=_allSortDir;
+    const byNum=fn=>(a,b)=>{ const va=fn(a), vb=fn(b), na=(va==null||isNaN(va)), nb=(vb==null||isNaN(vb)); if(na&&nb)return 0; if(na)return 1; if(nb)return -1; return (va-vb)*d; };   // nulls last
+    const byStr=fn=>(a,b)=>{ const va=fn(a)||'', vb=fn(b)||''; if(!va&&!vb)return 0; if(!va)return 1; if(!vb)return -1; return va.localeCompare(vb)*d; };
+    const planRank={CORE:1,PREMIUM:2,INNER:3,OTHER:0};
+    if(_allSort==='name')     return list.sort((a,b)=>(a.name||'').localeCompare(b.name||'')*d);
+    if(_allSort==='plan')     return list.sort((a,b)=>((planRank[planTier(a.plan)]||0)-(planRank[planTier(b.plan)]||0))*d);
+    if(_allSort==='score')    return list.sort((a,b)=>(upsellScore(a)-upsellScore(b))*d);
+    if(_allSort==='contract') return list.sort(byNum(c=>daysUntil(c.contractEnd)));
+    if(_allSort==='calls')    return list.sort(byNum(c=>callsRemaining(c)));
+    if(_allSort==='next')     return list.sort(byStr(c=>(upsellLatest(c)||{}).nextDate));
+    return list.sort((a,b)=>(b.regDate||'').localeCompare(a.regDate||''));   // default: newest contract start first
+  }
   if(_upTab==='expiring') return list.sort((a,b)=>(daysUntil(a.contractEnd)??999)-(daysUntil(b.contractEnd)??999));   // soonest first
   return list.sort((a,b)=>upsellPriority(b)-upsellPriority(a));
 }
@@ -5542,6 +5555,10 @@ function renderPhoneClients(){
     const list=upsellTabList();
     const regMonths=[...new Set(clients.filter(c=>!c.deleted).map(c=>(c.regDate||'').slice(0,7)).filter(Boolean))].sort().reverse();
     const selOpt=(v,cur,l)=>`<option value="${v}"${v===cur?' selected':''}>${l}</option>`;
+    // Sortable header (only clickable in the "all" tab)
+    const sTh=(k,label,align)=> _upTab==='all'
+      ? `<th style="padding:10px 12px;font-size:11px;color:${_allSort===k?'var(--p2)':'var(--t3)'};text-align:${align||'right'};cursor:pointer;user-select:none;white-space:nowrap" onclick="setAllSort('${k}')">${label}${_allSort===k?(_allSortDir>0?' ▲':' ▼'):' ⇅'}</th>`
+      : `<th style="padding:10px 12px;font-size:11px;color:var(--t3);text-align:${align||'right'}">${label}</th>`;
     const rows=list.length?list.map((c,i)=>{
       const sc=upsellScore(c), ed=endedDays(c), rem=callsRemaining(c), l=upsellLatest(c);
       const canUp=!!nextTierPlan(c.plan);
@@ -5598,7 +5615,7 @@ function renderPhoneClients(){
     body=`${banner}
       <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:820px">
         <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
-          ${th('center')}#</th>${th()}العميل</th>${th()}الهاتف</th>${th()}الباقة</th>${th('center')}النقاط</th>${th('center')}العقد</th>${th('center')}مكالمات متبقية</th>${th()}رجوع</th>${th('center')}إجراءات</th>
+          ${th('center')}#</th>${sTh('name','العميل')}${th()}الهاتف</th>${sTh('plan','الباقة')}${sTh('score','النقاط','center')}${sTh('contract','العقد','center')}${sTh('calls','مكالمات متبقية','center')}${sTh('next','رجوع')}${th('center')}إجراءات</th>
         </tr></thead><tbody>${rows}</tbody></table></div>`;
   }
   const overdueN=(typeof upsellStaleList==='function')?upsellStaleList().length:0;
