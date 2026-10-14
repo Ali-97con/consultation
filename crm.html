@@ -991,6 +991,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     </div>
   </div>
 </div>
+<!-- NOTE IMAGE VIEWER (lightbox) -->
+<div class="mo" id="imgview-mo" style="z-index:720;background:rgba(0,0,0,.9);backdrop-filter:blur(4px)" onclick="if(event.target===this)closeImgView()">
+  <div style="display:flex;flex-direction:column;gap:12px;align-items:center;max-width:95vw;max-height:95vh">
+    <img id="imgview-img" alt="" style="max-width:94vw;max-height:80vh;object-fit:contain;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.6);background:#111"/>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center">
+      <span id="imgview-name" style="font-size:12px;color:#cbd5e1;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      <button class="btn btn-p" onclick="downloadNoteFile(_imgViewFid)">⬇️ تحميل</button>
+      <button class="btn btn-g" onclick="closeImgView()">✕ إغلاق</button>
+    </div>
+  </div>
+</div>
 <!-- App Loader -->
 <div id="app-loader">
   <div class="loader-logo"><img src="تصميم بدون عنوان.png" style="width:52px;height:52px;border-radius:14px;object-fit:cover" onerror="this.style.display='none'"/></div>
@@ -4219,13 +4230,30 @@ function deleteOneContract(clientId, cid){
 
 // ── Note attachments (images / PDF) ──
 let _newNoteFiles = [];   // staged File objects for the note being added
+const _noteFileMeta = {}; // fid -> {name, mime} (for the viewer / download)
+let _imgViewFid = null;
 function nfUrl(fid){ return `/api/note-files/${fid}?t=${encodeURIComponent(getToken())}`; }
-function openNoteFile(fid){ window.open(nfUrl(fid),'_blank','noopener'); }
+function openNoteFile(fid){ window.open(nfUrl(fid),'_blank','noopener'); }   // PDFs / fallback
+function openNoteImage(fid){
+  _imgViewFid=fid;
+  const img=$('imgview-img'); if(img) img.src=nfUrl(fid);
+  const nm=$('imgview-name'); if(nm) nm.textContent=((_noteFileMeta[fid]||{}).name)||'';
+  $('imgview-mo').classList.add('on');
+}
+function closeImgView(){ $('imgview-mo').classList.remove('on'); const img=$('imgview-img'); if(img) img.src=''; _imgViewFid=null; }
+function downloadNoteFile(fid){
+  if(fid==null) return;
+  const nm=((_noteFileMeta[fid]||{}).name)||'file';
+  fetch(nfUrl(fid)).then(r=>{ if(!r.ok) throw new Error(); return r.blob(); })
+    .then(blob=>{ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=nm; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500); })
+    .catch(()=>toast(LANG==='ar'?'فشل التحميل':'Download failed','❌'));
+}
 function noteFilesHtml(n){
   const files=n.files||[]; if(!files.length) return '';
+  files.forEach(f=>{ _noteFileMeta[f.id]={name:f.name||'file',mime:f.mime||''}; });
   return `<div class="note-files">${files.map(f=>(f.mime||'').startsWith('image/')
-    ? `<img src="${nfUrl(f.id)}" alt="${esc(f.name||'')}" title="${esc(f.name||'')}" onclick="openNoteFile(${f.id})"/>`
-    : `<span class="note-fchip" style="cursor:pointer" onclick="openNoteFile(${f.id})" title="${esc(f.name||'')}">📄 ${esc((f.name||'ملف').slice(0,26))}</span>`
+    ? `<img src="${nfUrl(f.id)}" alt="${esc(f.name||'')}" title="${esc(f.name||'')}" onclick="openNoteImage(${f.id})"/>`
+    : `<span class="note-fchip" style="cursor:pointer" onclick="openNoteFile(${f.id})" title="${esc(f.name||'')}">📄 ${esc((f.name||'ملف').slice(0,26))} <span style="color:var(--p2)" onclick="event.stopPropagation();downloadNoteFile(${f.id})" title="تحميل">⬇️</span></span>`
   ).join('')}</div>`;
 }
 function _setNotesHtml(cid){ const nl=$(`notes-list-${cid}`); if(nl) nl.innerHTML=renderNotes(cid); }
