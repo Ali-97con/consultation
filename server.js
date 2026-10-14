@@ -12,6 +12,7 @@ const {
   getTeamTrash, restoreTeamMember, permDeleteTeamMember, emptyTeamTrash,
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan, importData,
   addContract, getContractById, deleteContractById,
+  addNoteFile, getNoteFileById, deleteNoteFileById,
   updateCsmNotes, updateUpsellNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   createSessionDB, getSessionDB, deleteSessionDB,
@@ -44,7 +45,8 @@ app.use((req, res, next) => {
 
 // ─── Auth middleware (MongoDB sessions — serverless-safe) ─────────────────────
 function requireAuth(req, res, next) {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+    || (req.query && req.query.t ? String(req.query.t).trim() : '');   // ?t= allows inline <img>/file view
   getSessionDB(token)
     .then(session => {
       if (!session) return res.status(401).json({ error: 'غير مصرح — يرجى تسجيل الدخول' });
@@ -207,12 +209,11 @@ app.put('/api/clients/:id', requireAuth, async (req, res) => {
 
 app.put('/api/clients/:id/notes', requireAuth, async (req, res) => {
   try {
-    const notes = (req.body.notes || []).map(n => ({
-      ...n,
-      txt: str(n.txt, 5000),
-      author: str(n.author, 100),
-      date: str(n.date, 50),
-    }));
+    const notes = (req.body.notes || []).map(n => {
+      const o = { ...n, txt: str(n.txt, 5000), author: str(n.author, 100), date: str(n.date, 50) };
+      if (Array.isArray(n.files)) o.files = n.files.slice(0, 20).map(f => ({ id: Number(f && f.id) || 0, name: str(f && f.name, 200) || '', mime: str(f && f.mime, 100) || '' }));
+      return o;
+    });
     await updateNotes(+req.params.id, notes);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -675,6 +676,37 @@ app.get('/api/contracts/:cid', requireAuth, async (req, res) => {
 
 app.delete('/api/contracts/:cid', requireAdmin, async (req, res) => {
   try { const ok = await deleteContractById(+req.params.cid); res.json({ ok }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Note attachments (images / PDF) ──────────────────────────────────────────
+app.post('/api/clients/:id/notes/:noteId/files',
+  requireAuth,
+  express.raw({ type: () => true, limit: '8mb' }),
+  async (req, res) => {
+    try {
+      const buf = req.body;
+      if (!Buffer.isBuffer(buf) || buf.length === 0) return res.status(400).json({ error: 'ملف غير صالح' });
+      const mime = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      if (mime !== 'application/pdf' && !mime.startsWith('image/')) return res.status(415).json({ error: 'نوع الملف غير مدعوم — صورة أو PDF فقط' });
+      const filename = str(req.query.name, 200) || 'file';
+      const fid = await addNoteFile(+req.params.id, +req.params.noteId, filename, mime, buf);
+      res.json({ ok: true, id: fid, name: filename, mime });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+app.get('/api/note-files/:fid', requireAuth, async (req, res) => {
+  try {
+    const f = await getNoteFileById(+req.params.fid);
+    if (!f) return res.status(404).json({ error: 'لا يوجد ملف' });
+    res.setHeader('Content-Type', f.mime || 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'inline');
+    res.send(f.data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/note-files/:fid', requireAuth, async (req, res) => {
+  try { const ok = await deleteNoteFileById(+req.params.fid); res.json({ ok }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 

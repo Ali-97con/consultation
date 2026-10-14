@@ -59,6 +59,17 @@ async function ensureSchema() {
     $mig$;
     create index if not exists contracts_client_idx on contracts(client_id);
 
+    create table if not exists note_files (
+      id          bigserial primary key,
+      client_id   integer     not null,
+      note_id     bigint,
+      filename    text,
+      mime        text,
+      data        bytea       not null,
+      uploaded_at timestamptz not null default now()
+    );
+    create index if not exists note_files_client_idx on note_files(client_id);
+
     create table if not exists team_members (
       id         bigserial primary key,
       type       text    not null,          -- 'closers' | 'setters'
@@ -738,6 +749,25 @@ async function deleteContractById(contractId) {
   return r.rowCount > 0;
 }
 
+// ─── Note attachments (images / PDF stored as bytea; many per note) ───────────
+async function addNoteFile(clientId, noteId, filename, mime, buffer) {
+  await ready();
+  const { rows } = await q(`insert into note_files(client_id, note_id, filename, mime, data, uploaded_at)
+                            values($1,$2,$3,$4,$5, now()) returning id`,
+    [clientId, noteId, filename, mime, buffer]);
+  return Number(rows[0].id);
+}
+async function getNoteFileById(fileId) {
+  await ready();
+  const { rows } = await q('select filename, mime, data from note_files where id = $1', [fileId]);
+  return rows[0] || null;
+}
+async function deleteNoteFileById(fileId) {
+  await ready();
+  const r = await q('delete from note_files where id = $1', [fileId]);
+  return r.rowCount > 0;
+}
+
 // ─── Bulk import (used by migration + /api/migrate-import) ─────────────────────
 async function importData(data) {
   await schemaReady();
@@ -1027,6 +1057,7 @@ module.exports = {
   getCustomPlans, addCustomPlan, updateCustomPlan, deleteCustomPlan,
   // Contracts (files in Postgres, many per client)
   addContract, getContractById, deleteContractById,
+  addNoteFile, getNoteFileById, deleteNoteFileById,
   // CSM (customer success) follow-up
   updateCsmNotes, updateUpsellNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   // Upsell services + purchases

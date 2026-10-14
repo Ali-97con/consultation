@@ -230,6 +230,10 @@ tbody tr.overdue-row td{border-right:2px solid var(--r)}
 .note-add textarea{flex:1;background:var(--hv);border:1px solid var(--b2);color:var(--t1);padding:9px 11px;border-radius:8px;font-size:12.5px;font-family:inherit;outline:none;resize:none;transition:border-color .15s;line-height:1.5}
 .note-add textarea:focus{border-color:var(--p)}
 .note-add textarea::placeholder{color:var(--t3)}
+.note-files{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.note-files img{width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid var(--b2);cursor:pointer;background:var(--hv)}
+.note-fchip{display:inline-flex;align-items:center;gap:6px;background:var(--hv);border:1px solid var(--b2);border-radius:8px;padding:6px 10px;font-size:11.5px;color:var(--t1)}
+.note-fx{color:var(--r);cursor:pointer;font-weight:800;font-size:13px;line-height:1}
 .note-item{background:var(--cd);border:1px solid var(--b1);border-radius:9px;padding:11px;margin-bottom:8px;transition:border-color .15s}
 .note-item.pinned{border-color:var(--y);background:rgba(245,158,11,.05)}
 .note-pin-ic{color:var(--y);font-size:12px}
@@ -975,6 +979,11 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     </div>
     <div class="note-edit-body">
       <textarea class="note-edit-ta" id="note-edit-ta" placeholder="اكتب ملاحظتك هنا..."></textarea>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <input type="file" id="note-edit-file" accept="image/*,application/pdf" multiple style="display:none" onchange="if(S._editNote)addFileToNote(S._editNote.cid,S._editNote.nid,this)"/>
+        <button class="btn btn-g" style="padding:6px 12px;font-size:12px" onclick="document.getElementById('note-edit-file').click()">📎 إرفاق صورة / PDF</button>
+        <div id="note-edit-files" class="note-files" style="margin-top:0"></div>
+      </div>
       <div class="note-edit-ft">
         <button class="btn btn-g" onclick="closeNoteEdit()">إلغاء</button>
         <button class="btn btn-p" onclick="saveEditNote()">💾 حفظ التعديل</button>
@@ -4011,6 +4020,7 @@ function quickSaveField(id, field, value){
 function openDetail(id) {
   const c = clients.find(x=>x.id===id);
   if (!c) return;
+  _newNoteFiles = [];   // clear any staged note attachments from a previous client
   const _pl=payList(c), n = nc(c), pAmts=_pl.map(p=>p[0]), pDates=_pl.map(p=>p[1]);
   const instAmt = Math.round((c.customTotal||PLANS[c.plan]||0)/n);
 
@@ -4059,7 +4069,7 @@ function openDetail(id) {
   </div>
 
   <!-- ── EDIT (admin/coach) ── -->
-  ${!isCoach()?`<div style="padding:12px 22px;border-bottom:1px solid var(--b1)">
+  ${(!isCoach() && !isCsmPhone())?`<div style="padding:12px 22px;border-bottom:1px solid var(--b1)">
     <button class="btn btn-g" style="width:100%;justify-content:center" onclick="openModal(${c.id})">✏️ ${t('dp_edit')}</button>
   </div>`:''}
 
@@ -4108,10 +4118,15 @@ function openDetail(id) {
   <!-- ── NOTES ── -->
   <div class="dp-sc">
     <div class="dp-st">📝 ${t('dp_notes')} <span style="font-size:10px;color:var(--t3);font-weight:400;text-transform:none;letter-spacing:0">(${c.notes.length})</span></div>
-    <div class="note-add">
+    ${!isCsmPhone()?`<div class="note-add">
       <textarea id="note-inp-${id}" rows="3" placeholder="${t('dp_note_placeholder')}"></textarea>
       <button class="btn btn-p" onclick="addNote(${id})" style="align-self:flex-end">${t('dp_note_add')}</button>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;margin:-6px 0 12px;flex-wrap:wrap">
+      <input type="file" id="note-file-${id}" accept="image/*,application/pdf" multiple style="display:none" onchange="stageNoteFiles(${id},this)"/>
+      <button class="btn btn-g" style="padding:5px 11px;font-size:12px" onclick="document.getElementById('note-file-${id}').click()">📎 ${LANG==='ar'?'إرفاق صورة / PDF':'Attach image / PDF'}</button>
+      <div id="note-stage-${id}" class="note-files" style="margin-top:0"></div>
+    </div>`:''}
     <div id="notes-list-${id}">${renderNotes(id)}</div>
   </div>
 
@@ -4152,10 +4167,10 @@ function openDetail(id) {
       ${(c.contracts||[]).map(f=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           <span style="font-size:12px;color:var(--t2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(f.filename||'file')}</span>
           <button class="btn btn-p" style="padding:5px 10px" onclick="downloadContractFile(${f.id})">⬇️ ${LANG==='ar'?'فتح':'Open'}</button>
-          <button class="btn btn-r" style="padding:5px 10px" onclick="deleteOneContract(${id},${f.id})">🗑️</button>
+          ${!isCsmPhone()?`<button class="btn btn-r" style="padding:5px 10px" onclick="deleteOneContract(${id},${f.id})">🗑️</button>`:''}
         </div>`).join('')}
-      <input type="file" id="contract-inp-${id}" accept="application/pdf,image/*" multiple style="display:none" onchange="uploadContractFiles(${id},this)"/>
-      <button class="btn btn-g" style="width:100%;justify-content:center;margin-top:6px" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة ملف / ملفات':'Add file(s)'}</button>
+      ${!isCsmPhone()?`<input type="file" id="contract-inp-${id}" accept="application/pdf,image/*" multiple style="display:none" onchange="uploadContractFiles(${id},this)"/>
+      <button class="btn btn-g" style="width:100%;justify-content:center;margin-top:6px" onclick="document.getElementById('contract-inp-${id}').click()">⬆️ ${LANG==='ar'?'إضافة ملف / ملفات':'Add file(s)'}</button>`:''}
     </div>
   </div>` : ''}`;
 
@@ -4202,6 +4217,63 @@ function deleteOneContract(clientId, cid){
     }).catch(()=>toast(LANG==='ar'?'فشل الحذف':'Delete failed','❌'));
 }
 
+// ── Note attachments (images / PDF) ──
+let _newNoteFiles = [];   // staged File objects for the note being added
+function nfUrl(fid){ return `/api/note-files/${fid}?t=${encodeURIComponent(getToken())}`; }
+function openNoteFile(fid){ window.open(nfUrl(fid),'_blank','noopener'); }
+function noteFilesHtml(n){
+  const files=n.files||[]; if(!files.length) return '';
+  return `<div class="note-files">${files.map(f=>(f.mime||'').startsWith('image/')
+    ? `<img src="${nfUrl(f.id)}" alt="${esc(f.name||'')}" title="${esc(f.name||'')}" onclick="openNoteFile(${f.id})"/>`
+    : `<span class="note-fchip" style="cursor:pointer" onclick="openNoteFile(${f.id})" title="${esc(f.name||'')}">📄 ${esc((f.name||'ملف').slice(0,26))}</span>`
+  ).join('')}</div>`;
+}
+function _setNotesHtml(cid){ const nl=$(`notes-list-${cid}`); if(nl) nl.innerHTML=renderNotes(cid); }
+async function uploadNoteFile(cid, noteId, file){
+  const buf=await file.arrayBuffer();
+  const r=await fetch(`/api/clients/${cid}/notes/${noteId}/files?name=${encodeURIComponent(file.name||'file')}`,{
+    method:'POST', headers:{'Authorization':'Bearer '+getToken(),'Content-Type':file.type||'application/octet-stream'}, body:buf });
+  if(!r.ok){ let m=''; try{ m=(await r.json()).error; }catch(_){} throw new Error(m||'upload failed'); }
+  return await r.json();   // {id,name,mime}
+}
+// staging for the add-note box
+function stageNoteFiles(cid, inp){
+  const fs=[...(inp.files||[])]; inp.value='';
+  for(const f of fs){ if(f.size>8*1024*1024){ toast(LANG==='ar'?'الملف أكبر من 8MB':'File over 8MB','⚠️'); continue; } _newNoteFiles.push(f); }
+  _renderNoteStage(cid);
+}
+function _renderNoteStage(cid){
+  const el=$(`note-stage-${cid}`); if(!el) return;
+  el.innerHTML=_newNoteFiles.map((f,i)=>`<span class="note-fchip">${(f.type||'').startsWith('image/')?'🖼️':'📄'} ${esc((f.name||'ملف').slice(0,22))}<span class="note-fx" onclick="unstageNoteFile(${cid},${i})">✕</span></span>`).join('');
+}
+function unstageNoteFile(cid,i){ _newNoteFiles.splice(i,1); _renderNoteStage(cid); }
+// manage an existing note's attachments (edit modal)
+async function addFileToNote(cid, nid, inp){
+  const c=clients.find(x=>x.id===cid); if(!c) return; const n=c.notes.find(x=>x.id===nid); if(!n) return;
+  const fs=[...(inp.files||[])]; inp.value=''; if(!fs.length) return;
+  toast(LANG==='ar'?'جارِ رفع الملفات…':'Uploading…','⏳');
+  try{ for(const f of fs){ if(f.size>8*1024*1024){ toast(LANG==='ar'?'الملف أكبر من 8MB':'File over 8MB','⚠️'); continue; } const m=await uploadNoteFile(cid,nid,f); n.files=[...(n.files||[]),{id:m.id,name:m.name,mime:m.mime}]; } }
+  catch(e){ toast(LANG==='ar'?'فشل رفع الملف':'Upload failed','❌'); return; }
+  api('PUT',`/api/clients/${cid}/notes`,{notes:c.notes}).catch(e=>console.error(e));
+  _setNotesHtml(cid); _renderEditNoteFiles(cid,nid);
+  toast(LANG==='ar'?'تم إرفاق الملف ✓':'Attached','📎');
+}
+async function delNoteFile(cid, nid, fid){
+  if(!confirm(LANG==='ar'?'حذف هذا الملف؟':'Delete this file?')) return;
+  const c=clients.find(x=>x.id===cid); if(!c) return; const n=c.notes.find(x=>x.id===nid); if(!n) return;
+  try{ await fetch(`/api/note-files/${fid}`,{method:'DELETE',headers:{'Authorization':'Bearer '+getToken()}}); }catch(_){}
+  n.files=(n.files||[]).filter(f=>f.id!==fid);
+  api('PUT',`/api/clients/${cid}/notes`,{notes:c.notes}).catch(e=>console.error(e));
+  _setNotesHtml(cid); _renderEditNoteFiles(cid,nid);
+  toast(LANG==='ar'?'تم حذف الملف':'Deleted','🗑️');
+}
+function _renderEditNoteFiles(cid,nid){
+  const el=$('note-edit-files'); if(!el) return;
+  const c=clients.find(x=>x.id===cid); const n=c&&c.notes.find(x=>x.id===nid);
+  const files=(n&&n.files)||[];
+  el.innerHTML=files.map(f=>`<span class="note-fchip" title="${esc(f.name||'')}"><span style="cursor:pointer" onclick="openNoteFile(${f.id})">${(f.mime||'').startsWith('image/')?'🖼️':'📄'} ${esc((f.name||'ملف').slice(0,20))}</span><span class="note-fx" onclick="delNoteFile(${cid},${nid},${f.id})">✕</span></span>`).join('');
+}
+
 function renderNotes(id) {
   const c = clients.find(x=>x.id===id);
   if (!c) return '';
@@ -4219,26 +4291,38 @@ function renderNotes(id) {
         <span class="note-time">${esc(n.date)}</span>
       </div>
       <div class="note-txt">${esc(n.txt)}</div>
-      <div class="note-acts">
+      ${noteFilesHtml(n)}
+      ${!isCsmPhone()?`<div class="note-acts">
         <button class="note-btn" onclick="pinNote(${id},${n.id})">${n.pin?'📌 '+t('note_pin').replace('📍 ',''):t('note_pin')}</button>
         <button class="note-btn" style="color:var(--p2)" onclick="editNote(${id},${n.id})">✏️ ${LANG==='ar'?'تعديل':'Edit'}</button>
         <button class="note-btn" style="color:var(--r)" onclick="confirmDelNote(${id},${n.id})">🗑️ ${LANG==='ar'?'حذف':'Delete'}</button>
-      </div>
+      </div>`:''}
     </div>`).join('');
 }
 
-function addNote(cid) {
+async function addNote(cid) {
   const inp = $(`note-inp-${cid}`);
-  if (!inp || !inp.value.trim()) return;
+  const txt = inp ? inp.value.trim() : '';
   const c = clients.find(x=>x.id===cid);
   if (!c) return;
+  if (!txt && !_newNoteFiles.length) return;
+  const noteId = Date.now();
+  let files = [];
+  if (_newNoteFiles.length) {
+    toast(LANG==='ar'?'جارِ رفع الملفات…':'Uploading…','⏳');
+    try { for (const f of _newNoteFiles) { const m = await uploadNoteFile(cid, noteId, f); files.push({ id:m.id, name:m.name, mime:m.mime }); } }
+    catch(e){ toast(LANG==='ar'?'فشل رفع الملف':'Upload failed','❌'); return; }
+  }
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   const noteAuthor = (()=>{ try { return sessionStorage.getItem('ah97_user')||'مدير النظام'; } catch(_){return 'مدير النظام';} })();
-  c.notes.push({ id:Date.now(), txt:inp.value.trim(), date:dateStr, author:noteAuthor, pin:false });
+  const note = { id:noteId, txt, date:dateStr, author:noteAuthor, pin:false };
+  if (files.length) note.files = files;
+  c.notes.push(note);
   api('PUT', `/api/clients/${cid}/notes`, {notes:c.notes}).catch(e=>console.error(e));
-  inp.value = '';
-  const nl=$(`notes-list-${cid}`); if(nl) nl.innerHTML=renderNotes(cid);
+  if (inp) inp.value = '';
+  _newNoteFiles = []; _renderNoteStage(cid);
+  _setNotesHtml(cid);
   toast(t('note_add_success'),'📝');
   logActivity('📝', LANG==='ar'?'ملاحظة جديدة':'New Note', c.name, 'var(--gbg)', 'var(--g)');
 }
@@ -4281,6 +4365,7 @@ function editNote(cid, nid) {
   const n=c.notes.find(x=>x.id===nid); if(!n) return;
   S._editNote={cid,nid};
   const ta=$('note-edit-ta'); if(ta) ta.value=n.txt;
+  _renderEditNoteFiles(cid,nid);
   $('note-edit-mo').classList.add('on');
   setTimeout(()=>{ const ta=$('note-edit-ta'); if(ta){ta.focus();ta.selectionStart=ta.selectionEnd=ta.value.length;} },80);
 }
