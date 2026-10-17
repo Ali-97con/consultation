@@ -726,16 +726,35 @@ function _sumPayments(c) {
 function _clip(s, n) { s = String(s==null?'':s).replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0,n)+'…' : s; }
 // Build a compact Arabic snapshot of all clients for the model (structured + truncated notes).
 function _planTotal(c, planPrices){ return ((c.customTotal!=null ? Number(c.customTotal) : (planPrices[c.plan]||0)) || 0); }
+function _latestUpsellNote(c){ const ns=c.upsellNotes||[]; if(!ns.length) return null; return ns.slice().sort((a,b)=>String(b.date||b.createdAt||'').localeCompare(String(a.date||a.createdAt||'')))[0]; }
+// Derived upsell mark (mirrors the front-end logic) so the assistant can answer upsell questions.
+function _upsellMark(c){
+  const l=_latestUpsellNote(c); if(!l) return '—';
+  const it=l.intent||[], st=l.state||'';
+  if(st==='بيع' || it.includes('تمت الترقية')) return 'تم البيع';
+  if(it.includes('مهتم') || it.includes('يريد ترقية') || st==='إحتياج') return 'جاهز';
+  if(it.includes('قيد التفكير') || st==='تحدي او هدف قادم' || st==='نتيجة محصلة' || st==='طلب معاودة الاتصال' || st==='موعد مجدول') return 'يحتاج وقت';
+  if(it.includes('لا يملك ميزانية حالياً') || st==='غير مهتم حاليا' || st==='غير مهتم حالياً') return 'بارد';
+  if(it.includes('غير مهتم')) return 'غير مهتم';
+  return '—';
+}
+function _contractStateAr(c){
+  if(!c || c.status==='lead' || c.status==='refunded') return c.status||'—';
+  if(c.pausedAt) return 'نشط(موقوف)';
+  const today=new Date().toISOString().slice(0,10);
+  return (c.contractEnd && c.contractEnd < today) ? 'منتهي' : 'نشط';
+}
 // Dense CSV-like snapshot (legend once, values per row) to minimise tokens.
 // Notes are included ONLY in detailed mode (they are large and expensive).
 function buildClientSnapshot(clients, planPrices, withNotes) {
-  const header = 'الأعمدة: id | الاسم | الباقة | الإجمالي$ | مدفوع$ | متبقٍ$ | القناة | المغلق | المسوّق | الحالة | التسجيل | نهاية_العقد | الميلاد | مكالمات_مستخدم/كلي | مبيعات_سابقة | الهاتف | البريد';
+  const header = 'الأعمدة: id | الاسم | الباقة | الإجمالي$ | مدفوع$ | متبقٍ$ | القناة | المغلق | المسوّق | الحالة | العقد(نشط/منتهي) | التسجيل | نهاية_العقد | الميلاد | مكالمات_مستخدم/كلي | مبيعات_سابقة | أبسيل_الوضع | محتمل | تم_التواصل_أبسيل | موعد_رجوع | الهاتف | البريد';
   const rows = clients.map(c => {
     const total = _planTotal(c, planPrices), paid = _sumPayments(c), rem = Math.max(0, total - paid);
     const sales = (c.upgrades||[]).length + (c.upsells||[]).length;
+    const nx = (_latestUpsellNote(c)||{}).nextDate || '—';
     return [c.id, c.name||'—', c.plan||'—', total, paid, rem, c.channel||'—', c.closer||'—', c.setter||'—',
-      c.status||'—', c.regDate||'—', c.contractEnd||'—', c.birthDate||'—', `${c.callsDone||0}/${c.callsTotal||0}`,
-      sales, c.phone||'—', c.email||'—'].join(' | ');
+      c.status||'—', _contractStateAr(c), c.regDate||'—', c.contractEnd||'—', c.birthDate||'—', `${c.callsDone||0}/${c.callsTotal||0}`,
+      sales, _upsellMark(c), (c.upsellProspect?'نعم':'—'), (c.upsellContactedAt?'نعم':'—'), nx, c.phone||'—', c.email||'—'].join(' | ');
   });
   let out = header + '\n' + rows.join('\n');
   if (withNotes) {
@@ -778,6 +797,7 @@ app.post('/api/assistant', requireAdmin, async (req, res) => {
 - أجب بالفرنسية (المستخدم يتحدث الفرنسية)، لكن أسماء العملاء وبياناتهم بالعربية فاذكرها كما هي.
 - اعتمد حصراً على قاعدة العملاء المرفقة أدناه. لا تخترع معلومات؛ إن لم تكن المعلومة موجودة قل ذلك بوضوح.
 - للأسئلة الإحصائية (عدّ/تصفية/مجاميع) احسب بدقة من البيانات المرفقة، واذكر القائمة المعنية عند الحاجة.
+- شرح حقول الأبسيل: «العقد» = نشط أو منتهي (العملاء المنتهون هم جمهور الأبسيل الأساسي). «أبسيل_الوضع» = جاهز (مهتم بالشراء) / يحتاج وقت / بارد / غير مهتم / تم البيع / — (لا متابعة). «محتمل» = عميل نشط حُدِّد كفرصة أبسيل أثناء متابعة CSM. «تم_التواصل_أبسيل» = نعم إذا تم الاتصال به للأبسيل. «موعد_رجوع» = تاريخ معاودة الاتصال المحدَّد. «مبيعات_سابقة» = عدد الترقيات + الخدمات المُباعة.
 - المبالغ بالدولار ($). كن دقيقاً ومختصراً. يمكنك استخدام تنسيق بسيط (قوائم).${detailed ? '' : `
 - ملاحظة: نصوص الملاحظات غير مرفقة في هذا الوضع (للاقتصاد). إذا سُئلت عن محتوى ملاحظات العملاء، اطلب تفعيل وضع «البحث في الملاحظات».`}
 - أنت للقراءة فقط: لا يمكنك تعديل أي بيانات، فقط الإجابة والتحليل.`;
