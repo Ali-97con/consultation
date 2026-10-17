@@ -744,17 +744,38 @@ function _contractStateAr(c){
   const today=new Date().toISOString().slice(0,10);
   return (c.contractEnd && c.contractEnd < today) ? 'منتهي' : 'نشط';
 }
+function _upsellLastActivity(c){
+  const ds=[];
+  (c.upsellNotes||[]).forEach(n=>{ if(n && n.date) ds.push(String(n.date).slice(0,10)); else if(n && n.createdAt) ds.push(String(n.createdAt).slice(0,10)); });
+  if(c.upsellContactedAt) ds.push(String(c.upsellContactedAt).slice(0,10));
+  ds.sort(); return ds.length ? ds[ds.length-1] : '';
+}
+// Stale upsell follow-up (mirrors the front-end "متابعات متأخرة" alert: ≥7 days since last activity, no future callback).
+function _upsellStale(c){
+  if(!c || c.status==='lead' || c.status==='refunded' || c.upsellAlertOff) return false;
+  const mark=_upsellMark(c); if(mark==='تم البيع' || mark==='غير مهتم') return false;
+  const engaged = !!c.upsellContactedAt || (c.upsellNotes||[]).length>0;
+  if(!engaged) return false;
+  const today=new Date().toISOString().slice(0,10);
+  if(c.upsellSnoozeUntil && String(c.upsellSnoozeUntil) > today) return false;
+  const l=_latestUpsellNote(c); const nd=l && l.nextDate;
+  if(nd && String(nd) > today) return false;          // future callback planned
+  const la=_upsellLastActivity(c); if(!la) return false;
+  const d=Math.floor((Date.now()-new Date(la).getTime())/86400000);
+  return !isNaN(d) && d>=7;
+}
 // Dense CSV-like snapshot (legend once, values per row) to minimise tokens.
 // Notes are included ONLY in detailed mode (they are large and expensive).
 function buildClientSnapshot(clients, planPrices, withNotes) {
-  const header = 'الأعمدة: id | الاسم | الباقة | الإجمالي$ | مدفوع$ | متبقٍ$ | القناة | المغلق | المسوّق | الحالة | العقد(نشط/منتهي) | التسجيل | نهاية_العقد | الميلاد | مكالمات_مستخدم/كلي | مبيعات_سابقة | أبسيل_الوضع | محتمل | تم_التواصل_أبسيل | موعد_رجوع | الهاتف | البريد';
+  const header = 'الأعمدة: id | الاسم | الباقة | الإجمالي$ | مدفوع$ | متبقٍ$ | القناة | المغلق | المسوّق | الحالة | العقد(نشط/منتهي) | التسجيل | نهاية_العقد | الميلاد | مكالمات_مستخدم/كلي | مبيعات_سابقة | أبسيل_الوضع | محتمل | تم_التواصل_أبسيل | موعد_رجوع | آخر_نشاط_أبسيل | متابعة_متأخرة | الهاتف | البريد';
   const rows = clients.map(c => {
     const total = _planTotal(c, planPrices), paid = _sumPayments(c), rem = Math.max(0, total - paid);
     const sales = (c.upgrades||[]).length + (c.upsells||[]).length;
     const nx = (_latestUpsellNote(c)||{}).nextDate || '—';
     return [c.id, c.name||'—', c.plan||'—', total, paid, rem, c.channel||'—', c.closer||'—', c.setter||'—',
       c.status||'—', _contractStateAr(c), c.regDate||'—', c.contractEnd||'—', c.birthDate||'—', `${c.callsDone||0}/${c.callsTotal||0}`,
-      sales, _upsellMark(c), (c.upsellProspect?'نعم':'—'), (c.upsellContactedAt?'نعم':'—'), nx, c.phone||'—', c.email||'—'].join(' | ');
+      sales, _upsellMark(c), (c.upsellProspect?'نعم':'—'), (c.upsellContactedAt?'نعم':'—'), nx,
+      (_upsellLastActivity(c)||'—'), (_upsellStale(c)?'نعم':'—'), c.phone||'—', c.email||'—'].join(' | ');
   });
   let out = header + '\n' + rows.join('\n');
   if (withNotes) {
@@ -797,7 +818,8 @@ app.post('/api/assistant', requireAdmin, async (req, res) => {
 - أجب بالفرنسية (المستخدم يتحدث الفرنسية)، لكن أسماء العملاء وبياناتهم بالعربية فاذكرها كما هي.
 - اعتمد حصراً على قاعدة العملاء المرفقة أدناه. لا تخترع معلومات؛ إن لم تكن المعلومة موجودة قل ذلك بوضوح.
 - للأسئلة الإحصائية (عدّ/تصفية/مجاميع) احسب بدقة من البيانات المرفقة، واذكر القائمة المعنية عند الحاجة.
-- شرح حقول الأبسيل: «العقد» = نشط أو منتهي (العملاء المنتهون هم جمهور الأبسيل الأساسي). «أبسيل_الوضع» = جاهز (مهتم بالشراء) / يحتاج وقت / بارد / غير مهتم / تم البيع / — (لا متابعة). «محتمل» = عميل نشط حُدِّد كفرصة أبسيل أثناء متابعة CSM. «تم_التواصل_أبسيل» = نعم إذا تم الاتصال به للأبسيل. «موعد_رجوع» = تاريخ معاودة الاتصال المحدَّد. «مبيعات_سابقة» = عدد الترقيات + الخدمات المُباعة.
+- شرح حقول الأبسيل: «العقد» = نشط أو منتهي (العملاء المنتهون هم جمهور الأبسيل الأساسي). «أبسيل_الوضع» = جاهز (مهتم بالشراء) / يحتاج وقت / بارد / غير مهتم / تم البيع / — (لا متابعة). «محتمل» = عميل نشط حُدِّد كفرصة أبسيل أثناء متابعة CSM. «تم_التواصل_أبسيل» = نعم إذا تم الاتصال به للأبسيل. «موعد_رجوع» = تاريخ معاودة الاتصال المحدَّد. «آخر_نشاط_أبسيل» = تاريخ آخر اتصال/متابعة أبسيل. «متابعة_متأخرة» = نعم إذا مرّ ≥ 7 أيام على آخر نشاط دون متابعة جديدة (= relance en retard). «مبيعات_سابقة» = عدد الترقيات + الخدمات المُباعة.
+- البيانات أعلاه كاملة وموثوقة ومحسوبة مسبقاً؛ عندما يُطلب عدد أو قائمة، امسح كل الصفوف وأعطِ رقماً نهائياً محدَّداً بثقة. لا تَطلب من المستخدم التحقق يدوياً ولا تقل إنك قد تخطئ؛ إن لم يكن الحقل موجوداً فعلاً حينها فقط وضّح ذلك.
 - المبالغ بالدولار ($). كن دقيقاً ومختصراً. يمكنك استخدام تنسيق بسيط (قوائم).${detailed ? '' : `
 - ملاحظة: نصوص الملاحظات غير مرفقة في هذا الوضع (للاقتصاد). إذا سُئلت عن محتوى ملاحظات العملاء، اطلب تفعيل وضع «البحث في الملاحظات».`}
 - أنت للقراءة فقط: لا يمكنك تعديل أي بيانات، فقط الإجابة والتحليل.`;
