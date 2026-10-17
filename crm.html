@@ -6046,12 +6046,21 @@ function computeUpsellReport(monthsSet){
       const ba=agentOf(u.by||'—'); ba.sales++; ba.revenue+=rev; ba.clients.add(c.id);
       const pc=pcOf(c); pc.revenue+=rev; pc.sold=true; });
   });
+  const cmap={}; clients.forEach(c=>{ cmap[c.id]=c; });
+  let contactedEnded=0, contactedActive=0;
+  touched.forEach(id=>{ const st=contractState(cmap[id]); if(st==='ended') contactedEnded++; else if(st==='active') contactedActive++; });
   return {
-    contacted:touched.size, totalNotes, salesCount, revenue, converted:sold.size,
+    contacted:touched.size, contactedEnded, contactedActive, totalNotes, salesCount, revenue, converted:sold.size,
     convRate: touched.size?Math.round(sold.size/touched.size*100):0,
     agents:Object.values(byAuthor).sort((a,b)=>(b.revenue-a.revenue)||(b.sales-a.sales)||(b.notes-a.notes)),
     clientsList:Object.values(perClient).sort((a,b)=>(b.revenue-a.revenue)||(b.notes-a.notes)),
   };
+}
+// Last note for a report row: latest upsell follow-up text, else the latest team note.
+function _upRepLastNote(p){
+  if(p.last && p.last.text) return p.last.text;
+  const g=(p.c.notes||[]).slice().sort((a,b)=>(b.id||0)-(a.id||0))[0];
+  return (g && g.txt) || '';
 }
 function openUpsellReport(){
   if(_upRepMonth===null){
@@ -6078,7 +6087,7 @@ function renderUpsellReportBody(){
       <button class="btn btn-p" style="margin-right:auto" onclick="exportUpsellReportPdf()">🖨️ تصدير PDF</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:10px;margin-bottom:16px">
-      ${kpi(r.contacted,'عملاء تم التواصل','#0ea5e9')}${kpi(r.totalNotes,'متابعات أبسيل')}${kpi(r.salesCount,'مبيعات (أبسيل+ترقية)','#10b981')}${kpi(M(r.revenue),'الإيراد المُضاف','#10b981')}${kpi(r.converted,'تحويلات')}${kpi(r.convRate+'%','نسبة التحويل','var(--p2)')}
+      <div class="kpi" style="padding:12px"><div style="font-size:19px;font-weight:800;color:#0ea5e9">${r.contacted}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">عملاء تم التواصل</div><div style="font-size:9.5px;color:var(--t3);margin-top:3px">🔴 منتهي: <b>${r.contactedEnded}</b> · 🟢 نشط: <b>${r.contactedActive}</b></div></div>${kpi(r.totalNotes,'متابعات أبسيل')}${kpi(r.salesCount,'مبيعات (أبسيل+ترقية)','#10b981')}${kpi(M(r.revenue),'الإيراد المُضاف','#10b981')}${kpi(r.converted,'تحويلات')}${kpi(r.convRate+'%','نسبة التحويل','var(--p2)')}
     </div>
     <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">👤 حسب الوكيل (التقرير الفردي)</div>
     <div class="card" style="padding:0;overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:620px">
@@ -6086,9 +6095,9 @@ function renderUpsellReportBody(){
       ${r.agents.length?r.agents.map(a=>`<tr style="border-bottom:1px solid var(--b1)"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(a.author)}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.notes}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.clients.size}</td><td style="padding:9px 12px;text-align:center;font-size:12px;font-weight:600">${a.sales}</td><td style="padding:9px 12px;text-align:center;font-size:12px;color:var(--g);font-weight:700">${M(a.revenue)}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${_topEntries(a.states,3)}</td></tr>`).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">لا يوجد نشاط أبسيل في هذه الفترة</td></tr>`}
       </tbody></table></div>
     <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">📋 العملاء (${r.clientsList.length})</div>
-    <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:600px">
-      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">${th()}العميل</th>${th()}الباقة</th>${th('center')}متابعات</th>${th()}آخر حالة</th>${th('center')}بيع</th>${th('center')}الإيراد</th></tr></thead><tbody>
-      ${r.clientsList.length?r.clientsList.map(p=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="closeUpsellReport();openUpsellDetail(${p.c.id})"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(p.c.name)}</td><td style="padding:9px 12px">${planBadge(p.c.plan)}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${p.notes}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${p.last?esc(p.last.state||(p.last.intent||[]).join('، ')||'—'):'—'}</td><td style="padding:9px 12px;text-align:center">${p.sold?'✅':'—'}</td><td style="padding:9px 12px;text-align:center;font-size:12px;color:${p.revenue>0?'var(--g)':'var(--t3)'};font-weight:${p.revenue>0?'700':'400'}">${p.revenue>0?M(p.revenue):'—'}</td></tr>`).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">—</td></tr>`}
+    <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:720px">
+      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">${th()}العميل</th>${th()}الباقة</th>${th('center')}العقد</th>${th('center')}متابعات</th>${th()}آخر حالة</th>${th()}آخر ملاحظة</th>${th('center')}بيع</th>${th('center')}الإيراد</th></tr></thead><tbody>
+      ${r.clientsList.length?r.clientsList.map(p=>{ const nt=_upRepLastNote(p); const cs=contractState(p.c); return `<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="closeUpsellReport();openUpsellDetail(${p.c.id})"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(p.c.name)}</td><td style="padding:9px 12px">${planBadge(p.c.plan)}</td><td style="padding:9px 12px;text-align:center;font-size:11px;color:${cs==='ended'?'var(--r)':cs==='active'?'var(--g)':'var(--t3)'}">${cs==='ended'?'منتهي':cs==='active'?'نشط':'—'}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${p.notes}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${p.last?esc(p.last.state||(p.last.intent||[]).join('، ')||'—'):'—'}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2);max-width:220px">${nt?esc(nt.length>90?nt.slice(0,90)+'…':nt):'—'}</td><td style="padding:9px 12px;text-align:center">${p.sold?'✅':'—'}</td><td style="padding:9px 12px;text-align:center;font-size:12px;color:${p.revenue>0?'var(--g)':'var(--t3)'};font-weight:${p.revenue>0?'700':'400'}">${p.revenue>0?M(p.revenue):'—'}</td></tr>`;}).join(''):`<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--t3)">—</td></tr>`}
       </tbody></table></div>`;
 }
 function exportUpsellReportPdf(){
@@ -6098,7 +6107,7 @@ function exportUpsellReportPdf(){
     <div class="psub">${upRepRangeLabel()} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
     <h3>ملخص عام</h3>
     <table class="pt"><tbody>
-      <tr><td>عملاء تم التواصل بهم</td><td>${r.contacted}</td></tr>
+      <tr><td>عملاء تم التواصل بهم</td><td>${r.contacted} (منتهي: ${r.contactedEnded} · نشط: ${r.contactedActive})</td></tr>
       <tr><td>متابعات أبسيل</td><td>${r.totalNotes}</td></tr>
       <tr><td>مبيعات (أبسيل + ترقية)</td><td>${r.salesCount}</td></tr>
       <tr><td>الإيراد المُضاف</td><td>${M(r.revenue)}</td></tr>
@@ -6110,8 +6119,8 @@ function exportUpsellReportPdf(){
     ${r.agents.map(a=>`<tr><td>${esc(a.author)}</td><td>${a.notes}</td><td>${a.clients.size}</td><td>${a.sales}</td><td>${M(a.revenue)}</td><td>${_topEntries(a.states,3)}</td></tr>`).join('')||'<tr><td colspan="6">—</td></tr>'}
     </tbody></table>
     <h3>العملاء (${r.clientsList.length})</h3>
-    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>متابعات</th><th>آخر حالة</th><th>بيع</th><th>الإيراد</th></tr></thead><tbody>
-    ${r.clientsList.map(p=>`<tr><td>${esc(p.c.name)}</td><td>${esc(p.c.plan||'—')}</td><td>${p.notes}</td><td>${p.last?esc(p.last.state||(p.last.intent||[]).join('، ')||'—'):'—'}</td><td>${p.sold?'نعم':'—'}</td><td>${p.revenue>0?M(p.revenue):'—'}</td></tr>`).join('')||'<tr><td colspan="6">—</td></tr>'}
+    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>العقد</th><th>متابعات</th><th>آخر حالة</th><th>آخر ملاحظة</th><th>بيع</th><th>الإيراد</th></tr></thead><tbody>
+    ${r.clientsList.map(p=>{ const nt=_upRepLastNote(p); const cs=contractState(p.c); return `<tr><td>${esc(p.c.name)}</td><td>${esc(p.c.plan||'—')}</td><td>${cs==='ended'?'منتهي':cs==='active'?'نشط':'—'}</td><td>${p.notes}</td><td>${p.last?esc(p.last.state||(p.last.intent||[]).join('، ')||'—'):'—'}</td><td>${nt?esc(nt.length>120?nt.slice(0,120)+'…':nt):'—'}</td><td>${p.sold?'نعم':'—'}</td><td>${p.revenue>0?M(p.revenue):'—'}</td></tr>`;}).join('')||'<tr><td colspan="8">—</td></tr>'}
     </tbody></table>`;
   document.body.classList.add('printing');
   window.print();
