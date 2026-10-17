@@ -725,25 +725,35 @@ function _sumPayments(c) {
 }
 function _clip(s, n) { s = String(s==null?'':s).replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0,n)+'…' : s; }
 // Build a compact Arabic snapshot of all clients for the model (structured + truncated notes).
-function buildClientSnapshot(clients, planPrices) {
-  const lines = [];
-  for (const c of clients) {
-    const total = (c.customTotal!=null ? Number(c.customTotal) : (planPrices[c.plan]||0)) || 0;
-    const paid  = _sumPayments(c);
-    const rem   = Math.max(0, total - paid);
-    const head = `#${c.id} ${c.name||'—'} | باقة: ${c.plan||'—'}${total?` (${total}$)`:''} | مدفوع: ${paid}$ متبقٍ: ${rem}$ | قناة: ${c.channel||'—'} | مغلق: ${c.closer||'—'} مسوّق: ${c.setter||'—'} | حالة: ${c.status||'—'} | تسجيل: ${c.regDate||'—'} نهاية العقد: ${c.contractEnd||'—'} | ميلاد: ${c.birthDate||'—'} | مكالمات: ${c.callsDone||0}/${c.callsTotal||0} | هاتف: ${c.phone||'—'} | بريد: ${c.email||'—'}`;
-    const notes = (c.notes||[]).map(n=>n && n.txt).filter(Boolean).join(' ⏎ ');
-    const csm = (c.csmNotes||[]).map(n=>[n.condition,(n.follow||[]).join('/'),n.text].filter(Boolean).join(': ')).filter(Boolean).join(' ⏎ ');
-    const ups = (c.upsellNotes||[]).map(n=>[n.state,(n.intent||[]).join('/'),n.text].filter(Boolean).join(': ')).filter(Boolean).join(' ⏎ ');
-    const sales = [...(c.upgrades||[]).map(u=>`ترقية ${u.from||''}→${u.to||''}`), ...(c.upsells||[]).map(u=>`خدمة ${u.type||''}`)].join(', ');
-    let block = head;
-    if (notes) block += `\n  ملاحظات: ${_clip(notes, 700)}`;
-    if (csm)   block += `\n  متابعة CSM: ${_clip(csm, 500)}`;
-    if (ups)   block += `\n  أبسيل: ${_clip(ups, 300)}`;
-    if (sales) block += `\n  مبيعات سابقة: ${_clip(sales, 200)}`;
-    lines.push(block);
+function _planTotal(c, planPrices){ return ((c.customTotal!=null ? Number(c.customTotal) : (planPrices[c.plan]||0)) || 0); }
+// Dense CSV-like snapshot (legend once, values per row) to minimise tokens.
+// Notes are included ONLY in detailed mode (they are large and expensive).
+function buildClientSnapshot(clients, planPrices, withNotes) {
+  const header = 'الأعمدة: id | الاسم | الباقة | الإجمالي$ | مدفوع$ | متبقٍ$ | القناة | المغلق | المسوّق | الحالة | التسجيل | نهاية_العقد | الميلاد | مكالمات_مستخدم/كلي | مبيعات_سابقة | الهاتف | البريد';
+  const rows = clients.map(c => {
+    const total = _planTotal(c, planPrices), paid = _sumPayments(c), rem = Math.max(0, total - paid);
+    const sales = (c.upgrades||[]).length + (c.upsells||[]).length;
+    return [c.id, c.name||'—', c.plan||'—', total, paid, rem, c.channel||'—', c.closer||'—', c.setter||'—',
+      c.status||'—', c.regDate||'—', c.contractEnd||'—', c.birthDate||'—', `${c.callsDone||0}/${c.callsTotal||0}`,
+      sales, c.phone||'—', c.email||'—'].join(' | ');
+  });
+  let out = header + '\n' + rows.join('\n');
+  if (withNotes) {
+    const blocks = [];
+    for (const c of clients) {
+      const notes = (c.notes||[]).map(n=>n && n.txt).filter(Boolean).join(' ⏎ ');
+      const csm = (c.csmNotes||[]).map(n=>[n.condition,(n.follow||[]).join('/'),n.text].filter(Boolean).join(': ')).filter(Boolean).join(' ⏎ ');
+      const ups = (c.upsellNotes||[]).map(n=>[n.state,(n.intent||[]).join('/'),n.text].filter(Boolean).join(': ')).filter(Boolean).join(' ⏎ ');
+      const parts = [];
+      if (notes) parts.push('ملاحظات: ' + _clip(notes, 600));
+      if (csm)   parts.push('CSM: ' + _clip(csm, 400));
+      if (ups)   parts.push('أبسيل: ' + _clip(ups, 250));
+      if (parts.length) blocks.push(`#${c.id} ${c.name||''} — ` + parts.join(' | '));
+    }
+    if (blocks.length) out += '\n\n=== ملاحظات العملاء ===\n' + blocks.join('\n');
   }
-  return lines.join('\n');
+  if (out.length > 600000) out = out.slice(0, 600000) + '\n…(تم الاقتصاص)';
+  return out;
 }
 app.post('/api/assistant', requireAdmin, async (req, res) => {
   try {
@@ -756,18 +766,20 @@ app.post('/api/assistant', requireAdmin, async (req, res) => {
       .filter(m => m && (m.role==='user'||m.role==='assistant') && typeof m.content==='string')
       .map(m => ({ role: m.role, content: str(m.content, 4000) })) : [];
 
+    const detailed = !!(req.body && req.body.detailed);
     const clients = await getClients();
     const custom = await getCustomPlans().catch(()=>[]);
     const planPrices = Object.assign({}, DEFAULT_PLAN_PRICES);
     (custom||[]).forEach(p => { if (p && p.name) planPrices[p.name] = Number(p.price)||0; });
-    const dataset = buildClientSnapshot(clients, planPrices);
+    const dataset = buildClientSnapshot(clients, planPrices, detailed);
 
     const instructions =
 `أنت المساعد الداخلي لنظام إدارة عملاء شركة "علي الحامد للإستشارات" (AH97).
 - أجب بالفرنسية (المستخدم يتحدث الفرنسية)، لكن أسماء العملاء وبياناتهم بالعربية فاذكرها كما هي.
 - اعتمد حصراً على قاعدة العملاء المرفقة أدناه. لا تخترع معلومات؛ إن لم تكن المعلومة موجودة قل ذلك بوضوح.
 - للأسئلة الإحصائية (عدّ/تصفية/مجاميع) احسب بدقة من البيانات المرفقة، واذكر القائمة المعنية عند الحاجة.
-- المبالغ بالدولار ($). كن دقيقاً ومختصراً. يمكنك استخدام تنسيق بسيط (قوائم).
+- المبالغ بالدولار ($). كن دقيقاً ومختصراً. يمكنك استخدام تنسيق بسيط (قوائم).${detailed ? '' : `
+- ملاحظة: نصوص الملاحظات غير مرفقة في هذا الوضع (للاقتصاد). إذا سُئلت عن محتوى ملاحظات العملاء، اطلب تفعيل وضع «البحث في الملاحظات».`}
 - أنت للقراءة فقط: لا يمكنك تعديل أي بيانات، فقط الإجابة والتحليل.`;
 
     const msg = await client.messages.stream({

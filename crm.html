@@ -1019,6 +1019,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   <div class="ai-hd">
     <div style="width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:15px">🤖</div>
     <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700">مساعد الذكاء</div><div style="font-size:10.5px;color:var(--t3)">اسأل أي شيء عن العملاء</div></div>
+    <button class="btn btn-g" id="ai-detail-btn" style="padding:4px 8px;font-size:10.5px" onclick="toggleAsstDetail()" title="تضمين نصوص الملاحظات في البحث (يستهلك أكثر)">📝 الملاحظات: ✖</button>
     <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="clearAsst()" title="محادثة جديدة">🗑️</button>
     <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="toggleAsst()" title="إغلاق">✕</button>
   </div>
@@ -7211,7 +7212,13 @@ function closeNotifPopup(){
 }
 
 // ═══════════════ AI ASSISTANT (admin) ═══════════════
-let _asstHistory = [], _asstBusy = false;
+let _asstHistory = [], _asstBusy = false, _asstDetailed = false;
+function toggleAsstDetail(){
+  _asstDetailed=!_asstDetailed;
+  const b=$('ai-detail-btn');
+  if(b){ b.textContent='📝 الملاحظات: '+(_asstDetailed?'✔':'✖'); b.className='btn '+(_asstDetailed?'btn-p':'btn-g'); b.style.padding='4px 8px'; b.style.fontSize='10.5px'; }
+  if(_asstDetailed) toast('وضع البحث في الملاحظات مُفعّل — استهلاك أعلى','📝');
+}
 function showAsstFab(){ const f=$('ai-fab'); if(f) f.style.display = isAdmin() ? 'flex' : 'none'; }
 function toggleAsst(){
   const p=$('ai-panel'); if(!p) return;
@@ -7251,7 +7258,7 @@ async function sendAsst(){
   _asstBusy=true; const sb=$('ai-send'); if(sb) sb.textContent='…';
   const typing=_asstAppend('bot','⏳ جارٍ التفكير…');
   try{
-    const r=await api('POST','/api/assistant',{ question:q, history:_asstHistory });
+    const r=await api('POST','/api/assistant',{ question:q, history:_asstHistory, detailed:_asstDetailed });
     if(typing) typing.remove();
     const ans=(r&&r.answer)||'لا توجد إجابة.';
     _asstAppend('bot', ans);
