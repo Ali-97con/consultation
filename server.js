@@ -772,7 +772,8 @@ app.post('/api/assistant', requireAdmin, async (req, res) => {
 
     const msg = await client.messages.stream({
       model: 'claude-haiku-5-5',
-      max_tokens: 2048,
+      max_tokens: 4096,
+      thinking: { type: 'disabled' },   // Q&A over provided data — no extended thinking (avoids empty answers / saves tokens)
       system: [
         { type: 'text', text: instructions },
         { type: 'text', text: `قاعدة العملاء (${clients.length} عميل):\n\n${dataset}`, cache_control: { type: 'ephemeral', ttl: '1h' } },
@@ -784,6 +785,10 @@ app.post('/api/assistant', requireAdmin, async (req, res) => {
     }).finalMessage();
 
     const answer = (msg.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    if (!answer) {
+      console.warn('assistant empty answer; stop_reason =', msg.stop_reason);
+      return res.json({ answer: 'تعذّر توليد إجابة — حاول إعادة صياغة السؤال.', usage: msg.usage });
+    }
     res.json({ answer, usage: msg.usage });
   } catch (e) {
     console.error('assistant error:', e && e.message);
