@@ -710,6 +710,87 @@ app.delete('/api/note-files/:fid', requireAuth, async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Internal AI assistant (admin) — full-context Q&A over the client base ─────
+const Anthropic = require('@anthropic-ai/sdk');
+let _anthropic = null;
+function getAnthropic() {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
+const DEFAULT_PLAN_PRICES = { 'CORE':2500,'CORE+':3000,'CORE 2500':2500,'CORE 3000':3000,'PREMIUM':4000,'PREMIUM 4000':4000,'PREMIUM 4299':4299,'PREMIUM 5000':5000,'INNER CIRCLE':7000,'INNER':7000 };
+function _sumPayments(c) {
+  if (Array.isArray(c.payments)) return c.payments.reduce((s,p)=>s+(Number(p && p.amt)||0),0);
+  return (Number(c.p1)||0)+(Number(c.p2)||0)+(Number(c.p3)||0)+(Number(c.p4)||0);
+}
+function _clip(s, n) { s = String(s==null?'':s).replace(/\s+/g,' ').trim(); return s.length>n ? s.slice(0,n)+'…' : s; }
+// Build a compact Arabic snapshot of all clients for the model (structured + truncated notes).
+function buildClientSnapshot(clients, planPrices) {
+  const lines = [];
+  for (const c of clients) {
+    const total = (c.customTotal!=null ? Number(c.customTotal) : (planPrices[c.plan]||0)) || 0;
+    const paid  = _sumPayments(c);
+    const rem   = Math.max(0, total - paid);
+    const head = `#${c.id} ${c.name||'—'} | باقة: ${c.plan||'—'}${total?` (${total}$)`:''} | مدفوع: ${paid}$ متبقٍ: ${rem}$ | قناة: ${c.channel||'—'} | مغلق: ${c.closer||'—'} مسوّق: ${c.setter||'—'} | حالة: ${c.status||'—'} | تسجيل: ${c.regDate||'—'} نهاية العقد: ${c.contractEnd||'—'} | ميلاد: ${c.birthDate||'—'} | مكالمات: ${c.callsDone||0}/${c.callsTotal||0} | هاتف: ${c.phone||'—'} | بريد: ${c.email||'—'}`;
+    const notes = (c.notes||[]).map(n=>n && n.txt).filter(Boolean).join(' ⏎ ');
+    const csm = (c.csmNotes||[]).map(n=>[n.condition,(n.follow||[]).join('/'),n.text].filter(Boolean).join(': ')).filter(Boolean).join(' ⏎ ');
+    const ups = (c.upsellNotes||[]).map(n=>[n.state,(n.intent||[]).join('/'),n.text].filter(Boolean).join(': ')).filter(Boolean).join(' ⏎ ');
+    const sales = [...(c.upgrades||[]).map(u=>`ترقية ${u.from||''}→${u.to||''}`), ...(c.upsells||[]).map(u=>`خدمة ${u.type||''}`)].join(', ');
+    let block = head;
+    if (notes) block += `\n  ملاحظات: ${_clip(notes, 700)}`;
+    if (csm)   block += `\n  متابعة CSM: ${_clip(csm, 500)}`;
+    if (ups)   block += `\n  أبسيل: ${_clip(ups, 300)}`;
+    if (sales) block += `\n  مبيعات سابقة: ${_clip(sales, 200)}`;
+    lines.push(block);
+  }
+  return lines.join('\n');
+}
+app.post('/api/assistant', requireAdmin, async (req, res) => {
+  try {
+    const client = getAnthropic();
+    if (!client) return res.status(503).json({ error: 'المساعد غير مُفعّل — أضِف ANTHROPIC_API_KEY في إعدادات الخادم (Vercel).' });
+    const question = str(req.body && req.body.question, 2000);
+    if (!question) return res.status(400).json({ error: 'السؤال مطلوب' });
+    // Conversation history (optional) — last few turns only, text only.
+    const history = Array.isArray(req.body && req.body.history) ? req.body.history.slice(-8)
+      .filter(m => m && (m.role==='user'||m.role==='assistant') && typeof m.content==='string')
+      .map(m => ({ role: m.role, content: str(m.content, 4000) })) : [];
+
+    const clients = await getClients();
+    const custom = await getCustomPlans().catch(()=>[]);
+    const planPrices = Object.assign({}, DEFAULT_PLAN_PRICES);
+    (custom||[]).forEach(p => { if (p && p.name) planPrices[p.name] = Number(p.price)||0; });
+    const dataset = buildClientSnapshot(clients, planPrices);
+
+    const instructions =
+`أنت المساعد الداخلي لنظام إدارة عملاء شركة "علي الحامد للإستشارات" (AH97).
+- أجب بالفرنسية (المستخدم يتحدث الفرنسية)، لكن أسماء العملاء وبياناتهم بالعربية فاذكرها كما هي.
+- اعتمد حصراً على قاعدة العملاء المرفقة أدناه. لا تخترع معلومات؛ إن لم تكن المعلومة موجودة قل ذلك بوضوح.
+- للأسئلة الإحصائية (عدّ/تصفية/مجاميع) احسب بدقة من البيانات المرفقة، واذكر القائمة المعنية عند الحاجة.
+- المبالغ بالدولار ($). كن دقيقاً ومختصراً. يمكنك استخدام تنسيق بسيط (قوائم).
+- أنت للقراءة فقط: لا يمكنك تعديل أي بيانات، فقط الإجابة والتحليل.`;
+
+    const msg = await client.messages.stream({
+      model: 'claude-haiku-5-5',
+      max_tokens: 2048,
+      system: [
+        { type: 'text', text: instructions },
+        { type: 'text', text: `قاعدة العملاء (${clients.length} عميل):\n\n${dataset}`, cache_control: { type: 'ephemeral', ttl: '1h' } },
+      ],
+      messages: [
+        ...history,
+        { role: 'user', content: `(تاريخ اليوم: ${new Date().toISOString().slice(0,10)})\n\n${question}` },
+      ],
+    }).finalMessage();
+
+    const answer = (msg.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+    res.json({ answer, usage: msg.usage });
+  } catch (e) {
+    console.error('assistant error:', e && e.message);
+    res.status(500).json({ error: 'فشل المساعد: ' + (e && e.message || 'خطأ') });
+  }
+});
+
 // ─── Users management (admin only) ───────────────────────────────────────────
 app.get('/api/users', requireAdmin, async (_req, res) => {
   try { res.json(await getUsers()); }
