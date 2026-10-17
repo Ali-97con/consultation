@@ -718,6 +718,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div id="csm-report-body" style="padding:18px;max-height:80vh;overflow-y:auto"></div>
   </div>
 </div>
+<!-- UPSELL REPORT MODAL -->
+<div class="mo" id="upreport-mo" onclick="if(event.target===this)closeUpsellReport()">
+  <div class="mbox" style="max-width:820px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:#10b98122;display:flex;align-items:center;justify-content:center;flex-shrink:0">📊</div>
+      <h3>تقرير الأبسيل</h3>
+      <button class="mcls" onclick="closeUpsellReport()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="upreport-body" style="padding:18px;max-height:80vh;overflow-y:auto"></div>
+  </div>
+</div>
 <!-- MONTHLY FINANCIAL REPORT -->
 <div class="mo" id="fin-report-mo" onclick="if(event.target===this)closeFinReport()">
   <div class="mbox" style="max-width:920px;width:100%">
@@ -5815,6 +5826,7 @@ function renderPhoneClients(){
   <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     ${tabs.map(tabBtn).join('')}
     <input class="inp" id="up-search" style="max-width:240px;margin-right:auto" placeholder="🔍 بحث بالاسم أو رقم الهاتف..." value="${esc(_upSearch)}" oninput="setUpSearch(this.value)"/>
+    <button class="btn btn-g" onclick="openUpsellReport()" title="تقرير الأبسيل">📊 تقرير</button>
     <button class="btn btn-g" onclick="openCsmOpts(true)" title="إدارة حالات ونوايا الأبسيل">⚙️ القوائم</button>
   </div>
   ${body}`;
@@ -5995,6 +6007,116 @@ function openUpsellCsmHistory(id){
   $('upsellcsm-mo').classList.add('on');
 }
 function closeUpsellCsmHistory(){ $('upsellcsm-mo').classList.remove('on'); }
+
+// ═══════════════ UPSELL REPORT (général + par agent, par période) ═══════════════
+let _upRepMonth = null, _upRepDur = 1;   // _upRepDur: 1 | 3 | 6 | 12 | 'all'
+function setUpRepMonth(v){ _upRepMonth=v; renderUpsellReportBody(); }
+function setUpRepDur(v){ _upRepDur = v==='all' ? 'all' : +v; renderUpsellReportBody(); }
+function upRepMonthsSet(){
+  if(_upRepDur==='all') return null;
+  const set=[]; const [y,m]=_upRepMonth.split('-').map(Number);
+  for(let i=0;i<_upRepDur;i++){ const d=new Date(y,m-1-i,1); set.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  return new Set(set);
+}
+function upRepRangeLabel(){
+  if(_upRepDur==='all') return 'كل الفترة';
+  if(_upRepDur===1) return monthLabel(_upRepMonth);
+  const s=[...upRepMonthsSet()].sort();
+  return `${monthLabel(s[0])} ← ${monthLabel(s[s.length-1])}`;
+}
+function computeUpsellReport(monthsSet){
+  const inRange = d => { if(!d) return false; if(monthsSet===null) return true; return monthsSet.has(String(d).slice(0,7)); };
+  const byAuthor={}, touched=new Set(), sold=new Set(), perClient={};
+  let totalNotes=0, salesCount=0, revenue=0;
+  const agentOf = a => byAuthor[a]||(byAuthor[a]={author:a,notes:0,clients:new Set(),sales:0,revenue:0,states:{}});
+  const pcOf = c => perClient[c.id]||(perClient[c.id]={c,notes:0,last:null,revenue:0,sold:false});
+  clients.filter(c=>!c.deleted).forEach(c=>{
+    (c.upsellNotes||[]).forEach(n=>{
+      if(!inRange(n.date||n.createdAt)) return;
+      totalNotes++; touched.add(c.id);
+      const ba=agentOf(n.author||'—'); ba.notes++; ba.clients.add(c.id);
+      if(n.state) ba.states[n.state]=(ba.states[n.state]||0)+1;
+      const pc=pcOf(c); pc.notes++; if(!pc.last || (n.date||'')>=(pc.last.date||'')) pc.last=n;
+    });
+    if(c.upsellContactedAt && inRange(c.upsellContactedAt)){ touched.add(c.id); pcOf(c); }
+    (c.upsells||[]).forEach(u=>{ if(!inRange(u.date)) return; const rev=+u.price||0; salesCount++; revenue+=rev; sold.add(c.id); touched.add(c.id);
+      const ba=agentOf(u.author||'—'); ba.sales++; ba.revenue+=rev; ba.clients.add(c.id);
+      const pc=pcOf(c); pc.revenue+=rev; pc.sold=true; });
+    (c.upgrades||[]).forEach(u=>{ if(!inRange(u.date)) return; const rev=Math.max(0,(+u.newTotal||0)-(+u.oldPrice||0)); salesCount++; revenue+=rev; sold.add(c.id); touched.add(c.id);
+      const ba=agentOf(u.by||'—'); ba.sales++; ba.revenue+=rev; ba.clients.add(c.id);
+      const pc=pcOf(c); pc.revenue+=rev; pc.sold=true; });
+  });
+  return {
+    contacted:touched.size, totalNotes, salesCount, revenue, converted:sold.size,
+    convRate: touched.size?Math.round(sold.size/touched.size*100):0,
+    agents:Object.values(byAuthor).sort((a,b)=>(b.revenue-a.revenue)||(b.sales-a.sales)||(b.notes-a.notes)),
+    clientsList:Object.values(perClient).sort((a,b)=>(b.revenue-a.revenue)||(b.notes-a.notes)),
+  };
+}
+function openUpsellReport(){
+  if(_upRepMonth===null){
+    const ms=[]; clients.forEach(c=>{ (c.upsellNotes||[]).forEach(n=>{ if(n.date) ms.push(n.date.slice(0,7)); }); (c.upsells||[]).forEach(u=>{ if(u.date) ms.push(u.date.slice(0,7)); }); (c.upgrades||[]).forEach(u=>{ if(u.date) ms.push(u.date.slice(0,7)); }); });
+    _upRepMonth = ms.sort().reverse()[0] || new Date().toISOString().slice(0,7);
+  }
+  renderUpsellReportBody();
+  $('upreport-mo').classList.add('on');
+}
+function closeUpsellReport(){ $('upreport-mo').classList.remove('on'); }
+function renderUpsellReportBody(){
+  const r=computeUpsellReport(upRepMonthsSet()), M=fmtMoney;
+  const now=new Date(); const months=[]; for(let i=0;i<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  if(!months.includes(_upRepMonth)) months.unshift(_upRepMonth);
+  const durs=[[1,'شهر واحد'],[3,'آخر 3 أشهر'],[6,'آخر 6 أشهر'],[12,'آخر 12 شهر'],['all','كل الفترة']];
+  const allTime=_upRepDur==='all';
+  const kpi=(v,l,c)=>`<div class="kpi" style="padding:12px"><div style="font-size:19px;font-weight:800${c?`;color:${c}`:''}">${v}</div><div style="font-size:10.5px;color:var(--t3);margin-top:2px">${l}</div></div>`;
+  const th=x=>`<th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
+  $('upreport-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <select class="fsl" onchange="setUpRepMonth(this.value)" style="min-width:150px"${allTime?' disabled':''} title="${allTime?'الفترة كاملة':'شهر النهاية'}">${months.map(m=>`<option value="${m}"${m===_upRepMonth?' selected':''}>${monthLabel(m)}</option>`).join('')}</select>
+      <select class="fsl" onchange="setUpRepDur(this.value)" style="min-width:120px" title="المدة">${durs.map(([v,l])=>`<option value="${v}"${String(v)===String(_upRepDur)?' selected':''}>${l}</option>`).join('')}</select>
+      <span style="font-size:12px;color:var(--t3);font-weight:600">📅 ${upRepRangeLabel()}</span>
+      <button class="btn btn-p" style="margin-right:auto" onclick="exportUpsellReportPdf()">🖨️ تصدير PDF</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:10px;margin-bottom:16px">
+      ${kpi(r.contacted,'عملاء تم التواصل','#0ea5e9')}${kpi(r.totalNotes,'متابعات أبسيل')}${kpi(r.salesCount,'مبيعات (أبسيل+ترقية)','#10b981')}${kpi(M(r.revenue),'الإيراد المُضاف','#10b981')}${kpi(r.converted,'تحويلات')}${kpi(r.convRate+'%','نسبة التحويل','var(--p2)')}
+    </div>
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">👤 حسب الوكيل (التقرير الفردي)</div>
+    <div class="card" style="padding:0;overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:620px">
+      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">${th()}الوكيل</th>${th('center')}متابعات</th>${th('center')}عملاء</th>${th('center')}مبيعات</th>${th('center')}الإيراد</th>${th()}أبرز النتائج</th></tr></thead><tbody>
+      ${r.agents.length?r.agents.map(a=>`<tr style="border-bottom:1px solid var(--b1)"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(a.author)}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.notes}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.clients.size}</td><td style="padding:9px 12px;text-align:center;font-size:12px;font-weight:600">${a.sales}</td><td style="padding:9px 12px;text-align:center;font-size:12px;color:var(--g);font-weight:700">${M(a.revenue)}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${_topEntries(a.states,3)}</td></tr>`).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">لا يوجد نشاط أبسيل في هذه الفترة</td></tr>`}
+      </tbody></table></div>
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">📋 العملاء (${r.clientsList.length})</div>
+    <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:600px">
+      <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">${th()}العميل</th>${th()}الباقة</th>${th('center')}متابعات</th>${th()}آخر حالة</th>${th('center')}بيع</th>${th('center')}الإيراد</th></tr></thead><tbody>
+      ${r.clientsList.length?r.clientsList.map(p=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="closeUpsellReport();openUpsellDetail(${p.c.id})"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(p.c.name)}</td><td style="padding:9px 12px">${planBadge(p.c.plan)}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${p.notes}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${p.last?esc(p.last.state||(p.last.intent||[]).join('، ')||'—'):'—'}</td><td style="padding:9px 12px;text-align:center">${p.sold?'✅':'—'}</td><td style="padding:9px 12px;text-align:center;font-size:12px;color:${p.revenue>0?'var(--g)':'var(--t3)'};font-weight:${p.revenue>0?'700':'400'}">${p.revenue>0?M(p.revenue):'—'}</td></tr>`).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">—</td></tr>`}
+      </tbody></table></div>`;
+}
+function exportUpsellReportPdf(){
+  const r=computeUpsellReport(upRepMonthsSet()), M=fmtMoney;
+  $('print-area').innerHTML=`
+    <h1>تقرير الأبسيل</h1>
+    <div class="psub">${upRepRangeLabel()} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
+    <h3>ملخص عام</h3>
+    <table class="pt"><tbody>
+      <tr><td>عملاء تم التواصل بهم</td><td>${r.contacted}</td></tr>
+      <tr><td>متابعات أبسيل</td><td>${r.totalNotes}</td></tr>
+      <tr><td>مبيعات (أبسيل + ترقية)</td><td>${r.salesCount}</td></tr>
+      <tr><td>الإيراد المُضاف</td><td>${M(r.revenue)}</td></tr>
+      <tr><td>تحويلات</td><td>${r.converted}</td></tr>
+      <tr><td>نسبة التحويل</td><td>${r.convRate}%</td></tr>
+    </tbody></table>
+    <h3>حسب الوكيل</h3>
+    <table class="pt2"><thead><tr><th>الوكيل</th><th>متابعات</th><th>عملاء</th><th>مبيعات</th><th>الإيراد</th><th>أبرز النتائج</th></tr></thead><tbody>
+    ${r.agents.map(a=>`<tr><td>${esc(a.author)}</td><td>${a.notes}</td><td>${a.clients.size}</td><td>${a.sales}</td><td>${M(a.revenue)}</td><td>${_topEntries(a.states,3)}</td></tr>`).join('')||'<tr><td colspan="6">—</td></tr>'}
+    </tbody></table>
+    <h3>العملاء (${r.clientsList.length})</h3>
+    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>متابعات</th><th>آخر حالة</th><th>بيع</th><th>الإيراد</th></tr></thead><tbody>
+    ${r.clientsList.map(p=>`<tr><td>${esc(p.c.name)}</td><td>${esc(p.c.plan||'—')}</td><td>${p.notes}</td><td>${p.last?esc(p.last.state||(p.last.intent||[]).join('، ')||'—'):'—'}</td><td>${p.sold?'نعم':'—'}</td><td>${p.revenue>0?M(p.revenue):'—'}</td></tr>`).join('')||'<tr><td colspan="6">—</td></tr>'}
+    </tbody></table>`;
+  document.body.classList.add('printing');
+  window.print();
+  setTimeout(()=>document.body.classList.remove('printing'),400);
+}
 
 // ═══════════════ UPSELL — stale follow-ups alert (متابعات متأخرة) ═══════════════
 // Alert when ≥7 days pass since the last contact/follow-up WITHOUT a new follow-up.
