@@ -6101,6 +6101,12 @@ function renderUpsellReportBody(){
 function exportUpsellReportPdf(){
   const r=computeUpsellReport(upRepMonthsSet()), M=fmtMoney;
   $('print-area').innerHTML=`
+    <style>
+      @page { size: A4 landscape; margin: 11mm; }
+      #print-area .upc { table-layout: fixed; }
+      #print-area .upc td, #print-area .upc th { word-wrap: break-word; overflow-wrap: anywhere; vertical-align: top; }
+      #print-area .pt2 td, #print-area .pt2 th { word-wrap: break-word; overflow-wrap: anywhere; vertical-align: top; }
+    </style>
     <h1>تقرير الأبسيل</h1>
     <div class="psub">${upRepRangeLabel()} — ${new Date().toLocaleDateString('ar-SA-u-nu-latn')}</div>
     <h3>ملخص عام</h3>
@@ -6117,7 +6123,7 @@ function exportUpsellReportPdf(){
     ${r.agents.map(a=>`<tr><td>${esc(a.author)}</td><td>${a.notes}</td><td>${a.clients.size}</td><td>${a.sales}</td><td>${M(a.revenue)}</td><td>${_topEntries(a.states,99)}</td></tr>`).join('')||'<tr><td colspan="6">—</td></tr>'}
     </tbody></table>
     <h3>العملاء (${r.clientsList.length})</h3>
-    <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>العقد</th><th>متابعات</th><th>آخر حالة</th><th>آخر ملاحظة</th><th>بيع</th><th>الإيراد</th></tr></thead><tbody>
+    <table class="pt2 upc"><colgroup><col style="width:14%"><col style="width:9%"><col style="width:6%"><col style="width:5%"><col style="width:10%"><col style="width:42%"><col style="width:5%"><col style="width:9%"></colgroup><thead><tr><th>العميل</th><th>الباقة</th><th>العقد</th><th>متابعات</th><th>آخر حالة</th><th>آخر ملاحظة</th><th>بيع</th><th>الإيراد</th></tr></thead><tbody>
     ${r.clientsList.map(p=>{ const nt=_upRepLastNote(p); const cs=contractState(p.c); return `<tr><td>${esc(p.c.name)}</td><td>${esc(p.c.plan||'—')}</td><td>${cs==='ended'?'منتهي':cs==='active'?'نشط':'—'}</td><td>${p.notes}</td><td>${p.last?esc(p.last.state||(p.last.intent||[]).join('، ')||'—'):'—'}</td><td>${nt?esc(nt):'—'}</td><td>${p.sold?'نعم':'—'}</td><td>${p.revenue>0?M(p.revenue):'—'}</td></tr>`;}).join('')||'<tr><td colspan="8">—</td></tr>'}
     </tbody></table>`;
   document.body.classList.add('printing');
