@@ -547,8 +547,6 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         </select>
         <select class="fsl" id="f-plan" onchange="renderTable()">
           <option value="">كل الخطط</option>
-          <option>CORE</option><option>CORE+</option><option>PREMIUM</option>
-          <option>PREMIUM 4299</option><option>PREMIUM 5000</option><option>INNER CIRCLE</option>
         </select>
         <select class="fsl" id="f-closer" onchange="renderTable()">
           <option value="">كل المغلقين</option>
@@ -2474,14 +2472,31 @@ function renderTable() {
 }
 
 function renderClients() {
-  // Populate filter dropdowns
-  const fc=$('f-closer'), fs=$('f-setter');
-  if(fc && fc.options.length <= 1) {
-    CLOSERS.forEach(c=>{ const o=document.createElement('option');o.value=c;o.textContent=c;fc.appendChild(o); });
-    SETTERS.forEach(s=>{ const o=document.createElement('option');o.value=s;o.textContent=s;fs.appendChild(o); });
-  }
+  populateClientFilters();   // rebuilt every time so new plans / closers / setters show up
   S.page=1; renderTable();
   $('cnt-badge').textContent=clients.length;
+}
+// Fill plan/closer/setter filters dynamically (team lists + whatever is actually on clients), preserving selection.
+function populateClientFilters() {
+  const live = clients.filter(c=>!c.deleted);
+  const fp=$('f-plan');
+  if(fp){
+    const cur=fp.value;
+    const plans=[...new Set([...Object.keys(PLANS||{}), ...live.map(c=>c.plan).filter(Boolean)])].sort((a,b)=>a.localeCompare(b));
+    fp.innerHTML=`<option value="">${t('filter_all_plans')||'كل الخطط'}</option>`+plans.map(p=>`<option value="${esc(p)}"${p===cur?' selected':''}>${esc(p)}</option>`).join('');
+  }
+  const fc=$('f-closer');
+  if(fc){
+    const cur=fc.value;
+    const list=[...new Set([...CLOSERS, ...live.map(c=>c.closer).filter(Boolean)])].sort((a,b)=>a.localeCompare(b));
+    fc.innerHTML=`<option value="">${t('filter_all_closers')||'كل المغلقين'}</option>`+list.map(c=>`<option value="${esc(c)}"${c===cur?' selected':''}>${esc(c)}</option>`).join('');
+  }
+  const fs=$('f-setter');
+  if(fs){
+    const cur=fs.value;
+    const list=[...new Set([...SETTERS, ...live.map(c=>c.setter).filter(Boolean)])].sort((a,b)=>a.localeCompare(b));
+    fs.innerHTML=`<option value="">${t('filter_all_setters')||'كل المسوّقين'}</option>`+list.map(s=>`<option value="${esc(s)}"${s===cur?' selected':''}>${esc(s)}</option>`).join('');
+  }
 }
 
 function sortBy(k) { S.sortK===k?S.sortD*=-1:(S.sortK=k,S.sortD=1); renderTable(); }
@@ -7054,6 +7069,23 @@ function renderNotifs(){
   const contractAll = all.filter(n=>['ended','3d','15d'].includes(n.type));
   const upcallAll   = all.filter(n=>n.type==='upcall');
   const bdayAll     = all.filter(n=>n.type==='bday');
+  // Birthday tab list: ALL clients with a birthdate within 30 days (broader than the ≤3-day alert), admin+CSM.
+  const bdayUpcoming = (isAdmin()||isCsm())
+    ? clients.filter(c=>!c.deleted && c.birthDate)
+        .map(c=>({c, d:daysToBirthday(c.birthDate), age:ageFrom(c.birthDate)}))
+        .filter(x=>x.d!==null && x.d<=30)
+        .filter(x=>matchNamePhone(x.c.name, x.c.phone, q))
+        .sort((a,b)=>a.d-b.d)
+    : [];
+  const _bdayRow=x=>`<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--b1);cursor:pointer" onclick="closeDetail();openDetail(${x.c.id})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
+    ${clientAv(x.c)}
+    <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(x.c.name)}</div><div style="font-size:11px;color:var(--t3)">${x.c.phone?esc(x.c.phone):''}${x.age?` · ${x.age} ${LANG==='ar'?'سنة':'y'}`:''}</div></div>
+    <div style="font-size:12px;font-weight:700;color:${x.d===0?'#ec4899':x.d<=3?'var(--y)':'var(--t2)'};white-space:nowrap">${x.d===0?'اليوم 🎂':`بعد ${x.d} يوم`}</div>
+  </div>`;
+  const _bdayCard=(title,items)=> items.length?`<div class="card mb" style="padding:0;overflow:hidden"><div style="padding:10px 16px;font-size:12px;font-weight:700;border-bottom:1px solid var(--b1);background:var(--hv)">${title} (${items.length})</div>${items.map(_bdayRow).join('')}</div>`:'';
+  const bdayBodyHtml = bdayUpcoming.length
+    ? `${_bdayCard('🎂 عيد الميلاد اليوم', bdayUpcoming.filter(x=>x.d===0))}${_bdayCard('🎈 خلال 3 أيام', bdayUpcoming.filter(x=>x.d>0&&x.d<=3))}${_bdayCard('📅 قادمة (حتى 30 يوم)', bdayUpcoming.filter(x=>x.d>3))}`
+    : `<div class="card" style="padding:44px;text-align:center;color:var(--t3)">لا توجد أعياد ميلاد قادمة خلال 30 يوم<br><span style="font-size:11px">أضِف «تاريخ الميلاد» في ملفات العملاء</span></div>`;
   const tabBtn=(id,label,count)=>`<button class="btn ${_notifTab===id?'btn-p':'btn-g'}" onclick="setNotifTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
   const tierCount=t=>followAll.filter(n=>n.tier===t).length;
   const tierTitle={CORE:'🔵 CORE — متابعة كل 5 أيام',PREMIUM:'🟣 PREMIUM — متابعة كل 8 أيام',INNER:'🟠 INNER — متابعة كل 10 أيام',OTHER:'⚪ أخرى — متابعة كل 7 أيام'};
@@ -7101,15 +7133,15 @@ function renderNotifs(){
     ${tabBtn('INNER','🟠 INNER',tierCount('INNER'))}
     ${tabBtn('OTHER','⚪ أخرى',tierCount('OTHER'))}
     ${tabBtn('contracts','📅 نهاية العقود',contractAll.length)}
-    ${bdayAll.length?tabBtn('bday','🎂 أعياد',bdayAll.length):''}
+    ${(isAdmin()||isCsm())?tabBtn('bday','🎂 أعياد',bdayUpcoming.length):''}
     ${upcallAll.length?tabBtn('upsell','🎯 أبسيل متأخر',upcallAll.length):''}
     <input class="inp" id="notif-search" style="max-width:200px" placeholder="🔍 بحث بالاسم..." value="${esc(_notifSearch)}" oninput="setNotifSearch(this.value)"/>
     <button class="btn btn-g" style="margin-right:auto" onclick="markTabSeen()">✓ تحديد المعروض كمقروء</button>
   </div>
-  ${sections.filter(s=>s.items.length).map(s=>`<div class="card mb" style="padding:0;overflow:hidden">
+  ${_notifTab==='bday' ? bdayBodyHtml : (sections.filter(s=>s.items.length).map(s=>`<div class="card mb" style="padding:0;overflow:hidden">
     <div style="padding:10px 16px;font-size:12px;font-weight:700;border-bottom:1px solid var(--b1);background:var(--hv)">${s.title} (${s.items.length})</div>
     ${s.items.map(itemHtml).join('')}
-  </div>`).join('') || `<div class="card" style="padding:44px;text-align:center;color:var(--t3)">لا توجد تنبيهات في هذا القسم</div>`}`;
+  </div>`).join('') || `<div class="card" style="padding:44px;text-align:center;color:var(--t3)">لا توجد تنبيهات في هذا القسم</div>`)}`;
 }
 
 function showNotifPopup(){
