@@ -6056,11 +6056,9 @@ function computeUpsellReport(monthsSet){
     clientsList:Object.values(perClient).sort((a,b)=>(b.revenue-a.revenue)||(b.notes-a.notes)),
   };
 }
-// Last note for a report row: latest upsell follow-up text, else the latest team note.
+// Last note for a report row = the latest upsell follow-up comment only (empty if none; no fallback to team notes).
 function _upRepLastNote(p){
-  if(p.last && p.last.text) return p.last.text;
-  const g=(p.c.notes||[]).slice().sort((a,b)=>(b.id||0)-(a.id||0))[0];
-  return (g && g.txt) || '';
+  return (p.last && p.last.text) ? p.last.text : '';
 }
 function openUpsellReport(){
   if(_upRepMonth===null){
