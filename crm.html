@@ -859,7 +859,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         <option value="female">♀ أنثى</option>
       </select></div></div>
       <div class="fr"><div class="fg"><label>بداية العقد / التسجيل</label><input class="inp" id="m-reg" type="date"/></div>
-      <div class="fg"></div></div>
+      <div class="fg"><label>🎂 تاريخ الميلاد</label><input class="inp" id="m-birthdate" type="date"/></div></div>
     </div>
     <!-- Tab 1: Contract -->
     <div class="m-tp" id="mt-1">
@@ -4043,6 +4043,9 @@ function openDetail(id) {
   const sexInline = editable
     ? `<select onchange="quickSaveField(${id},'sex',this.value)" style="${mini}"><option value=""${!c.sex?' selected':''}>${LANG==='ar'?'غير محدد':'—'}</option><option value="male"${c.sex==='male'?' selected':''}>${LANG==='ar'?'ذكر':'Male'}</option><option value="female"${c.sex==='female'?' selected':''}>${LANG==='ar'?'أنثى':'Female'}</option></select>`
     : (sexLbl||unset);
+  const bdInline = editable
+    ? `<input type="date" value="${c.birthDate||''}" onchange="quickSaveField(${id},'birthDate',this.value)" style="${mini}"/>`
+    : (c.birthDate?fmtDate(c.birthDate):unset);
   const startInline = editable
     ? `<input type="date" value="${c.regDate||''}" onchange="quickSaveField(${id},'regDate',this.value)" style="${mini}"/>`
     : (c.regDate?fmtDate(c.regDate):unset);
@@ -4089,6 +4092,7 @@ function openDetail(id) {
     <div class="dp2-col">
       <div class="dp-st">👤 ${LANG==='ar'?'المعلومات الشخصية':'Personal'}</div>
       <div class="dp-row"><span class="dp-k">${LANG==='ar'?'الجنس':'Sex'}</span><span class="dp-v">${sexInline}</span></div>
+      <div class="dp-row"><span class="dp-k">🎂 ${LANG==='ar'?'تاريخ الميلاد':'Birthday'}</span><span class="dp-v">${bdInline}${c.birthDate?` <span style="color:var(--t3);font-size:11px">· ${ageFrom(c.birthDate)} ${LANG==='ar'?'سنة':'y'}</span>`:''}</span></div>
       <div class="dp-row"><span class="dp-k">${LANG==='ar'?'الهاتف':'Phone'}</span><span class="dp-v">${c.phone?esc(c.phone):unset}</span></div>
       <div class="dp-row"><span class="dp-k">${t('dp_email')}</span><span class="dp-v" style="font-size:12px;word-break:break-all">${c.email?esc(c.email):unset}</span></div>
       <div class="dp-row"><span class="dp-k">📞 مكالمات</span><span class="dp-v">${callsWidget(id, c.callsDone||0, c.callsTotal||0)}</span></div>
@@ -4777,6 +4781,7 @@ function openModal(id=null) {
     if($('m-contract-end')) $('m-contract-end').value=c.contractEnd||'';
     if($('m-calls-total')) $('m-calls-total').value=(c.callsTotal!=null?c.callsTotal:'');
     if($('m-calls-done')) $('m-calls-done').value=(c.callsDone!=null?c.callsDone:'');
+    if($('m-birthdate')) $('m-birthdate').value=c.birthDate||'';
     $('m-notes').value=c.notes.map(n=>n.txt).join('\n');
   } else {
     ['m-name','m-phone','m-email','m-notes'].forEach(id=>{if($(id))$(id).value='';});
@@ -4787,6 +4792,7 @@ function openModal(id=null) {
     if($('m-contract-end')) $('m-contract-end').value='';
     if($('m-calls-total')) $('m-calls-total').value='';
     if($('m-calls-done')) $('m-calls-done').value='';
+    if($('m-birthdate')) $('m-birthdate').value='';
     $('m-reg').value=new Date().toISOString().split('T')[0];
     const cpr=$('custom-plan-row'); if(cpr) cpr.style.display='none';
     // Reset total field and discount on new client
@@ -4840,6 +4846,7 @@ async function saveClient() {
     contractEnd:$('m-contract-end')?$('m-contract-end').value:'',
     callsTotal:$('m-calls-total')&&$('m-calls-total').value!==''?+$('m-calls-total').value:undefined,
     callsDone:$('m-calls-done')&&$('m-calls-done').value!==''?+$('m-calls-done').value:undefined,
+    birthDate:$('m-birthdate')?$('m-birthdate').value:'',
     regDate:$('m-reg').value||new Date().toISOString().split('T')[0],
     lastPayDate:pd.filter(Boolean).slice(-1)[0]||'',
   };
@@ -4961,6 +4968,10 @@ function daysUntil(dateStr){
   return Math.ceil((d - new Date())/86400000);
 }
 function daysSince(dateStr){ const d = daysUntil(dateStr); return d===null ? null : -d; }
+// Birthday helpers (recurring, month+day based)
+function ageFrom(bd){ if(!bd) return ''; const d=new Date(bd); if(isNaN(d)) return ''; const n=new Date(); let a=n.getFullYear()-d.getFullYear(); const m=n.getMonth()-d.getMonth(); if(m<0||(m===0&&n.getDate()<d.getDate())) a--; return a; }
+function daysToBirthday(bd){ if(!bd) return null; const d=new Date(bd); if(isNaN(d)) return null; const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate()); let nx=new Date(today.getFullYear(),d.getMonth(),d.getDate()); if(nx<today) nx=new Date(today.getFullYear()+1,d.getMonth(),d.getDate()); return Math.round((nx-today)/86400000); }
+function birthdayYear(bd){ const d=new Date(bd); if(isNaN(d)) return new Date().getFullYear(); const now=new Date(); const today=new Date(now.getFullYear(),now.getMonth(),now.getDate()); let nx=new Date(today.getFullYear(),d.getMonth(),d.getDate()); if(nx<today) nx=new Date(today.getFullYear()+1,d.getMonth(),d.getDate()); return nx.getFullYear(); }
 
 // ── Contract pause / resume ──
 function _addDaysStr(dateStr, days){ const d=new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
@@ -6974,7 +6985,14 @@ function computeNotifs(){
       out.push({ key:c.id+':upcall', cid:c.id, type:'upcall', name:c.name, plan:c.plan, days:-d, lastAct:la });
     });
   }
-  const order = { upcall:0, followup:1, ended:2, '3d':3, '15d':4 };
+  // Birthdays (admin + CSM) — 3 days before + the day itself. Year-stamped key so it reappears each year.
+  if(isAdmin()||isCsm()){
+    clients.filter(c=>!c.deleted && c.birthDate).forEach(c=>{
+      const d=daysToBirthday(c.birthDate); if(d===null || d>3) return;
+      out.push({ key:`${c.id}:bday:${birthdayYear(c.birthDate)}`, cid:c.id, type:'bday', name:c.name, plan:c.plan, days:d, age:ageFrom(c.birthDate) });
+    });
+  }
+  const order = { bday:0, upcall:1, followup:2, ended:3, '3d':4, '15d':5 };
   return out.sort((a,b)=>(order[a.type]-order[b.type]) || (b.days-a.days));
 }
 function getHiddenNotifs(){ try{ return new Set(JSON.parse(localStorage.getItem('notif_hidden')||'[]')); }catch(_){ return new Set(); } }
@@ -7021,7 +7039,12 @@ function setNotifTab(v){ _notifTab=v; renderNotifs(); }
 function setNotifSearch(v){ _notifSearch=v; renderNotifs(); const el=$('notif-search'); if(el){ el.focus(); try{ const n=el.value.length; el.setSelectionRange(n,n); }catch(_){} } }
 function hideNotif(key){ addHiddenNotifs([key]); renderNotifs(); }   // actually remove it from the page
 function markTabSeen(){
-  const keys=notifVisible().filter(n=> _notifTab==='contracts' ? n.type!=='followup' : (n.type==='followup' && n.tier===_notifTab)).map(n=>n.key);
+  const keys=notifVisible().filter(n=>
+    _notifTab==='contracts' ? ['ended','3d','15d'].includes(n.type)
+    : _notifTab==='bday'     ? n.type==='bday'
+    : _notifTab==='upsell'   ? n.type==='upcall'
+    : (n.type==='followup' && n.tier===_notifTab)
+  ).map(n=>n.key);
   addHiddenNotifs(keys); renderNotifs();
 }
 function renderNotifs(){
@@ -7030,10 +7053,13 @@ function renderNotifs(){
   const followAll   = all.filter(n=>n.type==='followup');
   const contractAll = all.filter(n=>['ended','3d','15d'].includes(n.type));
   const upcallAll   = all.filter(n=>n.type==='upcall');
+  const bdayAll     = all.filter(n=>n.type==='bday');
   const tabBtn=(id,label,count)=>`<button class="btn ${_notifTab===id?'btn-p':'btn-g'}" onclick="setNotifTab('${id}')">${label} <span style="opacity:.7">(${count})</span></button>`;
   const tierCount=t=>followAll.filter(n=>n.tier===t).length;
   const tierTitle={CORE:'🔵 CORE — متابعة كل 5 أيام',PREMIUM:'🟣 PREMIUM — متابعة كل 8 أيام',INNER:'🟠 INNER — متابعة كل 10 أيام',OTHER:'⚪ أخرى — متابعة كل 7 أيام'};
-  const sections = _notifTab==='upsell'
+  const sections = _notifTab==='bday'
+    ? [ {items:bdayAll.filter(n=>n.days===0), title:'🎂 عيد الميلاد اليوم'}, {items:bdayAll.filter(n=>n.days>0), title:'🎈 أعياد ميلاد قادمة (خلال 3 أيام)'} ]
+    : _notifTab==='upsell'
     ? [ {items:upcallAll, title:'🎯 متابعات أبسيل متأخرة'} ]
     : _notifTab==='contracts'
     ? [
@@ -7044,13 +7070,15 @@ function renderNotifs(){
     : [ {items:followAll.filter(n=>n.tier===_notifTab), title:tierTitle[_notifTab]||''} ];
   const itemHtml=(n)=>{
     const c=clients.find(x=>x.id===n.cid);
-    const onClick = n.type==='upcall' ? `openUpsellDetail(${n.cid})` : `openClientFromNotif(${n.cid})`;
+    const onClick = n.type==='upcall' ? `openUpsellDetail(${n.cid})` : n.type==='bday' ? `closeDetail();openDetail(${n.cid})` : `openClientFromNotif(${n.cid})`;
     const right = n.type==='ended' ? {t:`منذ ${-n.days} يوم`,clr:'var(--r)'}
       : n.type==='upcall' ? {t:`بدون متابعة ${-n.days} يوم`,clr:'var(--r)'}
+      : n.type==='bday' ? {t:(n.days===0?'اليوم 🎂':`بعد ${n.days} يوم`),clr:(n.days===0?'#ec4899':'var(--y)')}
       : n.type==='followup' ? (n.noFollow ? {t:'لم تبدأ المتابعة',clr:'var(--r)'} : {t:`منذ ${n.days} يوم`,clr:'var(--p2)'})
       : {t:`${n.days} يوم`,clr:'var(--y)'};
     const sub = n.type==='followup' ? `${planBadge(n.plan)} · كل ${n.every} يوم`
       : n.type==='upcall' ? `${planBadge(n.plan)} · آخر نشاط ${fmtDate(n.lastAct)}`
+      : n.type==='bday' ? `🎂 عيد ميلاد${n.age?` · ${n.age} ${LANG==='ar'?'سنة':'y'}`:''}`
       : `${planBadge(n.plan)} · ينتهي ${fmtDate(n.end)}`;
     const contactBtn = n.type!=='followup' ? '' : (n.contacted
       ? `<button style="font-size:10px;color:var(--g);background:var(--gbg);border:1px solid var(--g);padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0;cursor:pointer" title="${LANG==='ar'?'اضغط للإلغاء':'Click to cancel'}" onclick="event.stopPropagation();markContacted(${n.cid})">✅ بانتظار الرد ✕</button>`
@@ -7073,6 +7101,7 @@ function renderNotifs(){
     ${tabBtn('INNER','🟠 INNER',tierCount('INNER'))}
     ${tabBtn('OTHER','⚪ أخرى',tierCount('OTHER'))}
     ${tabBtn('contracts','📅 نهاية العقود',contractAll.length)}
+    ${bdayAll.length?tabBtn('bday','🎂 أعياد',bdayAll.length):''}
     ${upcallAll.length?tabBtn('upsell','🎯 أبسيل متأخر',upcallAll.length):''}
     <input class="inp" id="notif-search" style="max-width:200px" placeholder="🔍 بحث بالاسم..." value="${esc(_notifSearch)}" oninput="setNotifSearch(this.value)"/>
     <button class="btn btn-g" style="margin-right:auto" onclick="markTabSeen()">✓ تحديد المعروض كمقروء</button>
@@ -7085,22 +7114,32 @@ function renderNotifs(){
 
 function showNotifPopup(){
   if(isCoach()) return;
-  const unseen = notifPending().filter(n=>n.type==='followup'); // login pop-up: follow-ups only (not contracts)
-  if(!unseen.length) return;
-  window._popNotifKeys = unseen.map(n=>n.key);
+  const pend = notifPending();
+  const unseen = pend.filter(n=>n.type==='followup'); // follow-ups
+  const bdays  = pend.filter(n=>n.type==='bday');      // birthdays (today + ≤3 days)
+  if(!unseen.length && !bdays.length) return;
+  window._popNotifKeys = [...unseen, ...bdays].map(n=>n.key);
   const byTier = {}; unseen.forEach(n=>byTier[n.tier]=(byTier[n.tier]||0)+1);
   const chips = ['CORE','PREMIUM','INNER','OTHER'].filter(t=>byTier[t]).map(t=>`<span style="font-size:11px;background:var(--hv);border:1px solid var(--b1);padding:3px 9px;border-radius:20px">${t}: <b>${byTier[t]}</b></span>`).join('');
-  $('notif-pop-body').innerHTML = `
+  const bdayBlock = bdays.length ? `
+    <div style="background:#ec489911;border:1px solid #ec489955;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:12.5px;font-weight:700;color:#ec4899;margin-bottom:6px">🎂 أعياد ميلاد (${bdays.length})</div>
+      ${bdays.slice(0,8).map(n=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer" onclick="closeNotifPopup();closeDetail();openDetail(${n.cid})"><span style="font-size:14px">${n.days===0?'🎂':'🎈'}</span><div style="flex:1;min-width:0"><span style="font-size:12.5px;font-weight:600">${esc(n.name)}</span> <span style="font-size:11px;color:var(--t3)">· ${n.days===0?'اليوم':'بعد '+n.days+' يوم'}${n.age?' · '+n.age+' سنة':''}</span></div></div>`).join('')}
+      ${bdays.length>8?`<div style="color:var(--t3);font-size:11px;padding:4px 0">و ${bdays.length-8} آخرين…</div>`:''}
+    </div>` : '';
+  const followBlock = unseen.length ? `
     <div style="font-size:12.5px;color:var(--t2);margin-bottom:10px"><b>${unseen.length}</b> عميل بحاجة إلى متابعة 🔔</div>
     ${chips?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${chips}</div>`:''}
-    <div style="max-height:40vh;overflow-y:auto">
+    <div style="max-height:36vh;overflow-y:auto">
     ${unseen.slice(0,20).map(n=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1)">
       <span style="font-size:14px">🔔</span>
       <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">${esc(n.name)}</div><div style="font-size:11px;color:var(--t3)">${esc(n.plan||'—')} · <span style="color:${n.noFollow?'var(--r)':'var(--p2)'}">${n.noFollow?'لم تبدأ المتابعة':'منذ '+n.days+' يوم'}</span></div></div>
     </div>`).join('')}
     ${unseen.length>20?`<div style="color:var(--t3);font-size:11px;padding:8px 0">و ${unseen.length-20} آخرين…</div>`:''}
-    </div>
-    <button class="btn btn-p" style="width:100%;justify-content:center;margin-top:12px" onclick="closeNotifPopup();nav('notifs')">فتح صفحة المتابعات</button>
+    </div>` : '';
+  $('notif-pop-body').innerHTML = `
+    ${bdayBlock}${followBlock}
+    <button class="btn btn-p" style="width:100%;justify-content:center;margin-top:12px" onclick="closeNotifPopup();nav('notifs')">فتح صفحة التنبيهات</button>
     <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer;user-select:none"><input type="checkbox" id="notif-seen-chk"/> ✅ تم الاطلاع — لا تظهر مرة أخرى</label>`;
   $('notif-pop').classList.add('on');
 }
