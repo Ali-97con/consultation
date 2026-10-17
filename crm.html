@@ -6090,7 +6090,7 @@ function renderUpsellReportBody(){
     <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">👤 حسب الوكيل (التقرير الفردي)</div>
     <div class="card" style="padding:0;overflow-x:auto;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;min-width:620px">
       <thead><tr style="background:var(--hv);border-bottom:1px solid var(--b1)">${th()}الوكيل</th>${th('center')}متابعات</th>${th('center')}عملاء</th>${th('center')}مبيعات</th>${th('center')}الإيراد</th>${th()}أبرز النتائج</th></tr></thead><tbody>
-      ${r.agents.length?r.agents.map(a=>`<tr style="border-bottom:1px solid var(--b1)"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(a.author)}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.notes}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.clients.size}</td><td style="padding:9px 12px;text-align:center;font-size:12px;font-weight:600">${a.sales}</td><td style="padding:9px 12px;text-align:center;font-size:12px;color:var(--g);font-weight:700">${M(a.revenue)}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${_topEntries(a.states,3)}</td></tr>`).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">لا يوجد نشاط أبسيل في هذه الفترة</td></tr>`}
+      ${r.agents.length?r.agents.map(a=>`<tr style="border-bottom:1px solid var(--b1)"><td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(a.author)}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.notes}</td><td style="padding:9px 12px;text-align:center;font-size:12px">${a.clients.size}</td><td style="padding:9px 12px;text-align:center;font-size:12px;font-weight:600">${a.sales}</td><td style="padding:9px 12px;text-align:center;font-size:12px;color:var(--g);font-weight:700">${M(a.revenue)}</td><td style="padding:9px 12px;font-size:11px;color:var(--t2)">${_topEntries(a.states,99)}</td></tr>`).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">لا يوجد نشاط أبسيل في هذه الفترة</td></tr>`}
       </tbody></table></div>
     <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">📋 العملاء (${r.clientsList.length})</div>
     <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:720px">
@@ -6114,7 +6114,7 @@ function exportUpsellReportPdf(){
     </tbody></table>
     <h3>حسب الوكيل</h3>
     <table class="pt2"><thead><tr><th>الوكيل</th><th>متابعات</th><th>عملاء</th><th>مبيعات</th><th>الإيراد</th><th>أبرز النتائج</th></tr></thead><tbody>
-    ${r.agents.map(a=>`<tr><td>${esc(a.author)}</td><td>${a.notes}</td><td>${a.clients.size}</td><td>${a.sales}</td><td>${M(a.revenue)}</td><td>${_topEntries(a.states,3)}</td></tr>`).join('')||'<tr><td colspan="6">—</td></tr>'}
+    ${r.agents.map(a=>`<tr><td>${esc(a.author)}</td><td>${a.notes}</td><td>${a.clients.size}</td><td>${a.sales}</td><td>${M(a.revenue)}</td><td>${_topEntries(a.states,99)}</td></tr>`).join('')||'<tr><td colspan="6">—</td></tr>'}
     </tbody></table>
     <h3>العملاء (${r.clientsList.length})</h3>
     <table class="pt2"><thead><tr><th>العميل</th><th>الباقة</th><th>العقد</th><th>متابعات</th><th>آخر حالة</th><th>آخر ملاحظة</th><th>بيع</th><th>الإيراد</th></tr></thead><tbody>
