@@ -729,6 +729,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div id="upreport-body" style="padding:18px;max-height:80vh;overflow-y:auto"></div>
   </div>
 </div>
+<!-- CSV EXPORT (column picker) -->
+<div class="mo" id="csvexport-mo" onclick="if(event.target===this)closeCsvExport()">
+  <div class="mbox" style="max-width:560px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">📥</div>
+      <h3>تصدير CSV — اختر الأعمدة</h3>
+      <button class="mcls" onclick="closeCsvExport()"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="csvexport-body" style="padding:18px;max-height:78vh;overflow-y:auto"></div>
+  </div>
+</div>
 <!-- MONTHLY FINANCIAL REPORT -->
 <div class="mo" id="fin-report-mo" onclick="if(event.target===this)closeFinReport()">
   <div class="mbox" style="max-width:920px;width:100%">
@@ -2605,43 +2616,80 @@ function confirmDelClient() {
   logActivity('🗑️', LANG==='ar'?'حذف عميل':'Client Deleted', c.name, 'var(--rbg)', 'var(--r)');
 }
 
-function exportCSV() {
-  function q(v) {
-    const s = (v === null || v === undefined) ? '' : String(v);
-    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
-      return '"' + s.replace(/"/g, '""') + '"';
-    }
-    return s;
-  }
-  const header = [
-    LANG==='ar'?'الاسم':'Name',
-    LANG==='ar'?'الهاتف':'Phone',
-    LANG==='ar'?'البريد':'Email',
-    t('col_status'), t('col_plan'), t('col_pay_type'),
-    t('dp_collected'), t('dp_remaining'),
-    t('col_closer'), t('col_setter'),
-    t('col_reg'), t('col_last_pay'),
-    LANG==='ar'?'الملاحظات':'Notes',
-  ];
-  const rows = [header.map(q)];
-  getFiltered().forEach(c => {
-    const notesStr = (c.notes || [])
-      .filter(n => n && n.txt)
-      .map(n => `${n.date||''} : ${n.txt}`)
-      .join(' | ');
-    rows.push([
-      c.name, c.phone, c.email, statusText(c),
-      c.plan, c.paymentType, fx(c), fr(c),
-      c.closer, c.setter, c.regDate, c.lastPayDate||'',
-      notesStr,
-    ].map(q));
-  });
-  const csv = rows.map(r => r.join(',')).join('\r\n');
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv);
-  a.download = 'clients_ah97.csv';
-  a.click();
-  toast(t('msg_exported'), '📁');
+// ─── CSV export with column picker ───
+const _UPMARK_AR = { hot:'جاهز', warm:'يحتاج وقت', cold:'بارد', no:'غير مهتم', done:'تم البيع' };
+const CSV_GROUPS = { infos:'المعلومات', contrat:'العقد', money:'المالية', team:'الفريق', calls:'المكالمات', upsell:'الأبسيل', notes:'📝 الملاحظات' };
+const CSV_COLS = [
+  {k:'name',  g:'infos', l:'الاسم',        get:c=>c.name||''},
+  {k:'phone', g:'infos', l:'الهاتف',        get:c=>c.phone||''},
+  {k:'email', g:'infos', l:'البريد',        get:c=>c.email||''},
+  {k:'sex',   g:'infos', l:'الجنس',         get:c=>c.sex==='male'?'ذكر':c.sex==='female'?'أنثى':''},
+  {k:'birth', g:'infos', l:'تاريخ الميلاد', get:c=>c.birthDate||''},
+  {k:'plan',  g:'contrat', l:'الباقة',      get:c=>c.plan||''},
+  {k:'status',g:'contrat', l:'الحالة',      get:c=>statusText(c)},
+  {k:'contract',g:'contrat', l:'العقد (نشط/منتهي)', get:c=>{const s=contractState(c); return s==='ended'?'منتهي':s==='active'?'نشط':'';}},
+  {k:'reg',   g:'contrat', l:'بداية العقد/التسجيل', get:c=>c.regDate||''},
+  {k:'end',   g:'contrat', l:'نهاية العقد', get:c=>c.contractEnd||''},
+  {k:'channel',g:'contrat', l:'القناة',     get:c=>c.channel||''},
+  {k:'total', g:'money', l:'الإجمالي',      get:c=>c.customTotal||PLANS[c.plan]||0},
+  {k:'paid',  g:'money', l:'المدفوع',       get:c=>fx(c)},
+  {k:'rem',   g:'money', l:'المتبقي',       get:c=>fr(c)},
+  {k:'payType',g:'money', l:'نوع الدفع',    get:c=>c.paymentType||''},
+  {k:'closer',g:'team', l:'المغلق',         get:c=>c.closer||''},
+  {k:'setter',g:'team', l:'المسوّق',        get:c=>c.setter||''},
+  {k:'calls', g:'calls', l:'المكالمات (مستخدم/كلي)', get:c=>`${c.callsDone||0}/${c.callsTotal||0}`},
+  {k:'upMark',g:'upsell', l:'وضع الأبسيل',  get:c=>_UPMARK_AR[upsellMark(c)]||''},
+  {k:'prospect',g:'upsell', l:'محتمل',      get:c=>c.upsellProspect?'نعم':''},
+  {k:'upContacted',g:'upsell', l:'تم التواصل أبسيل', get:c=>c.upsellContactedAt?'نعم':''},
+  {k:'sales', g:'upsell', l:'مبيعات سابقة', get:c=>(c.upgrades||[]).length+(c.upsells||[]).length},
+  {k:'notesTeam',g:'notes', l:'ملاحظات الفريق', get:c=>(c.notes||[]).filter(n=>n&&n.txt).map(n=>`${n.date||''}: ${n.txt}`).join(' ⏎ ')},
+  {k:'notesCsm', g:'notes', l:'متابعة CSM',  get:c=>(c.csmNotes||[]).map(n=>`${n.date||''}: ${[n.condition,(n.follow||[]).join('/'),n.text].filter(Boolean).join(' - ')}`).filter(s=>s.replace(/[: ]/g,'')!=='').join(' ⏎ ')},
+  {k:'notesUpsell',g:'notes', l:'متابعة الأبسيل', get:c=>(c.upsellNotes||[]).map(n=>`${n.date||''}: ${[n.state,(n.intent||[]).join('/'),n.text,n.nextDate?('رجوع '+n.nextDate):''].filter(Boolean).join(' - ')}`).filter(s=>s.replace(/[: ]/g,'')!=='').join(' ⏎ ')},
+];
+let _csvSel = new Set(CSV_COLS.map(c=>c.k));   // default: all selected
+let _csvScope = 'filtered';
+function exportCSV(){ openCsvExport(); }        // keep name so role restrictions keep matching
+function openCsvExport(){
+  const groups={}; CSV_COLS.forEach(c=>{ (groups[c.g]=groups[c.g]||[]).push(c); });
+  const body = Object.keys(CSV_GROUPS).filter(g=>groups[g]).map(g=>`
+    <div style="margin-bottom:12px">
+      <div style="font-size:11.5px;font-weight:700;color:var(--t2);margin-bottom:6px">${CSV_GROUPS[g]}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${groups[g].map(col=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;background:var(--hv);border:1px solid var(--b1);padding:5px 9px;border-radius:8px;cursor:pointer"><input type="checkbox" class="csv-col" value="${col.k}" ${_csvSel.has(col.k)?'checked':''} onchange="_csvToggle('${col.k}',this.checked)"/> ${esc(col.l)}</label>`).join('')}
+      </div>
+    </div>`).join('');
+  $('csvexport-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:600">النطاق:</span>
+      <label style="font-size:12.5px;display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="csv-scope" ${_csvScope==='filtered'?'checked':''} onchange="_csvScope='filtered'"/> حسب الفلاتر (المعروض)</label>
+      <label style="font-size:12.5px;display:flex;align-items:center;gap:5px;cursor:pointer"><input type="radio" name="csv-scope" ${_csvScope==='all'?'checked':''} onchange="_csvScope='all'"/> كل العملاء</label>
+      <button class="btn btn-g" style="margin-right:auto;padding:4px 10px;font-size:11.5px" onclick="toggleAllCsv(true)">تحديد الكل</button>
+      <button class="btn btn-g" style="padding:4px 10px;font-size:11.5px" onclick="toggleAllCsv(false)">إلغاء الكل</button>
+    </div>
+    ${body}
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="btn btn-p" style="flex:1" onclick="doCsvExport()">📥 تصدير CSV</button>
+      <button class="btn btn-g" onclick="closeCsvExport()">إلغاء</button>
+    </div>`;
+  $('csvexport-mo').classList.add('on');
+}
+function closeCsvExport(){ $('csvexport-mo').classList.remove('on'); }
+function _csvToggle(k,on){ if(on) _csvSel.add(k); else _csvSel.delete(k); }
+function toggleAllCsv(on){ if(on) CSV_COLS.forEach(c=>_csvSel.add(c.k)); else _csvSel.clear(); document.querySelectorAll('.csv-col').forEach(ch=>ch.checked=on); }
+function doCsvExport(){
+  const cols = CSV_COLS.filter(c=>_csvSel.has(c.k));
+  if(!cols.length){ toast('اختر عموداً واحداً على الأقل','⚠️'); return; }
+  const list = _csvScope==='all' ? clients.filter(c=>!c.deleted) : getFiltered();
+  const q = v => { const s=(v===null||v===undefined)?'':String(v); return /[",\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+  const rows = [cols.map(c=>q(c.l))];
+  list.forEach(c=>rows.push(cols.map(col=>q(col.get(c)))));
+  const csv = rows.map(r=>r.join(',')).join('\r\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(csv);
+  a.download='clients_ah97_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  closeCsvExport();
+  toast((t('msg_exported')||'تم التصدير')+` (${list.length})`, '📁');
 }
 
 function globalSearch(q) {
