@@ -2448,6 +2448,19 @@ function getFiltered() {
   });
 }
 
+// Badges shown in front of a client's name: upgrade (ترقية), renewal (تجديد), extra sale (بيع).
+function saleBadges(c){
+  const ug=c.upgrades||[];
+  const hasUpgrade=ug.some(u=>u.kind!=='renew');   // records without kind are legacy upgrades
+  const hasRenew=ug.some(u=>u.kind==='renew');
+  const hasUpsell=(c.upsells||[]).length>0;
+  const b=(title,bg,col,txt)=>`<span title="${title}" style="font-size:9.5px;font-weight:600;background:${bg};color:${col};padding:1px 6px;border-radius:8px;vertical-align:middle">${txt}</span> `;
+  let s='';
+  if(hasUpgrade) s+=b('تمت ترقية الباقة','var(--pbg)','var(--p2)','⬆️ ترقية');
+  if(hasRenew)   s+=b('تم تجديد العقد','#0ea5e922','#0ea5e9','🔁 تجديد');
+  if(hasUpsell)  s+=b('لديه مبيعات إضافية','var(--gbg)','var(--g)','🛒 بيع');
+  return s;
+}
 function renderTable() {
   rebuildMonthFilter();
   const f = getFiltered();
@@ -2486,7 +2499,7 @@ function renderTable() {
       <td><div class="tds" style="cursor:pointer" onclick="openDetail(${c.id})">
         ${clientAv(c, 'av'+(c.status==='active'?' on':''))}
         <div class="cl-name-wrap">
-          <div class="td-nm" style="${isRef?'text-decoration:line-through;color:var(--t3)':''}">${hlText(c.name)}${(c.upgrades||[]).length?` <span title="تمت ترقية الباقة" style="font-size:9.5px;background:var(--pbg);color:var(--p2);padding:1px 5px;border-radius:8px;vertical-align:middle">⬆️ ترقية</span>`:''}${(c.upsells||[]).length?` <span title="لديه مبيعات إضافية" style="font-size:9.5px;background:var(--gbg);color:var(--g);padding:1px 5px;border-radius:8px;vertical-align:middle">🛒</span>`:''}</div>
+          <div class="td-nm" style="${isRef?'text-decoration:line-through;color:var(--t3)':''}">${saleBadges(c)}${hlText(c.name)}</div>
           <div class="td-ph">${hlText(c.phone)}</div>
         </div>
       </div></td>
