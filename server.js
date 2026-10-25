@@ -264,11 +264,14 @@ app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) =>
     const plan = str(b.plan, 100);
     if (!plan) return res.status(400).json({ error: 'الباقة الجديدة مطلوبة' });
     const newTotal = Math.max(0, Number(b.newTotal) || 0);
+    const kind = str(b.kind, 20) === 'renew' ? 'renew' : 'upgrade';
     const rec = {
+      kind,
       from: str(b.from, 100) || '', to: plan,
       oldPrice: Number(b.oldPrice) || 0, newPrice: Number(b.newPrice) || 0,
       diff: Number(b.diff) || 0, discount: Number(b.discount) || 0, discountPct: Number(b.discountPct) || 0,
       increment: Number(b.increment) || 0, payMode: str(b.payMode, 20) || '',
+      start: str(b.start, 30) || '', months: Math.max(0, Math.min(120, Math.round(Number(b.months) || 0))),
       newTotal, date: str(b.date, 30) || new Date().toISOString().slice(0, 10),
       by: req.user.username,
     };
@@ -279,8 +282,10 @@ app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) =>
     if (contractEnd) rec.contractEnd = contractEnd;
     const updated = await upgradeClient(id, plan, newTotal, rec, payments, contractEnd);
     if (!updated) return res.status(404).json({ error: 'العميل غير موجود' });
-    audit(req, 'client.upgrade', 'client', id,
-      `ترقية باقة «${updated.name || id}»: ${rec.from} → ${rec.to}`, rec);
+    audit(req, kind === 'renew' ? 'client.renew' : 'client.upgrade', 'client', id,
+      kind === 'renew'
+        ? `تجديد عقد «${updated.name || id}»: ${rec.to}${rec.contractEnd ? ` حتى ${rec.contractEnd}` : ''}`
+        : `ترقية باقة «${updated.name || id}»: ${rec.from} → ${rec.to}`, rec);
     res.json({ ok: true, client: clean(updated) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

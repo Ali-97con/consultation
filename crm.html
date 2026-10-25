@@ -4230,7 +4230,7 @@ function openDetail(id) {
   <!-- ── UPGRADES & UPSELLS (admin + CSM roles) ── -->
   ${(!isCoach() && ((c.upgrades||[]).length || (c.upsells||[]).length)) ? `<div class="dp-sc">
     <div class="dp-st">💰 ${LANG==='ar'?'الترقيات والمبيعات الإضافية':'Upgrades & Upsells'}</div>
-    ${(c.upgrades||[]).slice().reverse().map(u=>`<div class="dp-row"><span class="dp-k">⬆️ ${esc(u.from||'')} → ${esc(u.to||'')}</span><span class="dp-v">${u.date?fmtDate(u.date):''} · ${fmtMoney(u.newTotal||0)}</span></div>`).join('')}
+    ${(c.upgrades||[]).slice().reverse().map(u=>`<div class="dp-row"><span class="dp-k">${u.kind==='renew'?'🔁 تجديد — '+esc(u.to||''):'⬆️ '+esc(u.from||'')+' → '+esc(u.to||'')}</span><span class="dp-v">${u.date?fmtDate(u.date):''} · ${fmtMoney(u.newTotal||0)}</span></div>`).join('')}
     ${(c.upsells||[]).slice().reverse().map(u=>`<div class="dp-row"><span class="dp-k">🛒 ${esc(u.type||'')}</span><span class="dp-v">${u.date?fmtDate(u.date):''} · ${fmtMoney(u.price||0)}</span></div>`).join('')}
   </div>`:''}
 
@@ -4250,10 +4250,10 @@ function openDetail(id) {
   </div>
 
   <!-- ── FINANCIAL & CONTRACT (admin only, collapsible) ── -->
-  ${isAdmin() ? `<div class="dp-sc">
-    <button class="btn btn-g" id="fin-toggle-${id}" style="padding:7px 14px;align-self:flex-start" onclick="toggleFinDetail(${id})">📋 ${LANG==='ar'?'التفاصيل الكاملة (العقد والدفعات)':'Full details (contract & payments)'}</button>
+  ${(isAdmin()||isCsmPhone()) ? `<div class="dp-sc">
+    <button class="btn btn-g" id="fin-toggle-${id}" style="padding:7px 14px;align-self:flex-start" onclick="toggleFinDetail(${id})">📋 ${isCsmPhone()?(LANG==='ar'?'ملفات العقد':'Contract files'):(LANG==='ar'?'التفاصيل الكاملة (العقد والدفعات)':'Full details (contract & payments)')}</button>
     <div id="fin-detail-${id}" style="display:none;margin-top:14px">
-      <div class="dp-st">💳 ${t('dp_pay_details')} — <span style="color:var(--p2);font-size:11px">${c.paymentType}</span></div>
+      ${isAdmin()?`<div class="dp-st">💳 ${t('dp_pay_details')} — <span style="color:var(--p2);font-size:11px">${c.paymentType}</span></div>
       ${c.status === 'refunded' ? `<div style="margin-bottom:12px;padding:10px 14px;background:var(--rbg);border:1px dashed rgba(239,68,68,.4);border-radius:9px;color:var(--r);font-size:12px;font-weight:600;display:flex;align-items:center;gap:8px"><span style="font-size:18px">💸</span><div><div>تم ارجاع المبلغ</div><div style="font-weight:400;color:var(--t2);font-size:11px;margin-top:2px">المبلغ المُسترجع: ${fmtMoney(fx(c))}</div></div></div>` : ''}
       <div class="dp2-stats">
         <div class="dp2-stat"><div class="dp2-stat-val">${fmtMoney(c.customTotal||PLANS[c.plan]||0)}</div><div class="dp2-stat-lbl">${t('dp_plan_total')}</div></div>
@@ -4281,7 +4281,7 @@ function openDetail(id) {
           <span>المتبقي: <strong style="color:${fr(c)>0?'var(--r)':'var(--g)'}">${fr(c)>0?fmtMoney(fr(c)):t('dp_fully_paid')}</strong></span>
           <span>التقدم: <strong style="color:var(--p2)">${(c.customTotal||PLANS[c.plan]||0)?Math.round(fx(c)/(c.customTotal||PLANS[c.plan])*100):0}%</strong></span>
         </div>
-      </div>
+      </div>`:''}
       <div class="dp-st" style="margin-top:20px">📎 ${LANG==='ar'?'ملفات العقد':'Contract files'} (${(c.contracts||[]).length})</div>
       ${(c.contracts||[]).map(f=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
           <span style="font-size:12px;color:var(--t2);flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${esc(f.filename||'file')}</span>
@@ -4534,9 +4534,11 @@ function toggleFinDetail(id){
   if (!d) return;
   const open = d.style.display === 'none';
   d.style.display = open ? 'block' : 'none';
-  if (b) b.textContent = (open ? '▲ ' : '📋 ') + (LANG==='ar'
-    ? (open ? 'إخفاء التفاصيل الكاملة' : 'التفاصيل الكاملة (العقد والدفعات)')
-    : (open ? 'Hide full details' : 'Full details (contract & payments)'));
+  if (b) b.textContent = (open ? '▲ ' : '📋 ') + (isCsmPhone()
+    ? (LANG==='ar' ? (open ? 'إخفاء ملفات العقد' : 'ملفات العقد') : (open ? 'Hide contract files' : 'Contract files'))
+    : (LANG==='ar'
+      ? (open ? 'إخفاء التفاصيل الكاملة' : 'التفاصيل الكاملة (العقد والدفعات)')
+      : (open ? 'Hide full details' : 'Full details (contract & payments)')));
 }
 
 // ═══════════════ MODAL ═══════════════
@@ -5697,7 +5699,7 @@ function upsellHistoryHtml(){
   const q=_upSearch.trim().toLowerCase();
   const items=[];
   clients.filter(c=>!c.deleted && (matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q))).forEach(c=>{
-    (c.upgrades||[]).forEach(u=>items.push({kind:'ترقية',date:u.date,cid:c.id,client:c.name,label:`${esc(u.from||'—')} → ${esc(u.to||'—')}`,amount:Math.max(0,(u.newTotal||0)-(u.oldPrice||0)),by:u.by}));
+    (c.upgrades||[]).forEach(u=>items.push({kind:u.kind==='renew'?'تجديد':'ترقية',date:u.date,cid:c.id,client:c.name,label:u.kind==='renew'?('🔁 '+esc(u.to||'—')):`${esc(u.from||'—')} → ${esc(u.to||'—')}`,amount:Math.max(0,(u.newTotal||0)-(u.oldPrice||0)),by:u.by}));
     (c.upsells||[]).forEach(u=>items.push({kind:'خدمة',date:u.date,cid:c.id,client:c.name,label:esc(u.type||'—'),amount:u.price||0,by:u.author}));
   });
   items.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -5815,7 +5817,7 @@ function renderPhoneClients(){
           ${(_upTab==='today'||_upTab==='prospect'||_upTab==='expiring')?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px;color:#0ea5e9;border-color:#0ea5e9" onclick="markUpsellContacted(${c.id},true)" title="تم الاتصال — نقل إلى قائمة «تم الاتصال»">📞 تم</button>`:''}
           ${_upTab==='contacted'?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="markUpsellContacted(${c.id},false)" title="رجوع للقائمة">↩︎</button>`:''}
           <button class="btn btn-p" style="padding:4px 9px;font-size:11px" onclick="openUpsellDetail(${c.id})" title="ملف البيع / متابعة">📊</button>
-          ${canUp?`<button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openUpgrade(${c.id})" title="ترقية الباقة">⬆️</button>`:''}
+          <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openUpgrade(${c.id},'${_upTab==='upgrade'?'upgrade':'renew'}')" title="تجديد / ترقية">${_upTab==='upgrade'?'⬆️':'🔁'}</button>
           <button class="btn btn-g" style="padding:4px 9px;font-size:11px" onclick="openUpsell(${c.id})" title="إضافة خدمة / باقة">➕</button>
         </td></tr>`;
     }).join(''):`<tr><td colspan="9" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء في هذه القائمة</td></tr>`;
@@ -5947,7 +5949,7 @@ function openUpsellDetail(id){
     </div>
     <!-- actions -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${nextTierPlan(c.plan)?`<button class="btn btn-p" onclick="openUpgrade(${id})">🆙 ترقية الباقة</button>`:''}
+      <button class="btn btn-p" onclick="openUpgrade(${id},'renew')">🔁 تجديد / ترقية</button>
       <button class="btn btn-p" onclick="openUpsell(${id})">➕ خدمة / باقة مكالمات</button>
       ${contractState(c)==='active'?`<button class="btn ${c.upsellProspect?'btn-p':'btn-g'}" onclick="toggleUpsellProspect(${id})">${c.upsellProspect?'⭐ محتمل ✓':'⭐ تحديد كمحتمل'}</button>`:''}
       ${upsellContacted(c)?`<button class="btn btn-g" onclick="markUpsellContacted(${id},false)" title="إرجاع إلى قائمة الانتظار">↩︎ إرجاع للقائمة</button>`:`<button class="btn btn-g" style="color:#0ea5e9;border-color:#0ea5e9" onclick="markUpsellContacted(${id},true)">📞 تم الاتصال</button>`}
@@ -6315,65 +6317,118 @@ function renderUpsellAnalytics(){
 
 // ── Plan upgrade modal ──
 let _upgradeId = null;
-function openUpgrade(id){
+let _upKind='renew';   // 'renew' (تجديد — default) | 'upgrade' (ترقية)
+function openUpgrade(id, mode){
   const c = clients.find(x=>x.id===id); if(!c) return;
   _upgradeId = id;
+  _upKind = (mode==='upgrade') ? 'upgrade' : 'renew';
   const oldTotal = c.customTotal||PLANS[c.plan]||0;
-  const targets = Object.keys(PLANS).filter(p => p!==c.plan && (PLANS[p]||0) >= oldTotal);
-  const def = nextTierPlan(c.plan);
-  const defTarget = (def && targets.includes(def)) ? def : (targets[0]||'');
   const box='background:var(--hv);border:1px solid var(--b2);border-radius:8px;padding:10px 12px';
-  const row=(k,idv,val,color)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px"><span style="color:var(--t3)">${k}</span><span id="${idv}" style="font-weight:700${color?`;color:${color}`:''}">${val||''}</span></div>`;
+  const seg='flex:1;justify-content:center;font-size:12.5px;padding:9px 10px';
   $('upgrade-body').innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button type="button" id="upk-renew" class="btn ${_upKind==='renew'?'btn-p':'btn-g'}" style="${seg}" onclick="_setUpKind('renew')">🔁 تجديد عقد</button>
+      <button type="button" id="upk-upgrade" class="btn ${_upKind==='upgrade'?'btn-p':'btn-g'}" style="${seg}" onclick="_setUpKind('upgrade')">🆙 ترقية</button>
+    </div>
     <div style="${box};margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
       <span style="font-size:12px;color:var(--t3)">الباقة الحالية</span>
       <span style="font-weight:700">${esc(c.plan)||'—'} · ${fmtMoney(oldTotal)}</span>
     </div>
+    <div id="upgrade-inner"></div>`;
+  _renderUpgradeInner();
+  $('upgrade-mo').classList.add('on');
+}
+function _setUpKind(k){
+  _upKind = (k==='upgrade') ? 'upgrade' : 'renew';
+  const r=$('upk-renew'), u=$('upk-upgrade');
+  if(r) r.className='btn '+(_upKind==='renew'?'btn-p':'btn-g');
+  if(u) u.className='btn '+(_upKind==='upgrade'?'btn-p':'btn-g');
+  _renderUpgradeInner();
+}
+function _renderUpgradeInner(){
+  const c=clients.find(x=>x.id===_upgradeId); if(!c) return;
+  const inner=$('upgrade-inner'); if(!inner) return;
+  const hd=document.querySelector('#upgrade-mo h3'); if(hd) hd.textContent = _upKind==='renew'?'تجديد العقد':'ترقية الباقة';
+  inner.innerHTML = _upKind==='renew' ? _renewBodyHtml(c) : _upgradeBodyHtml(c);
+  _recalcActive();
+}
+const _upRow=(k,idv,val,color)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px"><span style="color:var(--t3)">${k}</span><span id="${idv}" style="font-weight:700${color?`;color:${color}`:''}">${val||''}</span></div>`;
+// Shared: payment-mode (now / installments) block.
+function _payModeHtml(lbl){
+  const chip='flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--hv);border:1px solid var(--b1);padding:8px 10px;border-radius:8px;cursor:pointer';
+  return `<label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">${lbl}</label>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <label style="${chip}"><input type="radio" name="up-paymode" value="now" checked onchange="_recalcActive()"/> دفع الآن</label>
+      <label style="${chip}"><input type="radio" name="up-paymode" value="installments" onchange="_recalcActive()"/> تقسيط (facilité)</label>
+    </div>
+    <div id="up-inst-wrap" style="display:none;margin-bottom:10px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">عدد الأقساط (شهرياً)</label><input class="inp" id="up-instcount" type="number" min="2" max="24" value="3" oninput="_recalcActive()"/></div>
+    <div id="up-inst-preview" style="font-size:11px;color:var(--t3);margin-bottom:12px"></div>`;
+}
+// Shared: start date + duration (months, typed) → auto end date (editable).
+function _startMonthsHtml(c, defMonths){
+  const today=new Date().toISOString().slice(0,10);
+  const start=(c.contractEnd && c.contractEnd>=today) ? c.contractEnd : today;   // continue from current end if still active, else today
+  const dm=defMonths||12;
+  return `<div style="display:flex;gap:8px;margin-bottom:8px">
+      <div style="flex:1"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">تاريخ البداية</label>
+        <input class="inp" id="up-start" type="date" value="${start}" oninput="_upAutoEnd()"/></div>
+      <div style="flex:1"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">المدة (أشهر)</label>
+        <input class="inp" id="up-months" type="number" min="1" max="60" step="1" value="${dm}" oninput="_upAutoEnd()"/></div>
+    </div>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">تاريخ نهاية العقد — يُحسب تلقائياً وقابل للتعديل</label>
+    <input class="inp" id="up-end" type="date" value="${_addMonthsISO(start,dm)}" oninput="_recalcActive()" style="margin-bottom:14px"/>`;
+}
+function _addMonthsISO(dateStr,n){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr||''); if(!m) return ''; return new Date(Date.UTC(+m[1], (+m[2]-1)+(+n||0), +m[3])).toISOString().slice(0,10); }
+function _upAutoEnd(){ const s=($('up-start')||{}).value||''; const m=+($('up-months')||{}).value||0; if(s&&m>0&&$('up-end')) $('up-end').value=_addMonthsISO(s,m); _recalcActive(); }
+function _upgradeMode(){ const el=document.querySelector('input[name="up-paymode"]:checked'); return el?el.value:'now'; }
+function _recalcActive(){ if(_upKind==='renew') _recalcRenew(); else _recalcUpgrade(); }
+// Build the payment entries to append for the added value (paid now, or split monthly).
+function _addedPaymentsFor(increment, payMode, instCount){
+  if(increment<=0) return [];
+  if(payMode==='installments'){
+    const n=Math.max(2,instCount||2), per=Math.round(increment/n), out=[];
+    for(let i=0;i<n;i++){ const d=new Date(); d.setMonth(d.getMonth()+i+1); out.push({ amt: i===n-1 ? increment-per*(n-1) : per, date: d.toISOString().slice(0,10) }); }
+    return out;
+  }
+  return [{ amt: increment, date: new Date().toISOString().slice(0,10) }];
+}
+function _instPreview(increment, payMode, instCount){
+  const wrap=$('up-inst-wrap'); if(wrap) wrap.style.display = payMode==='installments' ? '' : 'none';
+  const pv=$('up-inst-preview'); if(!pv) return;
+  const add=_addedPaymentsFor(increment, payMode, instCount);
+  pv.textContent = increment<=0 ? '' : payMode==='installments'
+    ? `${add.length} أقساط بقيمة ~${fmtMoney(add[0].amt)} شهرياً بدءاً من ${add[0].date}`
+    : `دفعة واحدة ${fmtMoney(increment)} بتاريخ اليوم`;
+}
+
+// ── Upgrade (ترقية): move to a higher plan, pay the difference ──
+function _upgradeBodyHtml(c){
+  const oldTotal=c.customTotal||PLANS[c.plan]||0;
+  const targets = Object.keys(PLANS).filter(p => p!==c.plan && (PLANS[p]||0) >= oldTotal);
+  const def = nextTierPlan(c.plan);
+  const defTarget = (def && targets.includes(def)) ? def : (targets[0]||'');
+  const box='background:var(--hv);border:1px solid var(--b2);border-radius:8px;padding:10px 12px';
+  return `
     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">الباقة الجديدة</label>
     <select class="inp" id="up-plan" onchange="_onUpPlan()" style="margin-bottom:10px">
       ${targets.map(p=>`<option value="${esc(p)}"${p===defTarget?' selected':''}>${esc(p)} — ${fmtMoney(PLANS[p]||0)}</option>`).join('')||'<option value="">لا توجد باقة أعلى</option>'}
     </select>
     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">سعر الباقة الجديدة ($) — قابل للتعديل</label>
     <input class="inp" id="up-newprice" type="number" min="0" value="${PLANS[defTarget]||0}" oninput="_recalcUpgrade()" style="margin-bottom:10px"/>
-    ${row('الفرق','up-diff')}
+    ${_upRow('الفرق','up-diff')}
     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">نسبة الخصم على الفرق (%)</label>
     <input class="inp" id="up-disc-pct" type="number" min="0" max="100" step="1" value="20" oninput="_recalcUpgrade()" style="margin-bottom:8px"/>
-    ${row('قيمة الخصم','up-disc-amt','','var(--y)')}
+    ${_upRow('قيمة الخصم','up-disc-amt','','var(--y)')}
     <div style="${box};margin-bottom:6px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">الإجمالي الجديد للعقد</span><span id="up-newtotal" style="font-weight:800;color:var(--g)"></span></div>
     <div style="${box};margin-bottom:12px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">قيمة الترقية المضافة</span><span id="up-increment" style="font-weight:800;color:var(--p2)"></span></div>
-    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">كيف تُدفع قيمة الترقية؟</label>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <label style="flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--hv);border:1px solid var(--b1);padding:8px 10px;border-radius:8px;cursor:pointer"><input type="radio" name="up-paymode" value="now" checked onchange="_recalcUpgrade()"/> دفع الآن</label>
-      <label style="flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--hv);border:1px solid var(--b1);padding:8px 10px;border-radius:8px;cursor:pointer"><input type="radio" name="up-paymode" value="installments" onchange="_recalcUpgrade()"/> تقسيط</label>
-    </div>
-    <div id="up-inst-wrap" style="display:none;margin-bottom:10px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">عدد الأقساط (شهرياً)</label><input class="inp" id="up-instcount" type="number" min="2" max="24" value="3" oninput="_recalcUpgrade()"/></div>
-    <div id="up-inst-preview" style="font-size:11px;color:var(--t3);margin-bottom:12px"></div>
-    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">تمديد نهاية العقد</label>
-    <select class="inp" id="up-extend" onchange="_recalcUpgrade()" style="margin-bottom:6px">
-      <option value="0">بدون تغيير (${c.contractEnd?fmtDate(c.contractEnd):'—'})</option>
-      <option value="6">+6 أشهر</option>
-      <option value="12" selected>+12 شهر</option>
-      <option value="24">+24 شهر</option>
-    </select>
-    <div id="up-end-preview" style="font-size:11px;color:var(--t3);margin-bottom:14px"></div>
+    ${_payModeHtml('كيف تُدفع قيمة الترقية؟')}
+    ${_startMonthsHtml(c,12)}
     <div style="display:flex;gap:8px">
       <button class="btn btn-p" style="flex:1" onclick="confirmUpgrade()">✓ تأكيد الترقية</button>
       <button class="btn btn-g" onclick="closeUpgrade()">إلغاء</button>
     </div>`;
-  _recalcUpgrade();
-  $('upgrade-mo').classList.add('on');
 }
 function _onUpPlan(){ const p=($('up-plan')||{}).value||''; if($('up-newprice')) $('up-newprice').value = PLANS[p]||0; _recalcUpgrade(); }
-// New contract end date after optional extension (months from current end, or from today if past/none).
-function _upgradeNewEnd(c){
-  const ext=+($('up-extend')||{}).value||0;
-  if(ext<=0) return c.contractEnd||'';
-  const today=new Date().toISOString().slice(0,10);
-  const base=(c.contractEnd && c.contractEnd>=today) ? new Date(c.contractEnd) : new Date();
-  base.setMonth(base.getMonth()+ext);
-  return base.toISOString().slice(0,10);
-}
-function _upgradeMode(){ const el=document.querySelector('input[name="up-paymode"]:checked'); return el?el.value:'now'; }
 function _upgradeCalc(){
   const c=clients.find(x=>x.id===_upgradeId); if(!c) return null;
   const oldTotal=c.customTotal||PLANS[c.plan]||0;
@@ -6388,54 +6443,100 @@ function _upgradeCalc(){
   const instCount=Math.max(2,Math.min(24, +($('up-instcount')||{}).value||3));
   return { c, oldTotal, plan, newPrice, diff, pct, disc, newTotal, increment, payMode, instCount };
 }
-// Build the payment entries to append for the upgrade increment (paid now, or split monthly).
-function _upgradeAddedPayments(r){
-  if(r.increment<=0) return [];
-  if(r.payMode==='installments'){
-    const n=r.instCount, per=Math.round(r.increment/n), out=[];
-    for(let i=0;i<n;i++){ const d=new Date(); d.setMonth(d.getMonth()+i+1); out.push({ amt: i===n-1 ? r.increment-per*(n-1) : per, date: d.toISOString().slice(0,10) }); }
-    return out;
-  }
-  return [{ amt: r.increment, date: new Date().toISOString().slice(0,10) }];
-}
+function _upgradeAddedPayments(r){ return _addedPaymentsFor(r.increment, r.payMode, r.instCount); }
 function _recalcUpgrade(){
   const r=_upgradeCalc(); if(!r) return;
   if($('up-diff')) $('up-diff').textContent=fmtMoney(r.diff);
   if($('up-disc-amt')) $('up-disc-amt').textContent='−'+fmtMoney(r.disc)+` (${r.pct}%)`;
   if($('up-newtotal')) $('up-newtotal').textContent=fmtMoney(r.newTotal);
   if($('up-increment')) $('up-increment').textContent=fmtMoney(r.increment);
-  const wrap=$('up-inst-wrap'); if(wrap) wrap.style.display = r.payMode==='installments' ? '' : 'none';
-  const pv=$('up-inst-preview');
-  if(pv){
-    const add=_upgradeAddedPayments(r);
-    pv.textContent = r.increment<=0 ? '' : r.payMode==='installments'
-      ? `${add.length} أقساط بقيمة ~${fmtMoney(add[0].amt)} شهرياً بدءاً من ${add[0].date}`
-      : `دفعة واحدة ${fmtMoney(r.increment)} بتاريخ اليوم`;
-  }
-  const ep=$('up-end-preview');
-  if(ep){ const ne=_upgradeNewEnd(r.c); const ext=+($('up-extend')||{}).value||0; ep.textContent = ext>0 && ne ? `نهاية العقد الجديدة: ${fmtDate(ne)}` : ''; }
+  _instPreview(r.increment, r.payMode, r.instCount);
 }
+
+// ── Renewal (تجديد عقد): re-sign for a new period (any plan), added to the contract total ──
+function _renewBodyHtml(c){
+  const allPlans=Object.keys(PLANS);
+  const defPlan = allPlans.includes(c.plan) ? c.plan : (allPlans[0]||'');
+  const box='background:var(--hv);border:1px solid var(--b2);border-radius:8px;padding:10px 12px';
+  return `
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">الباقة</label>
+    <select class="inp" id="up-plan" onchange="_onRenewPlan()" style="margin-bottom:10px">
+      ${allPlans.map(p=>`<option value="${esc(p)}"${p===defPlan?' selected':''}>${esc(p)} — ${fmtMoney(PLANS[p]||0)}</option>`).join('')||'<option value="">لا توجد باقة</option>'}
+    </select>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">سعر الباقة ($) — قابل للتعديل</label>
+    <input class="inp" id="up-newprice" type="number" min="0" value="${PLANS[defPlan]||0}" oninput="_recalcRenew()" style="margin-bottom:10px"/>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">الخصم</label>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <input class="inp" id="up-disc-val" type="number" min="0" step="1" value="0" oninput="_recalcRenew()" style="flex:1"/>
+      <select class="inp" id="up-disc-mode" onchange="_recalcRenew()" style="width:130px">
+        <option value="pct" selected>٪ نسبة</option>
+        <option value="amt">مبلغ ثابت ($)</option>
+      </select>
+    </div>
+    ${_upRow('قيمة الخصم','up-disc-amt','','var(--y)')}
+    ${_upRow('السعر بعد الخصم','up-final','','var(--p2)')}
+    <div style="${box};margin-bottom:12px;display:flex;justify-content:space-between"><span style="color:var(--t3);font-size:12px">الإجمالي الجديد للعقد</span><span id="up-newtotal" style="font-weight:800;color:var(--g)"></span></div>
+    ${_payModeHtml('كيف تُدفع قيمة التجديد؟')}
+    ${_startMonthsHtml(c,12)}
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p" style="flex:1" onclick="confirmUpgrade()">✓ تأكيد التجديد</button>
+      <button class="btn btn-g" onclick="closeUpgrade()">إلغاء</button>
+    </div>`;
+}
+function _onRenewPlan(){ const p=($('up-plan')||{}).value||''; if($('up-newprice')) $('up-newprice').value = PLANS[p]||0; _recalcRenew(); }
+function _renewCalc(){
+  const c=clients.find(x=>x.id===_upgradeId); if(!c) return null;
+  const oldTotal=c.customTotal||PLANS[c.plan]||0;
+  const plan=($('up-plan')||{}).value||'';
+  const price=Math.max(0, +($('up-newprice')||{}).value||0);
+  const mode=($('up-disc-mode')||{}).value||'pct';
+  const dval=Math.max(0, +($('up-disc-val')||{}).value||0);
+  const disc = mode==='pct' ? Math.round(price*Math.min(100,dval)/100) : Math.min(price,dval);
+  const pct = mode==='pct' ? Math.min(100,dval) : (price>0?Math.round(disc/price*100):0);
+  const finalPrice=Math.max(0, price-disc);
+  const increment=finalPrice;                 // the renewal value is added to the contract total
+  const newTotal=oldTotal+increment;
+  const payMode=_upgradeMode();
+  const instCount=Math.max(2,Math.min(24, +($('up-instcount')||{}).value||3));
+  return { c, oldTotal, plan, price, mode, disc, pct, finalPrice, increment, newTotal, payMode, instCount };
+}
+function _recalcRenew(){
+  const r=_renewCalc(); if(!r) return;
+  if($('up-disc-amt')) $('up-disc-amt').textContent='−'+fmtMoney(r.disc)+(r.mode==='pct'?` (${r.pct}%)`:'');
+  if($('up-final')) $('up-final').textContent=fmtMoney(r.finalPrice);
+  if($('up-newtotal')) $('up-newtotal').textContent=fmtMoney(r.newTotal);
+  _instPreview(r.increment, r.payMode, r.instCount);
+}
+
 async function confirmUpgrade(){
-  const r=_upgradeCalc(); if(!r) return;
-  if(!r.plan || r.plan===r.c.plan){ toast('اختر باقة مختلفة','⚠️'); return; }
-  const payments=[...payList(r.c).map(([amt,date])=>({amt,date})), ..._upgradeAddedPayments(r)];
-  const ext=+($('up-extend')||{}).value||0;
-  const contractEnd = ext>0 ? _upgradeNewEnd(r.c) : undefined;
+  const isRenew = _upKind==='renew';
+  const r = isRenew ? _renewCalc() : _upgradeCalc(); if(!r) return;
+  if(!r.plan){ toast('اختر باقة','⚠️'); return; }
+  if(!isRenew && r.plan===r.c.plan){ toast('اختر باقة مختلفة','⚠️'); return; }
+  if(isRenew && r.increment<=0){ toast('أدخل سعراً للتجديد','⚠️'); return; }
+  const increment=r.increment;
+  const added=_addedPaymentsFor(increment, r.payMode, r.instCount);
+  const payments=[...payList(r.c).map(([amt,date])=>({amt,date})), ...added];
+  const contractEnd = (($('up-end')||{}).value) || undefined;
+  const start = (($('up-start')||{}).value) || '';
+  const months = +($('up-months')||{}).value||0;
   try{
     await api('POST',`/api/clients/${r.c.id}/upgrade`,{
+      kind: isRenew?'renew':'upgrade',
       plan:r.plan, newTotal:r.newTotal, from:r.c.plan, oldPrice:r.oldTotal,
-      newPrice:r.newPrice, diff:r.diff, discount:r.disc, discountPct:r.pct,
-      increment:r.increment, payMode:r.payMode, payments, contractEnd,
+      newPrice: isRenew?r.price:r.newPrice, diff: isRenew?r.increment:r.diff,
+      discount:r.disc, discountPct:r.pct, increment, payMode:r.payMode,
+      payments, contractEnd, start, months,
       date:new Date().toISOString().slice(0,10),
     });
     await reloadClients();
     closeUpgrade();
-    toast('تمت ترقية الباقة ✓','✅');
-    if(typeof logActivity==='function') logActivity('⬆️','ترقية باقة',`${r.c.name}: ${r.plan}`);
+    toast(isRenew?'تم تجديد العقد ✓':'تمت ترقية الباقة ✓','✅');
+    if(typeof logActivity==='function') logActivity(isRenew?'🔁':'⬆️', isRenew?'تجديد عقد':'ترقية باقة', `${r.c.name}: ${r.plan}`);
     updateUpsellBadge();
     if($('upselldetail-mo').classList.contains('on')) openUpsellDetail(r.c.id);
     if(S.view==='phoneclients') renderPhoneClients(); else if(S.view==='upgrades') renderUpgrades();
-  }catch(e){ toast('فشل الترقية: '+(e.message||''),'⚠️'); }
+  }catch(e){ toast((isRenew?'فشل التجديد: ':'فشل الترقية: ')+(e.message||''),'⚠️'); }
 }
 function closeUpgrade(){ $('upgrade-mo').classList.remove('on'); _upgradeId=null; }
 
@@ -6540,7 +6641,7 @@ function renderUpgrades(){
     return `<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${u.cid})">
       <td style="padding:10px 12px;font-size:12px;color:var(--t2);white-space:nowrap">${u.date?fmtDate(u.date):'—'}</td>
       <td style="padding:10px 12px;font-size:12.5px;font-weight:600">${esc(u.client)||'—'}</td>
-      <td style="padding:10px 12px;font-size:12px">${planBadge(u.from)} <span style="color:var(--t3)">→</span> ${planBadge(u.to)}</td>
+      <td style="padding:10px 12px;font-size:12px">${u.kind==='renew'?`<span style="font-size:10px;font-weight:700;background:#0ea5e922;color:#0ea5e9;padding:2px 7px;border-radius:20px">🔁 تجديد</span> ${planBadge(u.to)}`:`${planBadge(u.from)} <span style="color:var(--t3)">→</span> ${planBadge(u.to)}`}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px">${fmtMoney(u.oldPrice||0)}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px">${fmtMoney(u.newPrice||0)}</td>
       <td style="padding:10px 12px;text-align:center;font-size:12px;color:${(u.discount||0)>0?'var(--y)':'var(--t3)'}">${u.discount?('−'+fmtMoney(u.discount)+(u.discountPct?` (${u.discountPct}%)`:'')):'—'}</td>
@@ -6550,7 +6651,7 @@ function renderUpgrades(){
   }).join('') : `<tr><td colspan="8" style="padding:26px;text-align:center;color:var(--t3);font-size:13px">لا توجد ترقيات بعد</td></tr>`;
   $('pg-upgrades').innerHTML = `
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
-    ${kpi(all.length,'عدد الترقيات','#6366f1')}
+    ${kpi(all.length,'ترقيات / تجديدات','#6366f1')}
     ${kpi(fmtMoney(addedRev),'قيمة مضافة للعقود','var(--g)')}
   </div>
   <div class="card" style="padding:0;overflow-x:auto">
@@ -6580,7 +6681,7 @@ async function undoUpgrade(cid){
 let _auditFilter = '';
 function setAuditFilter(v){ _auditFilter = v; renderAudit(); }
 const AUDIT_ACTIONS = {
-  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة','client.upgrade.undo':'إلغاء ترقية','client.upsell':'بيع خدمة (Upsell)','client.upsell.follow':'متابعة أبسيل','client.pause':'إيقاف مؤقت','client.resume':'استئناف العقد',
+  'client.create':'إضافة عميل','client.update':'تعديل عميل','client.delete':'حذف عميل','client.upgrade':'ترقية باقة','client.renew':'تجديد عقد','client.upgrade.undo':'إلغاء ترقية','client.upsell':'بيع خدمة (Upsell)','client.upsell.follow':'متابعة أبسيل','client.pause':'إيقاف مؤقت','client.resume':'استئناف العقد',
   'csm.note':'متابعة CSM','plan.update':'تعديل باقة','plan.delete':'حذف باقة','plan.create':'إضافة باقة',
   'user.create':'إضافة مستخدم','user.update':'تعديل مستخدم','user.delete':'حذف مستخدم',
   'session.send':'إرسال بريد جلسة','session.template':'تعديل قالب بريد',
