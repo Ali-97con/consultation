@@ -3434,9 +3434,12 @@ function buildCommMonthOptions(){
     + months.map(m => `<option value="${m}"${m===_commMonth?' selected':''}>${monthLabel(m)}${payCount[m]?` (${payCount[m]})`:''}</option>`).join('');
 }
 
+const UP_BUCKET = '\u0000up\u0000';   // internal prefix so an upsaler never merges with a same-named closer/setter
 function computeCommissions(month){
   const people = {};
-  const get = n => people[n] || (people[n] = { name:n, asSetter:0, asCloser:0, combined:0, asUpsaler:0, cset:new Set() });
+  const mk = (key, name, isUp) => people[key] || (people[key] = { key, name, isUpsaler:!!isUp, asSetter:0, asCloser:0, combined:0, asUpsaler:0, cset:new Set() });
+  const get = n => mk(n, n, false);            // closer / setter bucket, keyed by name
+  const getUp = n => mk(UP_BUCKET + n, n, true); // upsaler bucket, separate even on name collision
   const urates = _upsalerRates();
   const inMo = dt => !month || (dt||'').startsWith(month);
   clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
@@ -3462,7 +3465,7 @@ function computeCommissions(month){
       if (!(a > 0 && dt && inMo(dt))) return;
       const rate = (urates[ups] || 0) / 100;
       if (rate <= 0) return;
-      const p = get(ups); p.asUpsaler += exVat(a) * rate; p.cset.add(c.id);
+      const p = getUp(ups); p.asUpsaler += exVat(a) * rate; p.cset.add(c.id);
     });
   });
   return people;
@@ -3495,10 +3498,10 @@ function renderCommissions(){
   const palette = ['#6366f1','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#f87171'];
 
   const body = rows.length ? rows.map((p,i) => `
-    <tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openCommDetail('${esc(p.name)}')" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
+    <tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openCommDetail('${esc(p.name)}','',${p.isUpsaler?1:0})" onmouseover="this.style.background='var(--hv)'" onmouseout="this.style.background=''">
       <td style="padding:12px 14px"><div style="display:flex;align-items:center;gap:10px">
-        <div class="av" style="background:${palette[i%palette.length]};width:30px;height:30px;font-size:12px">${ini(p.name)}</div>
-        <span style="font-weight:600;font-size:13px">${esc(p.name)||'—'} <span style="color:var(--t3);font-size:10px">›</span></span>
+        <div class="av" style="background:${p.isUpsaler?'#0ea5e9':palette[i%palette.length]};width:30px;height:30px;font-size:12px">${ini(p.name)}</div>
+        <span style="font-weight:600;font-size:13px">${esc(p.name)||'—'}${p.isUpsaler?' <span style="font-size:9.5px;font-weight:700;background:#0ea5e922;color:#0ea5e9;padding:1px 6px;border-radius:8px">أبسيل</span>':''} <span style="color:var(--t3);font-size:10px">›</span></span>
       </div></td>
       <td style="padding:12px 14px;text-align:center;font-size:12px;color:var(--t2)">${p.n}</td>
       <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:var(--g)">${p.asSetter?fmtMoney(p.asSetter):'—'}</td>
@@ -3560,12 +3563,13 @@ function renderCommissions(){
 }
 
 // All commission line-items (one per payment per role) for one member, across all months.
-function memberLineItems(name){
+// upsalerOnly=true → only the upsaler earnings (separate person from a same-named closer/setter).
+function memberLineItems(name, upsalerOnly){
   const items = [];
   const urates = _upsalerRates();
   clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
     // ── Closer / setter: channel clients only, on the BASE payments (upsale money excluded) ──
-    if ((c.channel === 'inbound' || c.channel === 'outbound') && (c.setter === name || c.closer === name)) {
+    if (!upsalerOnly && (c.channel === 'inbound' || c.channel === 'outbound') && (c.setter === name || c.closer === name)) {
       const isSetter = c.setter === name, isCloser = c.closer === name;
       clientBasePays(c).filter(([a,d]) => a > 0 && d).forEach(([amt,date]) => {
         const base = exVat(amt);
@@ -3578,33 +3582,36 @@ function memberLineItems(name){
       });
     }
     // ── Upsaler: all clients, on upgrade/renewal + service-sale amounts ──
-    [...upgradeAddedItems(c), ...upsellItems(c)].forEach(([amt,date,ups]) => {
-      if (ups !== name || !(amt > 0 && date)) return;
-      const rate = (urates[ups] || 0) / 100;
-      if (rate <= 0) return;
-      const base = exVat(amt);
-      items.push({ client:c.name, cid:c.id, channel:c.channel||'', date, amt, base, role:'upsaler', rate, comm:base*rate });
-    });
+    if (upsalerOnly) {
+      [...upgradeAddedItems(c), ...upsellItems(c)].forEach(([amt,date,ups]) => {
+        if (ups !== name || !(amt > 0 && date)) return;
+        const rate = (urates[ups] || 0) / 100;
+        if (rate <= 0) return;
+        const base = exVat(amt);
+        items.push({ client:c.name, cid:c.id, channel:c.channel||'', date, amt, base, role:'upsaler', rate, comm:base*rate });
+      });
+    }
   });
   return items;
 }
 
-function openCommDetail(name, month){
+function openCommDetail(name, month, upsalerOnly){
   month = month || '';
-  const all = memberLineItems(name).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  upsalerOnly = !!upsalerOnly;
+  const all = memberLineItems(name, upsalerOnly).sort((a,b) => (b.date||'').localeCompare(a.date||''));
   const items = month ? all.filter(i => (i.date||'').startsWith(month)) : all;   // filtered → KPIs + table
   const total = items.reduce((s,i) => s + i.comm, 0);
   const clientsCount = new Set(items.map(i => i.cid)).size;
   // Total cash collected on this member's deals (each payment counted once, even if setter+closer)
   let collected = 0;
   clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
-    if ((c.channel==='inbound'||c.channel==='outbound') && (c.setter === name || c.closer === name)) {
+    if (!upsalerOnly && (c.channel==='inbound'||c.channel==='outbound') && (c.setter === name || c.closer === name)) {
       clientBasePays(c).forEach(([a,d]) => {
         if (a > 0 && d && (!month || d.startsWith(month))) collected += a;
       });
     }
     // upsale amounts this member earned on (upgrade/renewal + service sales)
-    [...upgradeAddedItems(c), ...upsellItems(c)].forEach(([a,d,ups]) => {
+    if (upsalerOnly) [...upgradeAddedItems(c), ...upsellItems(c)].forEach(([a,d,ups]) => {
       if (ups === name && a > 0 && d && (!month || d.startsWith(month))) collected += a;
     });
   });
@@ -3629,11 +3636,11 @@ function openCommDetail(name, month){
       <td style="padding:9px 10px;text-align:left;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(it.comm)}</td>
     </tr>`).join('') : `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--t3)">${LANG==='ar'?'لا يوجد سجل':'No history'}</td></tr>`;
 
-  $('comm-title').textContent = (LANG==='ar'?'عمولات: ':'Commissions: ') + name;
+  $('comm-title').textContent = (LANG==='ar'?'عمولات: ':'Commissions: ') + name + (upsalerOnly?(LANG==='ar'?' (أبسيل)':' (Upsaler)'):'');
   $('comm-body').innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <span style="font-size:12px;color:var(--t2);font-weight:600">${LANG==='ar'?'تصفية حسب الشهر:':'Filter by month:'}</span>
-      <select class="fsl" onchange="openCommDetail('${esc(name)}', this.value)" style="min-width:170px">${monthOpts}</select>
+      <select class="fsl" onchange="openCommDetail('${esc(name)}', this.value, ${upsalerOnly?1:0})" style="min-width:170px">${monthOpts}</select>
       ${month?`<span style="font-size:11px;background:var(--pbg);color:var(--p2);border:1px solid var(--pbd);padding:3px 10px;border-radius:20px;font-weight:600">${monthLabel(month)}</span>`:''}
       <span style="margin-right:auto;font-size:10.5px;color:var(--t3)">${LANG==='ar'?'العمولة = النسبة × المبلغ بعد خصم 5٪ ضريبة':'Commission = rate × payment after −5% VAT'}</span>
     </div>
