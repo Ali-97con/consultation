@@ -6781,9 +6781,11 @@ async function renameUpsaler(oldName, newName){
   newName=(newName||'').trim(); if(!newName || newName===oldName){ openUpsalersMgr(); return; }
   if(UPSALERS.some(u=>u.name===newName)){ toast('الاسم مستخدم','⚠️'); openUpsalersMgr(); return; }
   const u=UPSALERS.find(x=>x.name===oldName); const rate=u?u.rate:0; if(u) u.name=newName;
-  try{ await api('PUT',`/api/upsalers/${encodeURIComponent(oldName)}`,{newName, rate}); }catch(e){ toast('خطأ','❌'); }
+  try{ await api('PUT',`/api/upsalers/${encodeURIComponent(oldName)}`,{newName, rate}); }catch(e){ toast('خطأ','❌'); openUpsalersMgr(); return; }
+  await reloadClients();   // records were re-tagged server-side → refresh so commissions stay attributed
   openUpsalersMgr();
   if(S.view==='commissions') renderCommissions();
+  toast('تم إعادة التسمية ✓','✅');
 }
 async function delUpsaler(name){
   if(!confirm(`حذف البائع «${name}»؟ العمليات المسجّلة باسمه تبقى لكن دون عمولة حتى تُعاد نسبتها.`)) return;

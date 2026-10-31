@@ -591,12 +591,32 @@ async function addUpsaler(name, rate) {
 }
 async function updateUpsaler(oldName, newName, rate) {
   await schemaReady();
-  if (newName && newName !== oldName) {
+  const renaming = newName && newName !== oldName;
+  if (renaming) {
+    const { rows } = await q('select 1 from upsalers where name=$1', [newName]);
+    if (rows.length) return false;                       // target name already taken
     const r = await q('update upsalers set name=$2, rate=$3 where name=$1', [oldName, newName, Number(rate) || 0]);
+    if (r.rowCount > 0) await retagUpsaler(oldName, newName);   // re-label existing upsell/upgrade records
     return r.rowCount > 0;
   }
   const r = await q('update upsalers set rate=$2 where name=$1', [oldName, Number(rate) || 0]);
   return r.rowCount > 0;
+}
+// Re-tag every upsell/upgrade record that references an upsaler being renamed (keeps commissions attributed).
+async function retagUpsaler(oldName, newName) {
+  await ready();
+  const needle = JSON.stringify([{ upsaler: oldName }]);
+  const { rows } = await q(
+    `select id, data from clients where data->'upsells' @> $1::jsonb or data->'upgrades' @> $1::jsonb`,
+    [needle]);
+  let changed = 0;
+  for (const r of rows) {
+    const data = r.data; let touched = false;
+    if (Array.isArray(data.upsells))  data.upsells.forEach(u  => { if (u && u.upsaler === oldName) { u.upsaler = newName; touched = true; } });
+    if (Array.isArray(data.upgrades)) data.upgrades.forEach(u => { if (u && u.upsaler === oldName) { u.upsaler = newName; touched = true; } });
+    if (touched) { await q('update clients set data = $2 where id = $1', [r.id, j(data)]); changed++; }
+  }
+  return changed;
 }
 async function deleteUpsaler(name) {
   await schemaReady();
