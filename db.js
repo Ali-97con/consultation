@@ -122,6 +122,16 @@ async function ensureSchema() {
       ('Extra 1:1 Call with Ali',1500,6),('Extra 1:1 Call with Coach',500,7)
     on conflict (name) do nothing;
 
+    -- Upsalers (sales agents who earn the commission on upsell/upgrade/renewal ops).
+    -- rate is a PERCENT (e.g. 5 = 5%); each upsaler has their own rate.
+    create table if not exists upsalers (
+      name text primary key,
+      rate numeric not null default 0,
+      sort int not null default 0
+    );
+    insert into upsalers(name,rate,sort) values ('خالد',5,1)
+    on conflict (name) do nothing;
+
     create table if not exists audit_log (
       id        bigserial   primary key,
       ts        timestamptz not null default now(),
@@ -566,6 +576,34 @@ async function updateUpsellService(oldName, newName, price) {
   const r = await q('update upsell_services set price=$2 where name=$1', [oldName, Number(price) || 0]);
   return r.rowCount > 0;
 }
+// ─── Upsalers (name + commission rate %) ───
+async function getUpsalers() {
+  await schemaReady();
+  const { rows } = await q('select name, rate from upsalers order by sort, name');
+  return rows.map(r => ({ name: r.name, rate: Number(r.rate) || 0 }));
+}
+async function addUpsaler(name, rate) {
+  await schemaReady();
+  const { rows } = await q('select coalesce(max(sort),0)+1 as s from upsalers');
+  const r = await q('insert into upsalers(name,rate,sort) values($1,$2,$3) on conflict (name) do nothing',
+    [name, Number(rate) || 0, rows[0].s]);
+  return r.rowCount > 0;
+}
+async function updateUpsaler(oldName, newName, rate) {
+  await schemaReady();
+  if (newName && newName !== oldName) {
+    const r = await q('update upsalers set name=$2, rate=$3 where name=$1', [oldName, newName, Number(rate) || 0]);
+    return r.rowCount > 0;
+  }
+  const r = await q('update upsalers set rate=$2 where name=$1', [oldName, Number(rate) || 0]);
+  return r.rowCount > 0;
+}
+async function deleteUpsaler(name) {
+  await schemaReady();
+  await q('delete from upsalers where name=$1', [name]);
+  return true;
+}
+
 async function deleteUpsellService(name) {
   await schemaReady();
   await q('delete from upsell_services where name=$1', [name]);
@@ -1062,6 +1100,7 @@ module.exports = {
   updateCsmNotes, updateUpsellNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   // Upsell services + purchases
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
+  getUpsalers, addUpsaler, updateUpsaler, deleteUpsaler,
   // Sessions (Postgres-backed, serverless-safe)
   createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)

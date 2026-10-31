@@ -15,6 +15,7 @@ const {
   addNoteFile, getNoteFileById, deleteNoteFileById,
   updateCsmNotes, updateUpsellNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
+  getUpsalers, addUpsaler, updateUpsaler, deleteUpsaler,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
@@ -272,6 +273,10 @@ app.post('/api/clients/:id/upgrade', requireCsmPhoneOrAdmin, async (req, res) =>
       diff: Number(b.diff) || 0, discount: Number(b.discount) || 0, discountPct: Number(b.discountPct) || 0,
       increment: Number(b.increment) || 0, payMode: str(b.payMode, 20) || '',
       start: str(b.start, 30) || '', months: Math.max(0, Math.min(120, Math.round(Number(b.months) || 0))),
+      upsaler: str(b.upsaler, 120) || '',
+      commPayments: Array.isArray(b.commPayments)
+        ? b.commPayments.slice(0, 60).map(p => ({ amt: Number(p && p.amt) || 0, date: str((p && p.date) || '', 30) || '' }))
+        : undefined,
       newTotal, date: str(b.date, 30) || new Date().toISOString().slice(0, 10),
       by: req.user.username,
     };
@@ -488,12 +493,46 @@ app.delete('/api/upsell-services/:name', requireAdmin, async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Upsalers (sales agents + their commission rate %) ───
+app.get('/api/upsalers', requireAuth, async (_req, res) => {
+  try { res.json(await getUpsalers()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/upsalers', requireAdmin, async (req, res) => {
+  try {
+    const name = str(req.body.name, 120);
+    if (!name) return res.status(400).json({ error: 'اسم البائع مطلوب' });
+    const rate = Math.max(0, Math.min(100, Number(req.body.rate) || 0));
+    if (!await addUpsaler(name, rate)) return res.status(409).json({ error: 'البائع موجود مسبقاً' });
+    audit(req, 'upsaler.create', 'upsaler', name, `إضافة بائع أبسيل «${name}»`, { rate });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/upsalers/:name', requireAdmin, async (req, res) => {
+  try {
+    const rate = Math.max(0, Math.min(100, Number(req.body.rate) || 0));
+    const ok = await updateUpsaler(decodeURIComponent(req.params.name),
+      req.body.newName ? str(req.body.newName, 120) : undefined, rate);
+    audit(req, 'upsaler.update', 'upsaler', decodeURIComponent(req.params.name),
+      `تعديل بائع أبسيل «${decodeURIComponent(req.params.name)}»`, { rate, newName: req.body.newName || null });
+    res.json({ ok });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/upsalers/:name', requireAdmin, async (req, res) => {
+  try {
+    await deleteUpsaler(decodeURIComponent(req.params.name));
+    audit(req, 'upsaler.delete', 'upsaler', decodeURIComponent(req.params.name), `حذف بائع أبسيل «${decodeURIComponent(req.params.name)}»`, {});
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Record upsell purchases on a client (admin + both CSM roles)
 app.put('/api/clients/:id/upsells', requireCsmOrAdmin, async (req, res) => {
   try {
     const upsells = (req.body.upsells || []).slice(0, 500).map(u => ({
       id: u.id, date: str(u.date, 30), type: str(u.type, 120),
       price: Number(u.price) || 0, author: str(u.author, 100), createdAt: str(u.createdAt, 40),
+      upsaler: str(u.upsaler, 120),
     }));
     await updateUpsells(+req.params.id, upsells);
     audit(req, 'client.upsell', 'client', +req.params.id, 'تسجيل بيع خدمة (Upsell)', { count: upsells.length });

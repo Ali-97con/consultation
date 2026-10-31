@@ -784,6 +784,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div id="upsell-opts-body" style="padding:18px;max-height:70vh;overflow-y:auto"></div>
   </div>
 </div>
+<!-- UPSALERS MANAGER (sales agents + their commission rate) -->
+<div class="mo" id="upsalers-mo" style="z-index:580" onclick="if(event.target===this)$('upsalers-mo').classList.remove('on')">
+  <div class="mbox" style="max-width:460px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:#0ea5e922;display:flex;align-items:center;justify-content:center;flex-shrink:0">👤</div>
+      <h3>البائعون (الأبسيل) — النِسب</h3>
+      <button class="mcls" onclick="$('upsalers-mo').classList.remove('on')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="upsalers-body" style="padding:18px;max-height:70vh;overflow-y:auto"></div>
+  </div>
+</div>
 <!-- UPSELL CLIENT COCKPIT -->
 <div class="mo" id="upselldetail-mo" onclick="if(event.target===this)closeUpsellDetail()">
   <div class="mbox" style="max-width:680px;width:100%">
@@ -1638,6 +1649,7 @@ async function reloadClients() {
 // CSM option lists, loaded from the server (admin + csm)
 let CSM_OPTS = { conditions: [], follows: [], phoneConditions: [], phoneFollows: [] };
 let UPSELL_SERVICES = [];   // [{name, price}] loaded from the server
+let UPSALERS = [];          // [{name, rate}] rate = percent; sales agents who earn the upsell commission
 
 function applyCsmRestrictions() {
   if (!isCsm()) return;
@@ -1740,7 +1752,7 @@ async function api(method, url, body) {
 async function initApp() {
   try {
     const _isCoach = isCoach(), _isCsm = isCsm(), _isCsmPhone = isCsmPhone(), _limited = _isCoach || _isCsm || _isCsmPhone;
-    const [clientsData, trashData, teamData, plansData, teamTrashData, csmOpts, upsellServices] = await Promise.all([
+    const [clientsData, trashData, teamData, plansData, teamTrashData, csmOpts, upsellServices, upsalers] = await Promise.all([
       api('GET', '/api/clients'),
       _limited ? Promise.resolve([]) : api('GET', '/api/trash'),
       api('GET', '/api/team'),
@@ -1748,6 +1760,7 @@ async function initApp() {
       _limited ? Promise.resolve([]) : api('GET', '/api/team/trash'),
       _isCoach ? Promise.resolve(null) : api('GET', '/api/csm/options').catch(()=>null),
       _isCoach ? Promise.resolve([]) : api('GET', '/api/upsell-services').catch(()=>[]),
+      _isCoach ? Promise.resolve([]) : api('GET', '/api/upsalers').catch(()=>[]),
     ]);
     clients   = clientsData;
     trash     = trashData;
@@ -1760,6 +1773,7 @@ async function initApp() {
     plansData.forEach(p => { PLANS[p.name] = p.price; });
     if (csmOpts) CSM_OPTS = csmOpts;
     if (Array.isArray(upsellServices)) UPSELL_SERVICES = upsellServices;
+    if (Array.isArray(upsalers)) UPSALERS = upsalers;
     autoMaintenance();   // auto-resume finished fixed pauses + auto-mark ended contracts
     updateTrashBadge();
     $('cnt-badge').textContent = clients.length;
@@ -3351,6 +3365,59 @@ const VAT_RATE = 0.05;                       // commissions are computed on cash
 const exVat = amt => amt * (1 - VAT_RATE);   // ex-VAT base = cash × 0.95
 let _commMonth = null; // null = uninitialised, '' = all months, else 'YYYY-MM'
 
+// ─── Upsale commission attribution ───────────────────────────────────────────
+// An upsell / upgrade / renewal is credited 100% to its UPSALER (own rate), and
+// removed entirely from the closer/setter base. The upsale still feeds cash
+// collected & analytics as before — only the commission attribution changes.
+function _defaultUpsaler(){ return (UPSALERS && UPSALERS[0]) ? UPSALERS[0].name : 'خالد'; }
+function upsalerOptions(sel){
+  sel = sel || _defaultUpsaler();
+  if(!UPSALERS.length) return `<option value="">— لا يوجد بائع —</option>`;
+  return UPSALERS.map(u=>`<option value="${esc(u.name)}"${u.name===sel?' selected':''}>${esc(u.name)}${u.rate!=null?` (${u.rate}%)`:''}</option>`).join('');
+}
+function _upsalerRates(){ const m={}; (UPSALERS||[]).forEach(u=>{ m[u.name]=+u.rate||0; }); return m; }
+function _msKey(a,d){ return Math.round((+a||0)*100)+'@'+(d||''); }
+// Multiset difference after − before (matched by amt@date) → the net-added [[amt,date]]
+function _addedPaysDiff(before, after){
+  const cnt={}; (before||[]).forEach(p=>{ const k=_msKey(p.amt,p.date); cnt[k]=(cnt[k]||0)+1; });
+  const out=[];
+  (after||[]).forEach(p=>{ const k=_msKey(p.amt,p.date); if(cnt[k]>0){ cnt[k]--; } else out.push([+p.amt||0,p.date||'']); });
+  return out;
+}
+// Upsale-origin payments added by upgrades/renewals — these LIVE inside payList → [[amt,date,upsaler]]
+function upgradeAddedItems(c){
+  const ug=c.upgrades||[]; if(!ug.length) return [];
+  const out=[];
+  for(let i=0;i<ug.length;i++){
+    const rec=ug[i];
+    let added;
+    if(Array.isArray(rec.commPayments)) added=rec.commPayments.map(p=>[+p.amt||0,p.date||'']);
+    else {
+      const before=Array.isArray(rec.prevPayments)?rec.prevPayments.map(p=>({amt:+p.amt||0,date:p.date||''})):[];
+      const after=(i+1<ug.length && Array.isArray(ug[i+1].prevPayments))
+        ? ug[i+1].prevPayments.map(p=>({amt:+p.amt||0,date:p.date||''}))
+        : payList(c).map(([a,d])=>({amt:+a||0,date:d||''}));
+      added=_addedPaysDiff(before, after);
+    }
+    const ups=rec.upsaler||_defaultUpsaler();
+    added.forEach(([a,d])=>{ if(a>0) out.push([a,d,ups]); });
+  }
+  return out;
+}
+// Service upsells (c.upsells[]) — NOT in payList → [[amt,date,upsaler]]
+function upsellItems(c){
+  return (c.upsells||[]).map(u=>[+u.price||0, u.date||'', u.upsaler||_defaultUpsaler()]).filter(([a])=>a>0);
+}
+// A client's BASE payments = payList minus the upgrade/renewal-added payments → [[amt,date]]
+function clientBasePays(c){
+  const upAdd=upgradeAddedItems(c);
+  if(!upAdd.length) return payList(c);
+  const cnt={}; upAdd.forEach(([a,d])=>{ const k=_msKey(a,d); cnt[k]=(cnt[k]||0)+1; });
+  const out=[];
+  payList(c).forEach(([a,d])=>{ if(!(a>0&&d)){ out.push([a,d]); return; } const k=_msKey(a,d); if(cnt[k]>0){ cnt[k]--; } else out.push([a,d]); });
+  return out;
+}
+
 function setCommMonth(val){ _commMonth = val; renderCommissions(); }
 
 function buildCommMonthOptions(){
@@ -3369,22 +3436,34 @@ function buildCommMonthOptions(){
 
 function computeCommissions(month){
   const people = {};
-  const get = n => people[n] || (people[n] = { name:n, asSetter:0, asCloser:0, combined:0, cset:new Set() });
-  // Only clients with an explicit channel (i.e. the new ones) count toward commissions.
-  clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel === 'inbound' || c.channel === 'outbound')).forEach(c => {
-    const collected = payList(c)
-      .filter(([a,dt]) => a > 0 && dt && (!month || dt.startsWith(month)))
-      .reduce((s,[a]) => s + a, 0);
-    if (collected <= 0) return;
-    const base = exVat(collected);   // ex-VAT base (cash − 5%) — commissions for everyone are on this
-    const channel = c.channel === 'inbound' ? 'inbound' : 'outbound';
-    const setter = c.setter, closer = c.closer;
-    if (channel === 'inbound' && setter && closer && setter === closer) {
-      const p = get(setter); p.combined += base * COMM_RATES.inbound.combined; p.cset.add(c.id);
-    } else {
-      if (setter) { const p = get(setter); p.asSetter += base * COMM_RATES[channel].setter; p.cset.add(c.id); }
-      if (closer) { const p = get(closer); p.asCloser += base * COMM_RATES[channel].closer; p.cset.add(c.id); }
+  const get = n => people[n] || (people[n] = { name:n, asSetter:0, asCloser:0, combined:0, asUpsaler:0, cset:new Set() });
+  const urates = _upsalerRates();
+  const inMo = dt => !month || (dt||'').startsWith(month);
+  clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
+    // ── Closer / setter: only channel clients, on the BASE cash (upsale money excluded) ──
+    if (c.channel === 'inbound' || c.channel === 'outbound') {
+      const collected = clientBasePays(c)
+        .filter(([a,dt]) => a > 0 && dt && inMo(dt))
+        .reduce((s,[a]) => s + a, 0);
+      if (collected > 0) {
+        const base = exVat(collected);
+        const channel = c.channel === 'inbound' ? 'inbound' : 'outbound';
+        const setter = c.setter, closer = c.closer;
+        if (channel === 'inbound' && setter && closer && setter === closer) {
+          const p = get(setter); p.combined += base * COMM_RATES.inbound.combined; p.cset.add(c.id);
+        } else {
+          if (setter) { const p = get(setter); p.asSetter += base * COMM_RATES[channel].setter; p.cset.add(c.id); }
+          if (closer) { const p = get(closer); p.asCloser += base * COMM_RATES[channel].closer; p.cset.add(c.id); }
+        }
+      }
     }
+    // ── Upsaler: ALL clients (any channel), on upgrade/renewal + service-sale amounts ──
+    [...upgradeAddedItems(c), ...upsellItems(c)].forEach(([a,dt,ups]) => {
+      if (!(a > 0 && dt && inMo(dt))) return;
+      const rate = (urates[ups] || 0) / 100;
+      if (rate <= 0) return;
+      const p = get(ups); p.asUpsaler += exVat(a) * rate; p.cset.add(c.id);
+    });
   });
   return people;
 }
@@ -3397,10 +3476,10 @@ function renderCommissions(){
   }
   const people = computeCommissions(_commMonth);
   const rows = Object.values(people)
-    .map(p => ({ ...p, n:p.cset.size, total:p.asSetter + p.asCloser + p.combined }))
+    .map(p => ({ ...p, n:p.cset.size, total:p.asSetter + p.asCloser + p.combined + (p.asUpsaler||0) }))
     .filter(p => p.total > 0.005)
     .sort((a,b) => b.total - a.total);
-  const g = rows.reduce((a,p) => ({ asSetter:a.asSetter+p.asSetter, asCloser:a.asCloser+p.asCloser, combined:a.combined+p.combined, total:a.total+p.total }), {asSetter:0,asCloser:0,combined:0,total:0});
+  const g = rows.reduce((a,p) => ({ asSetter:a.asSetter+p.asSetter, asCloser:a.asCloser+p.asCloser, combined:a.combined+p.combined, asUpsaler:a.asUpsaler+(p.asUpsaler||0), total:a.total+p.total }), {asSetter:0,asCloser:0,combined:0,asUpsaler:0,total:0});
   // Gross team figures: cash collected in the month (by payment date) + total plan value sold (by registration month)
   let cashCollected = 0, expectedPlans = 0;
   clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel === 'inbound' || c.channel === 'outbound')).forEach(c => {
@@ -3425,9 +3504,10 @@ function renderCommissions(){
       <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:var(--g)">${p.asSetter?fmtMoney(p.asSetter):'—'}</td>
       <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:var(--p2)">${p.asCloser?fmtMoney(p.asCloser):'—'}</td>
       <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:var(--y)">${p.combined?fmtMoney(p.combined):'—'}</td>
+      <td style="padding:12px 14px;text-align:left;font-size:12.5px;color:#0ea5e9">${p.asUpsaler?fmtMoney(p.asUpsaler):'—'}</td>
       <td style="padding:12px 14px;text-align:left;font-weight:800;font-size:13px">${fmtMoney(p.total)}</td>
     </tr>`).join('')
-    : `<tr><td colspan="6" style="padding:40px;text-align:center;color:var(--t3)">${LANG==='ar'?'لا توجد عمولات في هذا الشهر':'No commissions this month'}</td></tr>`;
+    : `<tr><td colspan="7" style="padding:40px;text-align:center;color:var(--t3)">${LANG==='ar'?'لا توجد عمولات في هذا الشهر':'No commissions this month'}</td></tr>`;
 
   $('pg-commissions').innerHTML = `
   <div class="card mb" style="padding:12px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -3435,7 +3515,8 @@ function renderCommissions(){
     <span style="font-size:12.5px;font-weight:600;color:var(--t2)">${LANG==='ar'?'الشهر:':'Month:'}</span>
     <select class="fsl" onchange="setCommMonth(this.value)" style="min-width:180px">${buildCommMonthOptions()}</select>
     ${_commMonth?`<span style="font-size:11px;background:var(--pbg);color:var(--p2);border:1px solid var(--pbd);padding:3px 10px;border-radius:20px;font-weight:600">${monthLabel(_commMonth)}</span>`:''}
-    <span style="margin-right:auto;font-size:11px;color:var(--t3)">${LANG==='ar'?'خارجي: إعداد 5٪ · إغلاق 10٪ — داخلي: إعداد 3٪ · إغلاق 10٪ (نفس الشخص 12٪) · العمولات تُحتسب على المبلغ بعد خصم 5٪ ضريبة':'Outbound: setter 5% · closer 10% — Inbound: setter 3% · closer 10% (same person 12%) · commissions computed on cash after −5% VAT'}</span>
+    <button class="btn btn-g" style="padding:5px 11px;font-size:11.5px" onclick="openUpsalersMgr()">👤 ${LANG==='ar'?'البائعون (الأبسيل)':'Upsalers'}</button>
+    <span style="margin-right:auto;font-size:11px;color:var(--t3)">${LANG==='ar'?'خارجي: إعداد 5٪ · إغلاق 10٪ — داخلي: إعداد 3٪ · إغلاق 10٪ (نفس الشخص 12٪) · الأبسيل (ترقية/تجديد/خدمة) يذهب كاملاً للبائع بنسبته — لا عمولة للكلوزر/السيتر عليه · كل العمولات بعد خصم 5٪ ضريبة':'Outbound 5/10% · Inbound 3/10% (same 12%) · upsell/upgrade/renewal goes 100% to its upsaler at their own rate (nothing to closer/setter) · all commissions on cash after −5% VAT'}</span>
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
@@ -3461,6 +3542,7 @@ function renderCommissions(){
         <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'عمولة الإعداد':'As Setter'}</th>
         <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'عمولة الإغلاق':'As Closer'}</th>
         <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'داخلي مزدوج':'Inbound solo'}</th>
+        <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'عمولة الأبسيل':'As Upsaler'}</th>
         <th style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--t3);text-align:left">${LANG==='ar'?'الإجمالي':'Total'}</th>
       </tr></thead>
       <tbody>${body}</tbody>
@@ -3470,6 +3552,7 @@ function renderCommissions(){
         <td style="padding:12px 14px;text-align:left;font-weight:700;color:var(--g)">${fmtMoney(g.asSetter)}</td>
         <td style="padding:12px 14px;text-align:left;font-weight:700;color:var(--p2)">${fmtMoney(g.asCloser)}</td>
         <td style="padding:12px 14px;text-align:left;font-weight:700;color:var(--y)">${fmtMoney(g.combined)}</td>
+        <td style="padding:12px 14px;text-align:left;font-weight:700;color:#0ea5e9">${fmtMoney(g.asUpsaler)}</td>
         <td style="padding:12px 14px;text-align:left;font-weight:800">${fmtMoney(g.total)}</td>
       </tr></tfoot>`:''}
     </table>
@@ -3479,18 +3562,28 @@ function renderCommissions(){
 // All commission line-items (one per payment per role) for one member, across all months.
 function memberLineItems(name){
   const items = [];
-  clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel === 'inbound' || c.channel === 'outbound')).forEach(c => {
-    const isSetter = c.setter === name, isCloser = c.closer === name;
-    if (!isSetter && !isCloser) return;
-    const pays = payList(c).filter(([a,d]) => a > 0 && d);
-    pays.forEach(([amt,date]) => {
-      const base = exVat(amt);   // ex-VAT base (amt − 5%)
-      if (c.channel === 'inbound' && c.setter === c.closer && c.setter === name) {
-        items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'combined', rate:COMM_RATES.inbound.combined, comm:base*COMM_RATES.inbound.combined });
-      } else {
-        if (isSetter) { const r = COMM_RATES[c.channel].setter; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'setter', rate:r, comm:base*r }); }
-        if (isCloser) { const r = COMM_RATES[c.channel].closer; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'closer', rate:r, comm:base*r }); }
-      }
+  const urates = _upsalerRates();
+  clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
+    // ── Closer / setter: channel clients only, on the BASE payments (upsale money excluded) ──
+    if ((c.channel === 'inbound' || c.channel === 'outbound') && (c.setter === name || c.closer === name)) {
+      const isSetter = c.setter === name, isCloser = c.closer === name;
+      clientBasePays(c).filter(([a,d]) => a > 0 && d).forEach(([amt,date]) => {
+        const base = exVat(amt);
+        if (c.channel === 'inbound' && c.setter === c.closer && c.setter === name) {
+          items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'combined', rate:COMM_RATES.inbound.combined, comm:base*COMM_RATES.inbound.combined });
+        } else {
+          if (isSetter) { const r = COMM_RATES[c.channel].setter; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'setter', rate:r, comm:base*r }); }
+          if (isCloser) { const r = COMM_RATES[c.channel].closer; items.push({ client:c.name, cid:c.id, channel:c.channel, date, amt, base, role:'closer', rate:r, comm:base*r }); }
+        }
+      });
+    }
+    // ── Upsaler: all clients, on upgrade/renewal + service-sale amounts ──
+    [...upgradeAddedItems(c), ...upsellItems(c)].forEach(([amt,date,ups]) => {
+      if (ups !== name || !(amt > 0 && date)) return;
+      const rate = (urates[ups] || 0) / 100;
+      if (rate <= 0) return;
+      const base = exVat(amt);
+      items.push({ client:c.name, cid:c.id, channel:c.channel||'', date, amt, base, role:'upsaler', rate, comm:base*rate });
     });
   });
   return items;
@@ -3504,10 +3597,15 @@ function openCommDetail(name, month){
   const clientsCount = new Set(items.map(i => i.cid)).size;
   // Total cash collected on this member's deals (each payment counted once, even if setter+closer)
   let collected = 0;
-  clients.filter(c => !c.deleted && c.status !== 'refunded' && (c.channel==='inbound'||c.channel==='outbound')).forEach(c => {
-    if (c.setter !== name && c.closer !== name) return;
-    payList(c).forEach(([a,d]) => {
-      if (a > 0 && d && (!month || d.startsWith(month))) collected += a;
+  clients.filter(c => !c.deleted && c.status !== 'refunded').forEach(c => {
+    if ((c.channel==='inbound'||c.channel==='outbound') && (c.setter === name || c.closer === name)) {
+      clientBasePays(c).forEach(([a,d]) => {
+        if (a > 0 && d && (!month || d.startsWith(month))) collected += a;
+      });
+    }
+    // upsale amounts this member earned on (upgrade/renewal + service sales)
+    [...upgradeAddedItems(c), ...upsellItems(c)].forEach(([a,d,ups]) => {
+      if (ups === name && a > 0 && d && (!month || d.startsWith(month))) collected += a;
     });
   });
   // chart always shows the full monthly history (independent of the filter)
@@ -3519,8 +3617,8 @@ function openCommDetail(name, month){
   const monthOpts = `<option value="">${LANG==='ar'?'كل الشهور':'All months'}</option>`
     + availMonths.map(m => `<option value="${m}"${m===month?' selected':''}>${monthLabel(m)}</option>`).join('');
 
-  const roleLabel = r => r==='setter' ? (LANG==='ar'?'إعداد':'Setter') : r==='closer' ? (LANG==='ar'?'إغلاق':'Closer') : (LANG==='ar'?'داخلي مزدوج':'Combined');
-  const roleColor = r => r==='setter' ? 'var(--g)' : r==='closer' ? 'var(--p2)' : 'var(--y)';
+  const roleLabel = r => r==='setter' ? (LANG==='ar'?'إعداد':'Setter') : r==='closer' ? (LANG==='ar'?'إغلاق':'Closer') : r==='upsaler' ? (LANG==='ar'?'أبسيل':'Upsaler') : (LANG==='ar'?'داخلي مزدوج':'Combined');
+  const roleColor = r => r==='setter' ? 'var(--g)' : r==='closer' ? 'var(--p2)' : r==='upsaler' ? '#0ea5e9' : 'var(--y)';
 
   const rows = items.length ? items.map(it => `
     <tr style="border-bottom:1px solid var(--b1)">
@@ -6347,6 +6445,8 @@ function openUpgrade(id, mode){
       <span style="font-size:12px;color:var(--t3)">الباقة الحالية</span>
       <span style="font-weight:700">${esc(c.plan)||'—'} · ${fmtMoney(oldTotal)}</span>
     </div>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">البائع (الأبسيلر) <span style="color:#ef4444">*</span></label>
+    <select class="inp" id="up-upsaler" style="margin-bottom:12px">${upsalerOptions()}</select>
     <div id="upgrade-inner"></div>`;
   _renderUpgradeInner();
   $('upgrade-mo').classList.add('on');
@@ -6527,6 +6627,8 @@ async function confirmUpgrade(){
   if(!r.plan){ toast('اختر باقة','⚠️'); return; }
   if(!isRenew && r.plan===r.c.plan){ toast('اختر باقة مختلفة','⚠️'); return; }
   if(isRenew && r.increment<=0){ toast('أدخل سعراً للتجديد','⚠️'); return; }
+  const upsaler = (($('up-upsaler')||{}).value)||'';
+  if(!upsaler){ toast('اختر البائع (الأبسيلر)','⚠️'); return; }
   const increment=r.increment;
   const added=_addedPaymentsFor(increment, r.payMode, r.instCount);
   const payments=[...payList(r.c).map(([amt,date])=>({amt,date})), ...added];
@@ -6540,6 +6642,7 @@ async function confirmUpgrade(){
       newPrice: isRenew?r.price:r.newPrice, diff: isRenew?r.increment:r.diff,
       discount:r.disc, discountPct:r.pct, increment, payMode:r.payMode,
       payments, contractEnd, start, months,
+      upsaler, commPayments:added,
       date:new Date().toISOString().slice(0,10),
     });
     await reloadClients();
@@ -6569,7 +6672,9 @@ function openUpsell(id){
       ${svc.map((s,i)=>`<option value="${esc(s.name)}" data-price="${s.price}"${i===0?' selected':''}>${esc(s.name)} — ${fmtMoney(s.price)}</option>`).join('')||'<option value="">لا توجد خدمات</option>'}
     </select>
     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">السعر ($) — قابل للتعديل</label>
-    <input class="inp" id="ups-price" type="number" min="0" value="${defPrice}" style="margin-bottom:14px"/>
+    <input class="inp" id="ups-price" type="number" min="0" value="${defPrice}" style="margin-bottom:12px"/>
+    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">البائع (الأبسيلر) <span style="color:#ef4444">*</span></label>
+    <select class="inp" id="ups-upsaler" style="margin-bottom:14px">${upsalerOptions()}</select>
     <div style="display:flex;gap:8px">
       <button class="btn btn-p" style="flex:1" onclick="saveUpsell()">💾 حفظ البيع</button>
       ${isAdmin()?`<button class="btn btn-g" onclick="openUpsellOpts()">⚙️ الخدمات</button>`:''}
@@ -6585,8 +6690,10 @@ function _onUpsellType(){
 async function saveUpsell(){
   const c=clients.find(x=>x.id===_upsellId); if(!c) return;
   const date=($('ups-date')||{}).value||'', type=($('ups-type')||{}).value||'', price=+($('ups-price')||{}).value||0;
+  const upsaler=($('ups-upsaler')||{}).value||'';
   if(!type){ toast('اختر خدمة','⚠️'); return; }
-  const entry={ id:Date.now(), date, type, price, author:sessionStorage.getItem('ah97_user')||'', createdAt:new Date().toISOString() };
+  if(!upsaler){ toast('اختر البائع (الأبسيلر)','⚠️'); return; }
+  const entry={ id:Date.now(), date, type, price, upsaler, author:sessionStorage.getItem('ah97_user')||'', createdAt:new Date().toISOString() };
   c.upsells=[...(c.upsells||[]), entry];
   try{ await api('PUT',`/api/clients/${c.id}/upsells`,{upsells:c.upsells}); }catch(e){ toast('خطأ في الحفظ','❌'); return; }
   closeUpsell();
@@ -6638,6 +6745,52 @@ async function delUpsellSvc(name){
   const i=UPSELL_SERVICES.findIndex(x=>x.name===name); if(i>-1) UPSELL_SERVICES.splice(i,1);
   try{ await api('DELETE',`/api/upsell-services/${encodeURIComponent(name)}`); }catch(e){ toast('خطأ','❌'); }
   openUpsellOpts();
+}
+
+// ─── Upsalers manager (admin): name + commission rate %, add / rename / rate / delete ───
+function openUpsalersMgr(){
+  $('upsalers-body').innerHTML = `
+    ${UPSALERS.map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--b1)">
+      <input value="${esc(u.name)}" onchange="renameUpsaler('${esc(u.name)}',this.value)" style="flex:1;background:var(--bg);border:1px solid var(--b2);border-radius:6px;padding:5px 8px;color:var(--t1);font-size:12.5px"/>
+      <div style="display:flex;align-items:center;gap:3px"><input type="number" min="0" max="100" step="0.5" value="${u.rate}" onchange="setUpsalerRate('${esc(u.name)}',this.value)" style="width:70px;background:var(--bg);border:1px solid var(--b2);border-radius:6px;padding:5px 8px;color:var(--t1);font-size:12px"/><span style="font-size:12px;color:var(--t3)">%</span></div>
+      <button class="btn btn-r" style="padding:3px 8px;font-size:11px" onclick="delUpsaler('${esc(u.name)}')">🗑️</button>
+    </div>`).join('')||'<div style="color:var(--t3);font-size:12px">— لا يوجد بائعون —</div>'}
+    <div style="display:flex;gap:6px;margin-top:14px">
+      <input class="inp" id="upsaler-new-name" placeholder="اسم البائع" style="flex:1"/>
+      <input class="inp" id="upsaler-new-rate" type="number" min="0" max="100" step="0.5" value="5" placeholder="%" style="width:90px"/>
+      <button class="btn btn-p" onclick="addUpsalerUI()">➕</button>
+    </div>
+    <div style="font-size:11px;color:var(--t3);margin-top:12px;line-height:1.6">النسبة = عمولة البائع على كل أبسيل (ترقية/تجديد/خدمة)، تُحتسب على المبلغ المحصّل بعد خصم 5٪ ضريبة. يذهب كامل الأبسيل للبائع — لا شيء للكلوزر/السيتر. أي تعديل يعيد الحساب فوراً.</div>`;
+  $('upsalers-mo').classList.add('on');
+}
+async function addUpsalerUI(){
+  const name=($('upsaler-new-name')||{}).value.trim(), rate=+($('upsaler-new-rate')||{}).value||0;
+  if(!name){ toast('اكتب اسم البائع','⚠️'); return; }
+  if(UPSALERS.some(u=>u.name===name)){ toast('موجود مسبقاً','⚠️'); return; }
+  UPSALERS.push({name, rate});
+  try{ await api('POST','/api/upsalers',{name, rate}); }catch(e){ toast('خطأ','❌'); }
+  openUpsalersMgr();
+  if(S.view==='commissions') renderCommissions();
+}
+async function setUpsalerRate(name, val){
+  const u=UPSALERS.find(x=>x.name===name); if(u) u.rate=+val||0;
+  try{ await api('PUT',`/api/upsalers/${encodeURIComponent(name)}`,{rate:+val||0}); }catch(e){ toast('خطأ','❌'); }
+  if(S.view==='commissions') renderCommissions();
+}
+async function renameUpsaler(oldName, newName){
+  newName=(newName||'').trim(); if(!newName || newName===oldName){ openUpsalersMgr(); return; }
+  if(UPSALERS.some(u=>u.name===newName)){ toast('الاسم مستخدم','⚠️'); openUpsalersMgr(); return; }
+  const u=UPSALERS.find(x=>x.name===oldName); const rate=u?u.rate:0; if(u) u.name=newName;
+  try{ await api('PUT',`/api/upsalers/${encodeURIComponent(oldName)}`,{newName, rate}); }catch(e){ toast('خطأ','❌'); }
+  openUpsalersMgr();
+  if(S.view==='commissions') renderCommissions();
+}
+async function delUpsaler(name){
+  if(!confirm(`حذف البائع «${name}»؟ العمليات المسجّلة باسمه تبقى لكن دون عمولة حتى تُعاد نسبتها.`)) return;
+  const i=UPSALERS.findIndex(x=>x.name===name); if(i>-1) UPSALERS.splice(i,1);
+  try{ await api('DELETE',`/api/upsalers/${encodeURIComponent(name)}`); }catch(e){ toast('خطأ','❌'); }
+  openUpsalersMgr();
+  if(S.view==='commissions') renderCommissions();
 }
 
 // ═══════════════ PHONE-CSM: upgrades history ═══════════════
@@ -6698,6 +6851,7 @@ const AUDIT_ACTIONS = {
   'csm.note':'متابعة CSM','plan.update':'تعديل باقة','plan.delete':'حذف باقة','plan.create':'إضافة باقة',
   'user.create':'إضافة مستخدم','user.update':'تعديل مستخدم','user.delete':'حذف مستخدم',
   'session.send':'إرسال بريد جلسة','session.template':'تعديل قالب بريد',
+  'upsaler.create':'إضافة بائع أبسيل','upsaler.update':'تعديل بائع أبسيل','upsaler.delete':'حذف بائع أبسيل',
 };
 function auditActionLabel(a){ return AUDIT_ACTIONS[a] || a; }
 function auditActionColor(a){
