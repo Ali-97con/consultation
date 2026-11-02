@@ -16,6 +16,7 @@ const {
   updateCsmNotes, updateUpsellNotes, getCsmOptions, addCsmOption, deleteCsmOption, ensureFollowStart,
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   getUpsalers, addUpsaler, updateUpsaler, deleteUpsaler,
+  getPaymentMethods, addPaymentMethod, deletePaymentMethod,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
@@ -522,6 +523,28 @@ app.delete('/api/upsalers/:name', requireAdmin, async (req, res) => {
   try {
     await deleteUpsaler(decodeURIComponent(req.params.name));
     audit(req, 'upsaler.delete', 'upsaler', decodeURIComponent(req.params.name), `حذف بائع أبسيل «${decodeURIComponent(req.params.name)}»`, {});
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Payment methods (editable list in the client form) ───
+app.get('/api/payment-methods', requireAuth, async (_req, res) => {
+  try { res.json(await getPaymentMethods()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/payment-methods', requireAdmin, async (req, res) => {
+  try {
+    const name = str(req.body.name, 60);
+    if (!name) return res.status(400).json({ error: 'اسم طريقة الدفع مطلوب' });
+    if (!await addPaymentMethod(name)) return res.status(409).json({ error: 'موجودة مسبقاً' });
+    audit(req, 'paymethod.create', 'paymethod', name, `إضافة طريقة دفع «${name}»`, {});
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/payment-methods/:name', requireAdmin, async (req, res) => {
+  try {
+    await deletePaymentMethod(decodeURIComponent(req.params.name));
+    audit(req, 'paymethod.delete', 'paymethod', decodeURIComponent(req.params.name), `حذف طريقة دفع «${decodeURIComponent(req.params.name)}»`, {});
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -132,6 +132,15 @@ async function ensureSchema() {
     insert into upsalers(name,rate,sort) values ('خالد',5,1)
     on conflict (name) do nothing;
 
+    -- Payment methods (editable list shown in the client form).
+    create table if not exists payment_methods (
+      name text primary key,
+      sort int not null default 0
+    );
+    insert into payment_methods(name,sort) values
+      ('Zina',1),('تحويل بنكي',2),('PayPal',3),('Stripe',4),('USDT',5),('أخرى',6)
+    on conflict (name) do nothing;
+
     create table if not exists audit_log (
       id        bigserial   primary key,
       ts        timestamptz not null default now(),
@@ -621,6 +630,24 @@ async function retagUpsaler(oldName, newName) {
 async function deleteUpsaler(name) {
   await schemaReady();
   await q('delete from upsalers where name=$1', [name]);
+  return true;
+}
+
+// ─── Payment methods (editable list in the client form) ───
+async function getPaymentMethods() {
+  await schemaReady();
+  const { rows } = await q('select name from payment_methods order by sort, name');
+  return rows.map(r => r.name);
+}
+async function addPaymentMethod(name) {
+  await schemaReady();
+  const { rows } = await q('select coalesce(max(sort),0)+1 as s from payment_methods');
+  const r = await q('insert into payment_methods(name,sort) values($1,$2) on conflict (name) do nothing', [name, rows[0].s]);
+  return r.rowCount > 0;
+}
+async function deletePaymentMethod(name) {
+  await schemaReady();
+  await q('delete from payment_methods where name=$1', [name]);
   return true;
 }
 
@@ -1121,6 +1148,7 @@ module.exports = {
   // Upsell services + purchases
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   getUpsalers, addUpsaler, updateUpsaler, deleteUpsaler,
+  getPaymentMethods, addPaymentMethod, deletePaymentMethod,
   // Sessions (Postgres-backed, serverless-safe)
   createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)

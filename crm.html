@@ -795,6 +795,17 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
     <div id="upsalers-body" style="padding:18px;max-height:70vh;overflow-y:auto"></div>
   </div>
 </div>
+<!-- PAYMENT METHODS MANAGER -->
+<div class="mo" id="paymethods-mo" style="z-index:580" onclick="if(event.target===this)$('paymethods-mo').classList.remove('on')">
+  <div class="mbox" style="max-width:420px;width:100%">
+    <div class="mh">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--pbg);display:flex;align-items:center;justify-content:center;flex-shrink:0">💳</div>
+      <h3>طرق الدفع</h3>
+      <button class="mcls" onclick="$('paymethods-mo').classList.remove('on')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div id="paymethods-body" style="padding:18px;max-height:70vh;overflow-y:auto"></div>
+  </div>
+</div>
 <!-- UPSELL CLIENT COCKPIT -->
 <div class="mo" id="upselldetail-mo" onclick="if(event.target===this)closeUpsellDetail()">
   <div class="mbox" style="max-width:680px;width:100%">
@@ -931,13 +942,8 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
         <option value="INNER CIRCLE">INNER CIRCLE — $7,000</option>
         <option value="__custom__" style="color:var(--p2)">➕ إضافة باقة جديدة...</option>
       </select></div>
-      <div class="fg"><label>طريقة الدفع</label><select class="inp" id="m-paymethod">
+      <div class="fg"><label>طريقة الدفع</label><select class="inp" id="m-paymethod" onchange="onPayMethodChange(this)">
         <option value="Zina">Zina</option>
-        <option value="تحويل بنكي">تحويل بنكي</option>
-        <option value="PayPal">PayPal</option>
-        <option value="Stripe">Stripe</option>
-        <option value="USDT">USDT</option>
-        <option value="أخرى">أخرى</option>
       </select></div></div>
       <div id="custom-plan-row" style="display:none;margin-bottom:8px;padding:10px 12px;background:var(--pbg);border:1px solid var(--pbd);border-radius:var(--rd)">
         <div style="font-size:11px;font-weight:600;color:var(--p2);margin-bottom:8px">➕ تعريف باقة جديدة</div>
@@ -1104,7 +1110,7 @@ const PCNT  = { 'دفعة واحدة':1, 'قسطين':2, '3 أقساط':3, '4 أ
 const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316'];
 let CLOSERS = [];
 let SETTERS = [];
-const PMETHODS = ['Zina','تحويل بنكي','PayPal','Stripe','USDT','سلة','أخرى'];
+let PMETHODS = ['Zina','تحويل بنكي','PayPal','Stripe','USDT','أخرى'];   // editable; loaded from the server
 let LANG = 'ar';
 let trash = [];
 let teamTrash = [];
@@ -1752,7 +1758,7 @@ async function api(method, url, body) {
 async function initApp() {
   try {
     const _isCoach = isCoach(), _isCsm = isCsm(), _isCsmPhone = isCsmPhone(), _limited = _isCoach || _isCsm || _isCsmPhone;
-    const [clientsData, trashData, teamData, plansData, teamTrashData, csmOpts, upsellServices, upsalers] = await Promise.all([
+    const [clientsData, trashData, teamData, plansData, teamTrashData, csmOpts, upsellServices, upsalers, payMethods] = await Promise.all([
       api('GET', '/api/clients'),
       _limited ? Promise.resolve([]) : api('GET', '/api/trash'),
       api('GET', '/api/team'),
@@ -1761,6 +1767,7 @@ async function initApp() {
       _isCoach ? Promise.resolve(null) : api('GET', '/api/csm/options').catch(()=>null),
       _isCoach ? Promise.resolve([]) : api('GET', '/api/upsell-services').catch(()=>[]),
       _isCoach ? Promise.resolve([]) : api('GET', '/api/upsalers').catch(()=>[]),
+      _isCoach ? Promise.resolve(null) : api('GET', '/api/payment-methods').catch(()=>null),
     ]);
     clients   = clientsData;
     trash     = trashData;
@@ -1774,6 +1781,7 @@ async function initApp() {
     if (csmOpts) CSM_OPTS = csmOpts;
     if (Array.isArray(upsellServices)) UPSELL_SERVICES = upsellServices;
     if (Array.isArray(upsalers)) UPSALERS = upsalers;
+    if (Array.isArray(payMethods) && payMethods.length) PMETHODS = payMethods;
     autoMaintenance();   // auto-resume finished fixed pauses + auto-mark ended contracts
     updateTrashBadge();
     $('cnt-badge').textContent = clients.length;
@@ -4695,6 +4703,20 @@ function rebuildPlanSelect(selectVal) {
   sel.innerHTML = opts + `<option value="__custom__" style="color:var(--p2)">➕ إضافة باقة جديدة...</option>`;
 }
 
+// Build the payment-method select from the editable PMETHODS list (admin sees a manage option).
+function rebuildPayMethodSelect(selectVal){
+  const sel = $('m-paymethod'); if (!sel) return;
+  const cur = selectVal != null ? selectVal : (sel.value || '');
+  const opts = PMETHODS.map(m => `<option value="${esc(m)}"${m===cur?' selected':''}>${esc(m)}</option>`).join('');
+  const legacy = (cur && !PMETHODS.includes(cur)) ? `<option value="${esc(cur)}" selected>${esc(cur)}</option>` : '';
+  sel.innerHTML = opts + legacy + (isAdmin()?`<option value="__pm_manage__" style="color:var(--p2)">⚙️ إدارة طرق الدفع...</option>`:'');
+  sel.dataset.prev = sel.value;
+}
+function onPayMethodChange(el){
+  if (el.value === '__pm_manage__') { el.value = el.dataset.prev || (PMETHODS[0]||''); openPayMethodsMgr(); return; }
+  el.dataset.prev = el.value;
+}
+
 let _editingPlan = null;
 
 function confirmCustomPlan() {
@@ -4982,7 +5004,7 @@ function openModal(id=null) {
     const _pl=payList(c), _n=nc(c);
     if($('m-paymode')) $('m-paymode').value = _n>1 ? 'multi' : 'one';
     if($('m-paycount')) $('m-paycount').value = _n>1 ? _n : 2;
-    if($('m-paymethod')) $('m-paymethod').value=c.payMethod||'Zina';
+    rebuildPayMethodSelect(c.payMethod||'Zina');
     updatePlanPrice();
     // Restore discount fields
     const dt=$('m-disc-type'), dv=$('m-disc-val');
@@ -5010,6 +5032,7 @@ function openModal(id=null) {
   } else {
     ['m-name','m-phone','m-email','m-notes'].forEach(id=>{if($(id))$(id).value='';});
     $('m-status').value='lead'; $('m-plan').value='CORE';
+    rebuildPayMethodSelect(PMETHODS[0]||'Zina');
     if($('m-paymode')) $('m-paymode').value='one'; if($('m-paycount')) $('m-paycount').value=2;
     if($('m-channel')) $('m-channel').value='outbound';
     if($('m-sex')) $('m-sex').value='';
@@ -6802,6 +6825,37 @@ async function delUpsaler(name){
   if(S.view==='commissions') renderCommissions();
 }
 
+// ─── Payment methods manager (admin): add / delete the client-form list ───
+function openPayMethodsMgr(){
+  $('paymethods-body').innerHTML = `
+    ${PMETHODS.map(m=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--b1)">
+      <span style="flex:1;font-size:13px">${esc(m)}</span>
+      <button class="btn btn-r" style="padding:3px 8px;font-size:11px" onclick="delPayMethod('${esc(m)}')">🗑️</button>
+    </div>`).join('')||'<div style="color:var(--t3);font-size:12px">— لا توجد طرق —</div>'}
+    <div style="display:flex;gap:6px;margin-top:14px">
+      <input class="inp" id="paymethod-new" placeholder="طريقة دفع جديدة" style="flex:1" onkeydown="if(event.key==='Enter')addPayMethodUI()"/>
+      <button class="btn btn-p" onclick="addPayMethodUI()">➕</button>
+    </div>
+    <div style="font-size:11px;color:var(--t3);margin-top:12px;line-height:1.6">الطرق المحذوفة تبقى ظاهرة على العملاء الذين يستعملونها؛ هذه القائمة تُستعمل في نموذج العميل فقط.</div>`;
+  $('paymethods-mo').classList.add('on');
+}
+async function addPayMethodUI(){
+  const name=($('paymethod-new')||{}).value.trim();
+  if(!name){ toast('اكتب اسم الطريقة','⚠️'); return; }
+  if(PMETHODS.includes(name)){ toast('موجودة مسبقاً','⚠️'); return; }
+  PMETHODS.push(name);
+  try{ await api('POST','/api/payment-methods',{name}); }catch(e){ toast('خطأ','❌'); }
+  openPayMethodsMgr();
+  rebuildPayMethodSelect();
+}
+async function delPayMethod(name){
+  if(!confirm(`حذف طريقة الدفع «${name}»؟`)) return;
+  const i=PMETHODS.indexOf(name); if(i>-1) PMETHODS.splice(i,1);
+  try{ await api('DELETE',`/api/payment-methods/${encodeURIComponent(name)}`); }catch(e){ toast('خطأ','❌'); }
+  openPayMethodsMgr();
+  rebuildPayMethodSelect();
+}
+
 // ═══════════════ PHONE-CSM: upgrades history ═══════════════
 function renderUpgrades(){
   const all=[];
@@ -6861,6 +6915,7 @@ const AUDIT_ACTIONS = {
   'user.create':'إضافة مستخدم','user.update':'تعديل مستخدم','user.delete':'حذف مستخدم',
   'session.send':'إرسال بريد جلسة','session.template':'تعديل قالب بريد',
   'upsaler.create':'إضافة بائع أبسيل','upsaler.update':'تعديل بائع أبسيل','upsaler.delete':'حذف بائع أبسيل',
+  'paymethod.create':'إضافة طريقة دفع','paymethod.delete':'حذف طريقة دفع',
 };
 function auditActionLabel(a){ return AUDIT_ACTIONS[a] || a; }
 function auditActionColor(a){
