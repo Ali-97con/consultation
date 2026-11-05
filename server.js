@@ -128,7 +128,8 @@ function sanitizeClientBody(body) {
     p1d:30, p2d:30, p3d:30, p4d:30,
     customTotal:undefined, discountType:50, discountValue:undefined, discountAmount:undefined,
     callsDone:undefined, callsTotal:undefined, calls:undefined, ci:undefined,
-    upsellProspect:undefined, upsellContactedAt:50, upsellAlertOff:undefined, upsellSnoozeUntil:30 };
+    upsellProspect:undefined, upsellContactedAt:50, upsellAlertOff:undefined, upsellSnoozeUntil:30,
+    waOptOut:undefined };
   for (const [k, maxLen] of Object.entries(fields)) {
     if (b[k] !== undefined) {
       if (k === 'notes') { out.notes = b.notes; continue; }
@@ -571,6 +572,7 @@ function _waLastCsm(c) {
 }
 // Mirrors the front-end "متابعة مطلوبة" rule + a once-per-cycle WhatsApp guard (waRemindedAt).
 function _waDueForFollowup(c, today) {
+  if (c.waOptOut) return false;                                      // excluded by the "ne pas contacter" toggle
   if (c.status !== 'active' || c.pausedAt) return false;
   if (!c.contractEnd || c.contractEnd < today) return false;         // no end date or contract ended
   const N = _waFollowDays(c.plan);
