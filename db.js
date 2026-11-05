@@ -141,6 +141,18 @@ async function ensureSchema() {
       ('Zina',1),('تحويل بنكي',2),('PayPal',3),('Stripe',4),('USDT',5),('أخرى',6)
     on conflict (name) do nothing;
 
+    -- WhatsApp auto-reminder log (one row per message the automation sends).
+    create table if not exists whatsapp_log (
+      id        bigserial   primary key,
+      ts        timestamptz not null default now(),
+      client_id int,
+      name      text,
+      phone     text,
+      status    text,                       -- 'sent' | 'failed'
+      message   text
+    );
+    create index if not exists whatsapp_log_ts_idx on whatsapp_log(ts desc);
+
     create table if not exists audit_log (
       id        bigserial   primary key,
       ts        timestamptz not null default now(),
@@ -651,6 +663,29 @@ async function deletePaymentMethod(name) {
   return true;
 }
 
+// ─── WhatsApp auto-reminder log ───
+// Records one sent message AND stamps the client's waRemindedAt=today (so the
+// automation contacts each client only once per follow-up cycle).
+async function logWhatsapp(clientId, name, phone, status, message) {
+  await ready();
+  await q('insert into whatsapp_log(client_id,name,phone,status,message) values($1,$2,$3,$4,$5)',
+    [clientId || null, name || '', phone || '', status || 'sent', (message || '').slice(0, 2000)]);
+  if (clientId && status !== 'failed') {
+    const { rows } = await q('select data from clients where id=$1 and deleted=false', [clientId]);
+    if (rows.length) {
+      const data = { ...rows[0].data, id: clientId, waRemindedAt: new Date().toISOString().slice(0, 10) };
+      await q('update clients set data=$2 where id=$1', [clientId, j(data)]);
+    }
+  }
+  return true;
+}
+async function getWhatsappLog(limit) {
+  await schemaReady();
+  const n = Math.min(3000, Math.max(1, Number(limit) || 800));
+  const { rows } = await q('select client_id, name, phone, status, message, ts from whatsapp_log order by ts desc limit $1', [n]);
+  return rows.map(r => ({ clientId: r.client_id, name: r.name, phone: r.phone, status: r.status, message: r.message, ts: r.ts }));
+}
+
 async function deleteUpsellService(name) {
   await schemaReady();
   await q('delete from upsell_services where name=$1', [name]);
@@ -1149,6 +1184,7 @@ module.exports = {
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   getUpsalers, addUpsaler, updateUpsaler, deleteUpsaler,
   getPaymentMethods, addPaymentMethod, deletePaymentMethod,
+  logWhatsapp, getWhatsappLog,
   // Sessions (Postgres-backed, serverless-safe)
   createSessionDB, getSessionDB, deleteSessionDB,
   // Users (auth)

@@ -17,6 +17,7 @@ const {
   getUpsellServices, addUpsellService, updateUpsellService, deleteUpsellService, updateUpsells,
   getUpsalers, addUpsaler, updateUpsaler, deleteUpsaler,
   getPaymentMethods, addPaymentMethod, deletePaymentMethod,
+  logWhatsapp, getWhatsappLog,
   createSessionDB, getSessionDB, deleteSessionDB,
   findUserByUsername, verifyPassword, getUsers, createUser, updateUser, deleteUser,
 } = require('./db');
@@ -547,6 +548,72 @@ app.delete('/api/payment-methods/:name', requireAdmin, async (req, res) => {
     audit(req, 'paymethod.delete', 'paymethod', decodeURIComponent(req.params.name), `حذف طريقة دفع «${decodeURIComponent(req.params.name)}»`, {});
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Daily follow-up automation (n8n → WhatsApp) ──────────────────────────────
+// Secured by the AUTOMATION_SECRET env var (passed as ?secret= or header x-automation-secret).
+function automationOk(req) {
+  const s = process.env.AUTOMATION_SECRET;
+  if (!s) return false;
+  const got = req.query.secret || req.get('x-automation-secret') || '';
+  return got === s;
+}
+const _waCleanPhone = p => String(p || '').replace(/\D+/g, '');
+function _waFollowDays(plan) {
+  const p = (plan || '').toUpperCase();
+  if (p.includes('INNER')) return 7;
+  return (p.includes('CORE') || p.includes('PREMIUM')) ? 6 : 7;
+}
+function _waDaysBetween(a, b) { return Math.round((Date.parse(b) - Date.parse(a)) / 86400000); }
+function _waLastCsm(c) {
+  const ns = c.csmNotes || []; if (!ns.length) return null;
+  return ns.map(n => n.date || n.createdAt || '').filter(Boolean).sort().reverse()[0] || null;
+}
+// Mirrors the front-end "متابعة مطلوبة" rule + a once-per-cycle WhatsApp guard (waRemindedAt).
+function _waDueForFollowup(c, today) {
+  if (c.status !== 'active' || c.pausedAt) return false;
+  if (!c.contractEnd || c.contractEnd < today) return false;         // no end date or contract ended
+  const N = _waFollowDays(c.plan);
+  const last = _waLastCsm(c);
+  const cAt = c.contactedAt ? String(c.contactedAt).slice(0, 10) : '';
+  if (cAt && (!last || cAt >= last)) { const s = _waDaysBetween(cAt, today); if (s >= 0 && s < N) return false; }  // human silenced this cycle
+  const wa = c.waRemindedAt ? String(c.waRemindedAt).slice(0, 10) : '';
+  if (wa) { const s = _waDaysBetween(wa, today); if (s >= 0 && s < N) return false; }                             // already WhatsApp-reminded this cycle
+  if (!last) return true;
+  return _waDaysBetween(last, today) >= N;
+}
+app.get('/api/automation/today-contacts', async (req, res) => {
+  try {
+    if (!automationOk(req)) return res.status(401).json({ error: 'unauthorized' });
+    const today = new Date().toISOString().slice(0, 10);
+    const list = (await getClients())
+      .filter(c => _waDueForFollowup(c, today))
+      .map(c => {
+        const last = _waLastCsm(c);
+        return {
+          id: c.id, name: c.name || '', phone: _waCleanPhone(c.phone), rawPhone: c.phone || '',
+          plan: c.plan || '', contractEnd: c.contractEnd || '',
+          daysSinceLast: last ? _waDaysBetween(last, today) : null,
+          reason: last ? 'cadence' : 'no-followup-yet',
+        };
+      })
+      .filter(x => x.phone.length >= 8);   // skip unusable numbers
+    res.json(list);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/automation/wa-log', async (req, res) => {
+  try {
+    if (!automationOk(req)) return res.status(401).json({ error: 'unauthorized' });
+    const b = req.body || {};
+    const id = b.id ? +b.id : null;
+    const status = b.status === 'failed' ? 'failed' : 'sent';
+    await logWhatsapp(id, str(b.name, 200), str(b.phone, 40), status, str(b.message, 2000));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/whatsapp-log', requireAdmin, async (req, res) => {
+  try { res.json(await getWhatsappLog(req.query.limit)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Record upsell purchases on a client (admin + both CSM roles)

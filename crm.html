@@ -488,6 +488,10 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
       سجل التعديلات
     </div>
+    <div class="nl" data-v="whatsapplog" id="nl-whatsapplog">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+      سجل واتساب
+    </div>
     <div class="nl" data-v="users" id="nl-users">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
       المستخدمون
@@ -656,6 +660,7 @@ input[type="checkbox"]{width:14px;height:14px;accent-color:var(--p);cursor:point
   <div class="pg" id="pg-upanalytics"></div>
   <div class="pg" id="pg-upgrades"></div>
   <div class="pg" id="pg-audit"></div>
+  <div class="pg" id="pg-whatsapplog"></div>
   <div class="pg" id="pg-sessions"></div>
   <div class="pg" id="pg-notifs"></div>
   <div class="pg" id="pg-users"></div>
@@ -1353,8 +1358,8 @@ const SL_MAP = {
 };
 const SL = SL_MAP.ar;
 const TITLES_MAP = {
-  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'فرص البيع (Upsell)',upcalls:'متابعات متأخرة',upanalytics:'تحليلات الأبسيل',upgrades:'الترقيات',audit:'سجل التعديلات',sessions:'الجلسات الأسبوعية',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
-  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Upsell Opportunities',upcalls:'Overdue Callbacks',upanalytics:'Upsell Analytics',upgrades:'Upgrades',audit:'Change Log',sessions:'Weekly Sessions',notifs:'Notifications',users:'Users',trash:'Trash' }
+  ar:{ overview:'لوحة التحكم',clients:'إدارة العملاء',pipeline:'خط الأنابيب',analytics:'التحليلات',insights:'التحليل الذكي',team:'أداء الفريق',commissions:'عمولات الفريق',csm:'متابعة العملاء',phoneclients:'فرص البيع (Upsell)',upcalls:'متابعات متأخرة',upanalytics:'تحليلات الأبسيل',upgrades:'الترقيات',audit:'سجل التعديلات',whatsapplog:'سجل واتساب',sessions:'الجلسات الأسبوعية',notifs:'التنبيهات',users:'المستخدمون',trash:'سلة المهملات' },
+  en:{ overview:'Dashboard',clients:'Clients',pipeline:'Pipeline',analytics:'Analytics',insights:'Smart Analysis',team:'Team Performance',commissions:'Team Commissions',csm:'Customer Success',phoneclients:'Upsell Opportunities',upcalls:'Overdue Callbacks',upanalytics:'Upsell Analytics',upgrades:'Upgrades',audit:'Change Log',whatsapplog:'WhatsApp Log',sessions:'Weekly Sessions',notifs:'Notifications',users:'Users',trash:'Trash' }
 };
 const SB = { active:'b-act', trial:'b-tri', enrolled:'b-enr', graduated:'b-grd', paused:'b-pau', churned:'b-chu', lead:'b-led', refunded:'b-ref', ended:'b-end' };
 const SC = { active:'#10b981', trial:'#3b82f6', enrolled:'#6366f1', graduated:'#8b5cf6', paused:'#f59e0b', churned:'#ef4444', lead:'#6b7280', refunded:'#f87171', ended:'#94a3b8' };
@@ -1660,7 +1665,7 @@ let UPSALERS = [];          // [{name, rate}] rate = percent; sales agents who e
 function applyCsmRestrictions() {
   if (!isCsm()) return;
   // CSM sees only the follow-up section (can still open client profiles from it)
-  ['overview','clients','analytics','insights','team','commissions','users','trash','phoneclients','upcalls','upanalytics','upgrades','audit','sessions'].forEach(v => {
+  ['overview','clients','analytics','insights','team','commissions','users','trash','phoneclients','upcalls','upanalytics','upgrades','audit','whatsapplog','sessions'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1679,7 +1684,7 @@ function applyCsmRestrictions() {
 function applyCsmPhoneRestrictions() {
   if (!isCsmPhone()) return;
   // Phone-CSM sees only: broad client list, upgrades, change log.
-  ['overview','clients','analytics','insights','team','commissions','csm','notifs','users','trash','sessions'].forEach(v => {
+  ['overview','clients','analytics','insights','team','commissions','csm','notifs','users','trash','whatsapplog','sessions'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -1707,7 +1712,7 @@ function closeMobMenu() {
 function applyCoachRestrictions() {
   if (!isCoach()) return;
   // Hide nav: overview, analytics, team, users, trash + orphaned section headers
-  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash','phoneclients','upcalls','upanalytics','upgrades','audit','sessions'].forEach(v => {
+  ['overview','analytics','insights','team','commissions','csm','notifs','users','trash','phoneclients','upcalls','upanalytics','upgrades','audit','whatsapplog','sessions'].forEach(v => {
     const el = document.querySelector(`.nl[data-v="${v}"]`);
     if (el) el.style.display = 'none';
   });
@@ -2035,7 +2040,7 @@ function nav(v) {
   $('pg-' + v).classList.add('on');
   $('pg-title').textContent = (TITLES_MAP[LANG]||TITLES_MAP.ar)[v]||'';
   $('pg-sub').textContent = new Date().toLocaleDateString(LANG==='ar'?'ar-SA-u-nu-latn':'en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, phoneclients:renderPhoneClients, upcalls:renderOverdue, upanalytics:renderUpsellAnalytics, upgrades:renderUpgrades, audit:renderAudit, sessions:renderSessions, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
+  const renders = { overview:renderOverview, clients:renderClients, analytics:renderAnalytics, insights:renderInsights, team:renderTeam, commissions:renderCommissions, csm:renderCsm, phoneclients:renderPhoneClients, upcalls:renderOverdue, upanalytics:renderUpsellAnalytics, upgrades:renderUpgrades, audit:renderAudit, whatsapplog:renderWhatsappLog, sessions:renderSessions, notifs:renderNotifs, users:renderUsers, trash:renderTrash };
   if (renders[v]) renders[v]();
 }
 
@@ -6924,6 +6929,54 @@ function auditActionColor(a){
   if(a.endsWith('.create')) return 'var(--g)';
   return 'var(--t2)';
 }
+// ═══════════════ WHATSAPP AUTO-REMINDER LOG (سجل واتساب) ═══════════════
+// Read-only view (admin): shows the clients the daily automation (n8n) contacted, grouped by day.
+async function renderWhatsappLog(){
+  const el=$('pg-whatsapplog'); if(!el) return;
+  el.innerHTML=`<div class="card" style="padding:30px;text-align:center;color:var(--t3)">${LANG==='ar'?'جارٍ التحميل...':'Loading…'}</div>`;
+  let rows=[];
+  try{ rows=await api('GET','/api/whatsapp-log?limit=1500'); }
+  catch(e){ el.innerHTML=`<div class="card" style="padding:24px;color:var(--r)">${LANG==='ar'?'تعذّر تحميل السجل':'Failed to load'}: ${esc(e.message||'')}</div>`; return; }
+  rows=Array.isArray(rows)?rows:[];
+  const today=new Date().toISOString().slice(0,10);
+  const todayN=rows.filter(r=>(r.ts||'').slice(0,10)===today).length;
+  const sentN=rows.filter(r=>r.status!=='failed').length, failN=rows.length-sentN;
+  const byDay={}; rows.forEach(r=>{ const d=(r.ts||'').slice(0,10)||'—'; (byDay[d]=byDay[d]||[]).push(r); });
+  const days=Object.keys(byDay).sort().reverse();
+  const kpi=(v,l,c)=>`<div class="kpi" style="padding:14px"><div style="font-size:22px;font-weight:800${c?`;color:${c}`:''}">${v}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${l}</div></div>`;
+  const body = days.length ? days.map(d=>`
+    <div style="margin-bottom:18px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--t2);margin-bottom:8px">📅 ${d==='—'?'—':fmtDate(d)} <span style="color:var(--t3);font-weight:400">· ${byDay[d].length} ${LANG==='ar'?'عميل':'clients'}</span></div>
+      <div class="card" style="padding:0;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;min-width:520px">
+          <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+            <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:right">${LANG==='ar'?'الوقت':'Time'}</th>
+            <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:right">${LANG==='ar'?'العميل':'Client'}</th>
+            <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:right">${LANG==='ar'?'الرقم':'Phone'}</th>
+            <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:center">${LANG==='ar'?'الحالة':'Status'}</th>
+          </tr></thead>
+          <tbody>${byDay[d].map(r=>`<tr style="border-bottom:1px solid var(--b1)${r.clientId?';cursor:pointer':''}" ${r.clientId?`onclick="openDetail(${r.clientId})"`:''}>
+            <td style="padding:9px 12px;font-size:11.5px;color:var(--t3);white-space:nowrap;direction:ltr">${(r.ts||'').slice(11,16)||'—'}</td>
+            <td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(r.name||'—')}</td>
+            <td style="padding:9px 12px;font-size:12px;color:var(--t2);direction:ltr">${esc(r.phone||'—')}</td>
+            <td style="padding:9px 12px;text-align:center">${r.status==='failed'?`<span style="font-size:10.5px;color:var(--r);background:var(--rbg);padding:2px 8px;border-radius:20px">${LANG==='ar'?'فشل':'failed'}</span>`:`<span style="font-size:10.5px;color:var(--g);background:var(--gbg);padding:2px 8px;border-radius:20px">✓ ${LANG==='ar'?'أُرسل':'sent'}</span>`}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`).join('') : `<div class="card" style="padding:40px;text-align:center;color:var(--t3)">${LANG==='ar'?'لا توجد رسائل بعد — ستظهر هنا بمجرد أن يبدأ نظام الأتمتة (n8n) بإرسال رسائل واتساب اليومية':'No messages yet — rows appear once the n8n automation starts sending daily WhatsApp reminders'}</div>`;
+  el.innerHTML=`
+    <div class="card mb" style="padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--t3)">${LANG==='ar'?'سجل الرسائل التي أرسلها نظام المتابعة التلقائي عبر واتساب':'Log of the auto follow-up WhatsApp messages'}</span>
+      <button class="btn btn-g" onclick="renderWhatsappLog()" style="margin-right:auto">🔄 ${LANG==='ar'?'تحديث':'Refresh'}</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px">
+      ${kpi(todayN,LANG==='ar'?'اليوم':'Today','#25D366')}
+      ${kpi(sentN,LANG==='ar'?'إجمالي المُرسَل':'Total sent','var(--g)')}
+      ${failN?kpi(failN,LANG==='ar'?'فشل':'Failed','var(--r)'):''}
+    </div>
+    ${body}`;
+}
+
 async function renderAudit(){
   const filterBar = a => `<option value="${a[0]}"${_auditFilter===a[0]?' selected':''}>${a[1]}</option>`;
   const controls = `
