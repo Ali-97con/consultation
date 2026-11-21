@@ -1,6 +1,7 @@
 'use strict';
 const express = require('express');
 const path    = require('path');
+const crypto  = require('crypto');
 const {
   getClients, getTrash,
   createClient, updateClient, updateNotes, upgradeClient, undoLastUpgrade,
@@ -26,7 +27,17 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '512kb' }));
-app.use(express.static(__dirname));
+// Only HTML pages + assets are public — block direct download of source/config files
+// (server.js, db.js, package.json, dotfiles like .env, node_modules, …).
+app.use((req, res, next) => {
+  if (/\.(jsx?|mjs|cjs|ts|json|lock|env|ya?ml|md)$/i.test(req.path)
+      || /(^|\/)\.[^/]/.test(req.path)
+      || req.path.includes('node_modules')) {
+    return res.status(404).end();
+  }
+  next();
+});
+app.use(express.static(__dirname, { dotfiles: 'deny', index: false }));
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
@@ -118,6 +129,16 @@ function str(v, max = 500) {
   if (v === undefined || v === null) return undefined;
   return String(v).slice(0, max);
 }
+// Constant-time string compare for secrets (avoids timing side-channels).
+function safeStrEqual(a, b) {
+  const ab = Buffer.from(String(a == null ? '' : a));
+  const bb = Buffer.from(String(b == null ? '' : b));
+  if (ab.length === 0 || ab.length !== bb.length) return false;
+  try { return crypto.timingSafeEqual(ab, bb); } catch { return false; }
+}
+// Fields only an admin may change on a client (money / plan / status).
+const ADMIN_ONLY_CLIENT_FIELDS = ['customTotal', 'payments', 'p1', 'p2', 'p3', 'p4',
+  'p1d', 'p2d', 'p3d', 'p4d', 'discountType', 'discountValue', 'discountAmount', 'plan', 'status'];
 function sanitizeClientBody(body) {
   const b = body || {};
   const out = {};
@@ -204,6 +225,8 @@ app.post('/api/clients', requireAdmin, async (req, res) => {
 app.put('/api/clients/:id', requireAuth, async (req, res) => {
   try {
     const patch = sanitizeClientBody(req.body);
+    // Non-admins (coach / csm / csm_phone) cannot change money / plan / status via this endpoint.
+    if (req.user.role !== 'admin') ADMIN_ONLY_CLIENT_FIELDS.forEach(k => { delete patch[k]; });
     const updated = await updateClient(+req.params.id, patch);
     audit(req, 'client.update', 'client', +req.params.id,
       `تعديل بيانات «${(updated && updated.name) || req.params.id}»`, { fields: Object.keys(patch) });
@@ -557,7 +580,7 @@ function automationOk(req) {
   const s = process.env.AUTOMATION_SECRET;
   if (!s) return false;
   const got = req.query.secret || req.get('x-automation-secret') || '';
-  return got === s;
+  return safeStrEqual(got, s);
 }
 const _waCleanPhone = p => String(p || '').replace(/\D+/g, '');
 function _waFollowDays(plan) {
@@ -806,6 +829,7 @@ app.get('/api/contracts/:cid', requireAuth, async (req, res) => {
     if (!c) return res.status(404).json({ error: 'لا يوجد ملف' });
     res.setHeader('Content-Type', c.mime || 'application/octet-stream');
     res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'no-store, private');
     res.send(c.data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -837,6 +861,7 @@ app.get('/api/note-files/:fid', requireAuth, async (req, res) => {
     if (!f) return res.status(404).json({ error: 'لا يوجد ملف' });
     res.setHeader('Content-Type', f.mime || 'application/octet-stream');
     res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'no-store, private');
     res.send(f.data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1032,7 +1057,7 @@ app.post('/api/migrate-import', async (req, res) => {
   const migrateSecret = process.env.MIGRATE_SECRET;
   if (!migrateSecret) return res.status(403).json({ error: 'forbidden' });
   const { secret, data } = req.body || {};
-  if (!secret || secret !== migrateSecret) return res.status(403).json({ error: 'forbidden' });
+  if (!safeStrEqual(secret, migrateSecret)) return res.status(403).json({ error: 'forbidden' });
   try { await importData(data); res.json({ ok: true, clients: data.clients.length }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });

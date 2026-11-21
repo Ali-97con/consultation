@@ -1113,6 +1113,14 @@ function esc(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+// Safe to embed inside an inline handler's single-quoted JS string: onclick="f('${jss(x)}')".
+// JS-escapes quotes/backslash/newlines FIRST (esc() alone is bypassable here — the HTML entity
+// for ' is decoded back to ' before the JS runs), then HTML-escapes the rest for the attribute.
+function jss(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, '\\n')
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 // ═══════════════ CONSTANTS ═══════════════
 const PLANS = { 'CORE':2500, 'CORE+':3000, 'PREMIUM':4000, 'PREMIUM 4299':4299, 'PREMIUM 5000':5000, 'INNER CIRCLE':7000 };
@@ -2283,7 +2291,7 @@ function renderOverview() {
     <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${c.id})">
       ${clientAv(c)}
       <div style="flex:1;min-width:0">
-        <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+        <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.name)}</div>
         <div style="font-size:11px;color:var(--t3)">${fmtMoney(fr(c))} ${t('remaining')}</div>
       </div>
       <div style="text-align:left;flex-shrink:0">
@@ -2637,8 +2645,8 @@ function delClient(id) {
   _pendingDelId = id;
   $('del-title').textContent = LANG==='ar' ? 'حذف العميل' : 'Delete Client';
   $('del-body').innerHTML = LANG==='ar'
-    ? `هل أنت متأكد من نقل <strong>${c.name}</strong> إلى سلة المهملات؟`
-    : `Move <strong>${c.name}</strong> to trash?`;
+    ? `هل أنت متأكد من نقل <strong>${esc(c.name)}</strong> إلى سلة المهملات؟`
+    : `Move <strong>${esc(c.name)}</strong> to trash?`;
   $('del-mo').classList.add('on');
 }
 function closeDelConfirm() {
@@ -4146,8 +4154,8 @@ function renderTrash() {
       <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--b1)">
         <div class="av" style="background:${col(c.ci)};opacity:.7">${ini(c.name)}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:var(--t1)">${c.name}</div>
-          <div style="font-size:11px;color:var(--t3);margin-top:2px">${c.phone} · ${c.plan} · <span class="badge ${SB[c.status]||'b-led'}" style="font-size:10px">${SL[c.status]||c.status}</span></div>
+          <div style="font-size:13px;font-weight:600;color:var(--t1)">${esc(c.name)}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px">${esc(c.phone)} · ${esc(c.plan)} · <span class="badge ${SB[c.status]||'b-led'}" style="font-size:10px">${esc(SL[c.status]||c.status)}</span></div>
           <div style="font-size:10px;color:var(--r);margin-top:3px">${t('deleted_at')} ${fmtDelDate(c._deletedAt)}</div>
         </div>
         <div style="text-align:left;margin-left:4px">
@@ -4176,13 +4184,13 @@ function renderTrash() {
       <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--b1)">
         <div class="av" style="background:var(--p);opacity:.8">${m.name[0]}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:var(--t1)">${m.name}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--t1)">${esc(m.name)}</div>
           <div style="font-size:11px;color:var(--t3);margin-top:2px">${teamTypeLabel(m)}</div>
           <div style="font-size:10px;color:var(--r);margin-top:3px">${t('deleted_at')} ${fmtDelDate(m.deletedAt)}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn btn-g" style="font-size:11px;padding:5px 10px" onclick="restoreTeamMemberFromTrash('${m.type}','${m.name}')">${t('restore_btn')}</button>
-          <button class="btn btn-r" style="font-size:11px;padding:5px 10px" onclick="permDeleteTeamFromTrash('${m.type}','${m.name}')">${t('perm_delete_btn')}</button>
+          <button class="btn btn-g" style="font-size:11px;padding:5px 10px" onclick="restoreTeamMemberFromTrash('${jss(m.type)}','${jss(m.name)}')">${t('restore_btn')}</button>
+          <button class="btn btn-r" style="font-size:11px;padding:5px 10px" onclick="permDeleteTeamFromTrash('${jss(m.type)}','${jss(m.name)}')">${t('perm_delete_btn')}</button>
         </div>
       </div>`).join('')}
     </div>
