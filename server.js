@@ -30,7 +30,8 @@ app.use(express.json({ limit: '512kb' }));
 // Only HTML pages + assets are public — block direct download of source/config files
 // (server.js, db.js, package.json, dotfiles like .env, node_modules, …).
 app.use((req, res, next) => {
-  if (/\.(jsx?|mjs|cjs|ts|json|lock|env|ya?ml|md)$/i.test(req.path)
+  // NB: .jsx is allowed (splash.html loads splash.jsx) — only server .js is blocked.
+  if (/\.(js|mjs|cjs|ts|json|lock|env|ya?ml|md)$/i.test(req.path)
       || /(^|\/)\.[^/]/.test(req.path)
       || req.path.includes('node_modules')) {
     return res.status(404).end();
