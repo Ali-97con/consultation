@@ -3216,6 +3216,10 @@ function renderAnalytics() {
 
   // ─── month selector options ───
   const now = new Date();
+  // Cash collected from NEWLY-SIGNED clients (signed in the selected month, or current month if "all").
+  const newMo = mo || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const newSigned = clients.filter(c=>c.status!=='lead' && c.status!=='refunded' && String(c.regDate||'').slice(0,7)===newMo);
+  const newSignedCash = newSigned.reduce((a,c)=>a+fx(c),0);
   const moOptions = Array.from({length:12},(_,i)=>{
     const d = new Date(now.getFullYear(), now.getMonth()-11+i, 1);
     const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -3251,6 +3255,7 @@ function renderAnalytics() {
       {l:t('anal_coll_rate'),v:collRate+'%',c:'var(--g)',s:LANG==='ar'?'المحصّل ÷ المتوقع':'collected ÷ expected'},
       {l:t('anal_comp_rate'),v:compRate+'%',c:'var(--p2)',s:LANG==='ar'?'عملاء سدّدوا كامل العقد':'clients fully paid'},
       {l:t('anal_total_cash'),v:fmtMoney(totalCol),c:'#10b981',s:LANG==='ar'?'من العملاء الموقّعين':'from signed clients'},
+      {l:LANG==='ar'?'المحصّل من العملاء الجدد':'Cash from new signups',v:fmtMoney(newSignedCash),c:'#8b5cf6',s:`${newSigned.length} ${LANG==='ar'?'موقّع':'signed'} · ${monthLabel(newMo)}`},
       {l:t('anal_total_rem'),v:fmtMoney(totalRem),c:'var(--r)',s:LANG==='ar'?'ما تبقّى على الموقّعين':'owed by signed clients'},
       {l:t('anal_avg_val'),v:fmtMoney(avgVal),c:'var(--y)',s:LANG==='ar'?'المتوقع ÷ عدد العملاء':'expected ÷ clients'},
       {l:t('anal_total_exp'),v:fmtMoney(totalExp),c:'var(--bl)',s:LANG==='ar'?'قيمة كل العقود الموقّعة':'all signed contracts'},
