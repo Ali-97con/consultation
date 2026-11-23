@@ -3202,14 +3202,17 @@ function renderAnalytics() {
   const monthlyRev  = months12.map(m=>{ let r=0; aClients.forEach(c=>{ payList(c).forEach(([a,d])=>{ if(d&&d.startsWith(m.key)) r+=a; }); }); return r; });
   const monthlyNew  = months12.map(m=>aClients.filter(c=>c.regDate&&c.regDate.startsWith(m.key)).length);
 
-  const totalExp = aClients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+(c.customTotal||PLANS[c.plan]||0),0);
-  // Net collected = payments from non-refunded clients (refunded clients net to 0, shown separately)
-  const totalCol = aClients.filter(c=>c.status!=='refunded').reduce((a,c)=>a+fx(c),0);
+  // Financial KPIs are computed on SIGNED clients only: exclude leads (not signed yet → would
+  // inflate expected/remaining with contracts that don't exist) and refunded (money returned).
+  const realC    = aClients.filter(c=>c.status!=='lead' && c.status!=='refunded');
+  const totalExp = realC.reduce((a,c)=>a+(c.customTotal||PLANS[c.plan]||0),0);
+  const totalCol = realC.reduce((a,c)=>a+fx(c),0);
+  const totalRem = realC.reduce((a,c)=>a+fr(c),0);
   const refCol   = aClients.filter(c=>c.status==='refunded').reduce((a,c)=>a+fx(c),0);
   const collRate = totalExp>0?Math.round(Math.max(0,totalCol)/totalExp*100):0;
-  const fullPaid = aClients.filter(c=>fr(c)===0&&c.status!=='lead'&&c.status!=='refunded').length;
-  const nonLead  = aClients.filter(c=>c.status!=='lead'&&c.status!=='refunded').length;
-  const compRate = nonLead>0?Math.round(fullPaid/nonLead*100):0;
+  const fullPaid = realC.filter(c=>fr(c)===0).length;
+  const compRate = realC.length>0?Math.round(fullPaid/realC.length*100):0;
+  const avgVal   = realC.length>0?Math.round(totalExp/realC.length):0;
 
   // ─── month selector options ───
   const now = new Date();
@@ -3245,14 +3248,14 @@ function renderAnalytics() {
   <!-- KPIs -->
   <div class="kpi-g" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
     ${[
-      {l:t('anal_coll_rate'),v:collRate+'%',c:'var(--g)'},
-      {l:t('anal_comp_rate'),v:compRate+'%',c:'var(--p2)'},
-      {l:t('anal_total_cash'),v:fmtMoney(totalCol),c:'#10b981'},
-      {l:t('anal_total_rem'),v:fmtMoney(aClients.reduce((a,c)=>a+fr(c),0)),c:'var(--r)'},
-      {l:t('anal_avg_val'),v:fmtMoney(Math.round(totalExp/(aClients.length||1))),c:'var(--y)'},
-      {l:t('anal_total_exp'),v:fmtMoney(totalExp),c:'var(--bl)'},
-      ...(refCol>0?[{l:LANG==='ar'?'مُسترجع (مخصوم)':'Refunded (deducted)',v:'−'+fmtMoney(refCol),c:'var(--r)'}]:[]),
-    ].map(k=>`<div class="kpi"><div class="kpi-v" style="color:${k.c};font-size:22px">${k.v}</div><div class="kpi-l">${k.l}</div></div>`).join('')}
+      {l:t('anal_coll_rate'),v:collRate+'%',c:'var(--g)',s:LANG==='ar'?'المحصّل ÷ المتوقع':'collected ÷ expected'},
+      {l:t('anal_comp_rate'),v:compRate+'%',c:'var(--p2)',s:LANG==='ar'?'عملاء سدّدوا كامل العقد':'clients fully paid'},
+      {l:t('anal_total_cash'),v:fmtMoney(totalCol),c:'#10b981',s:LANG==='ar'?'من العملاء الموقّعين':'from signed clients'},
+      {l:t('anal_total_rem'),v:fmtMoney(totalRem),c:'var(--r)',s:LANG==='ar'?'ما تبقّى على الموقّعين':'owed by signed clients'},
+      {l:t('anal_avg_val'),v:fmtMoney(avgVal),c:'var(--y)',s:LANG==='ar'?'المتوقع ÷ عدد العملاء':'expected ÷ clients'},
+      {l:t('anal_total_exp'),v:fmtMoney(totalExp),c:'var(--bl)',s:LANG==='ar'?'قيمة كل العقود الموقّعة':'all signed contracts'},
+      ...(refCol>0?[{l:LANG==='ar'?'مُسترجع (مخصوم)':'Refunded (deducted)',v:'−'+fmtMoney(refCol),c:'var(--r)',s:LANG==='ar'?'أموال أُعيدت للعملاء':'money returned'}]:[]),
+    ].map(k=>`<div class="kpi"><div class="kpi-v" style="color:${k.c};font-size:22px">${k.v}</div><div class="kpi-l">${k.l}</div>${k.s?`<div style="font-size:10px;color:var(--t3);margin-top:3px;line-height:1.3">${k.s}</div>`:''}</div>`).join('')}
   </div>
 
   <!-- Monthly Income Detail -->
