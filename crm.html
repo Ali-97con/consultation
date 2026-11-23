@@ -2778,21 +2778,22 @@ function renderIncomeDetail(month, sortKey, sortDir) {
   const payments = [];
   clients.filter(c => !c.deleted).forEach(c => {
     const ref = c.status === 'refunded';
+    const hasUp = (c.upsells||[]).length>0 || (c.upgrades||[]).length>0;   // client did an upsell/upgrade/renewal
     const allDates = payList(c);
     let refInMonth = 0, refDate = '';
     allDates.forEach(([amt,date],i) => {
       if (amt > 0 && date && date.startsWith(month)) {
-        payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates });
+        payments.push({ name:c.name, plan:c.plan, num:i+1, amt, payMethod:c.payMethod||'-', date, allDates, hasUp });
         if (ref) { refInMonth += amt; refDate = date; }
       }
     });
     // Refunded client: money came in this month but was returned → a deduction row cancels it (net 0)
     if (ref && refInMonth > 0)
-      payments.push({ name:c.name, plan:'↩️ '+(c.plan||''), num:'—', amt:-refInMonth, payMethod:'مُسترجع', date:refDate||(month+'-15'), allDates:[[-refInMonth, refDate]], isRefund:true });
+      payments.push({ name:c.name, plan:'↩️ '+(c.plan||''), num:'—', amt:-refInMonth, payMethod:'مُسترجع', date:refDate||(month+'-15'), allDates:[[-refInMonth, refDate]], isRefund:true, hasUp });
     // Upsell sales count as cash received in their month
     (c.upsells||[]).forEach(u => {
       if ((u.price||0) > 0 && u.date && u.date.startsWith(month))
-        payments.push({ name:c.name, plan:'🛒 '+(u.type||'Upsell'), num:'—', amt:u.price, payMethod:'Upsell', date:u.date, allDates:[[u.price,u.date]], isUpsell:true });
+        payments.push({ name:c.name, plan:'🛒 '+(u.type||'Upsell'), num:'—', amt:u.price, payMethod:'Upsell', date:u.date, allDates:[[u.price,u.date]], isUpsell:true, hasUp });
     });
   });
   payments.sort((a,b) => {
@@ -2860,7 +2861,7 @@ function renderIncomeDetail(month, sortKey, sortDir) {
       <tbody>
         ${payments.map(p=>`
           <tr style="border-bottom:1px solid var(--b1)">
-            <td style="padding:10px 14px;font-weight:600">${p.name}</td>
+            <td style="padding:10px 14px;font-weight:600">${esc(p.name)}${p.hasUp?' <span title="قام بأبسيل" style="font-size:9px;background:var(--gbg);color:var(--g);padding:1px 5px;border-radius:7px;vertical-align:middle">🛒</span>':''}</td>
             <td style="padding:10px;text-align:center"><span style="background:var(--pbg);color:var(--p2);padding:2px 8px;border-radius:6px;font-size:11px">${p.plan}</span></td>
             <td style="padding:10px;text-align:center;color:var(--t3)">${installLabel(p.num)}</td>
             <td style="padding:10px;text-align:center;color:var(--t3)">${p.payMethod}</td>
@@ -3167,6 +3168,14 @@ function renderWeekly(){
     options:{ ...chartOpts(), plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:cx=>`${cx.parsed.y} عميل` } } } } });
 }
 
+// ── Analytics cash mode: with / only / without upsell (default: with) ──
+let _analCashMode = 'with';
+function setAnalyticsCash(m){ _analCashMode = (m==='only'||m==='without')?m:'with'; renderAnalytics(); }
+function _analBaseCash(c){ return clientBasePays(c).reduce((s,e)=>s+(+e[0]||0),0); }                  // base installments (payList minus upgrade increments)
+function _analUpCash(c){ return upgradeAddedItems(c).reduce((s,e)=>s+(+e[0]||0),0) + upsellItems(c).reduce((s,e)=>s+(+e[0]||0),0); } // upgrade increments + service upsells
+function analCashOf(c){ const b=_analBaseCash(c), u=_analUpCash(c); return _analCashMode==='only'?u : _analCashMode==='without'?b : b+u; }
+function _hasUpsale(c){ return (c.upsells||[]).length>0 || (c.upgrades||[]).length>0; }
+
 function renderAnalytics() {
   const mo = S.analyticsMonth;
   const aClients = mo ? clients.filter(c=>(c.regDate||'').startsWith(mo)) : clients;
@@ -3175,7 +3184,7 @@ function renderAnalytics() {
   const planKeys = Object.keys(PLANS);
   const byPlan = {}; planKeys.forEach(k=>{ byPlan[k]={rev:0,total:0,cnt:0}; });
   aClients.forEach(c=>{
-    if(byPlan[c.plan]){ byPlan[c.plan].rev+=fx(c); byPlan[c.plan].total+=(c.customTotal||PLANS[c.plan]||0); byPlan[c.plan].cnt++; }
+    if(byPlan[c.plan]){ byPlan[c.plan].rev+=analCashOf(c); byPlan[c.plan].total+=(c.customTotal||PLANS[c.plan]||0); byPlan[c.plan].cnt++; }
   });
 
   const byPayMethod = {};
@@ -3187,7 +3196,7 @@ function renderAnalytics() {
   const closerData = {};
   aClients.forEach(c=>{
     if(!closerData[c.closer]) closerData[c.closer]={rev:0,cnt:0,paid:0};
-    closerData[c.closer].rev+=fx(c); closerData[c.closer].cnt++;
+    closerData[c.closer].rev+=analCashOf(c); closerData[c.closer].cnt++;
     if(fr(c)===0&&c.status!=='lead') closerData[c.closer].paid++;
   });
 
@@ -3199,17 +3208,23 @@ function renderAnalytics() {
   });
 
   const months12 = getLast12Months();
-  const monthlyRev  = months12.map(m=>{ let r=0; aClients.forEach(c=>{ payList(c).forEach(([a,d])=>{ if(d&&d.startsWith(m.key)) r+=a; }); }); return r; });
+  const _cashInMonth = (c,mk)=>{ let b=0,u=0;
+    clientBasePays(c).forEach(([a,d])=>{ if(d&&String(d).startsWith(mk)) b+=a; });
+    upgradeAddedItems(c).forEach(([a,d])=>{ if(d&&String(d).startsWith(mk)) u+=a; });
+    upsellItems(c).forEach(([a,d])=>{ if(d&&String(d).startsWith(mk)) u+=a; });
+    return _analCashMode==='only'?u : _analCashMode==='without'?b : b+u; };
+  const monthlyRev  = months12.map(m=> aClients.reduce((r,c)=>r+_cashInMonth(c,m.key),0));
   const monthlyNew  = months12.map(m=>aClients.filter(c=>c.regDate&&c.regDate.startsWith(m.key)).length);
 
   // Financial KPIs are computed on SIGNED clients only: exclude leads (not signed yet → would
   // inflate expected/remaining with contracts that don't exist) and refunded (money returned).
   const realC    = aClients.filter(c=>c.status!=='lead' && c.status!=='refunded');
   const totalExp = realC.reduce((a,c)=>a+(c.customTotal||PLANS[c.plan]||0),0);
-  const totalCol = realC.reduce((a,c)=>a+fx(c),0);
+  const totalCol = realC.reduce((a,c)=>a+analCashOf(c),0);      // headline cash — respects the upsell mode
+  const baseCol  = realC.reduce((a,c)=>a+_analBaseCash(c),0);   // base-only — for the collection rate (contract completion)
   const totalRem = realC.reduce((a,c)=>a+fr(c),0);
   const refCol   = aClients.filter(c=>c.status==='refunded').reduce((a,c)=>a+fx(c),0);
-  const collRate = totalExp>0?Math.round(Math.max(0,totalCol)/totalExp*100):0;
+  const collRate = totalExp>0?Math.round(Math.max(0,baseCol)/totalExp*100):0;
   const fullPaid = realC.filter(c=>fr(c)===0).length;
   const compRate = realC.length>0?Math.round(fullPaid/realC.length*100):0;
   const avgVal   = realC.length>0?Math.round(totalExp/realC.length):0;
@@ -3219,7 +3234,8 @@ function renderAnalytics() {
   // Cash collected from NEWLY-SIGNED clients (signed in the selected month, or current month if "all").
   const newMo = mo || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const newSigned = clients.filter(c=>c.status!=='lead' && c.status!=='refunded' && String(c.regDate||'').slice(0,7)===newMo);
-  const newSignedCash = newSigned.reduce((a,c)=>a+fx(c),0);
+  const newSignedCash = newSigned.reduce((a,c)=>a+analCashOf(c),0);
+  const cashModeLbl = _analCashMode==='with'?(LANG==='ar'?'مع الأبسيل':'with upsell'):_analCashMode==='only'?(LANG==='ar'?'الأبسيل فقط':'upsell only'):(LANG==='ar'?'بدون الأبسيل':'without upsell');
   const moOptions = Array.from({length:12},(_,i)=>{
     const d = new Date(now.getFullYear(), now.getMonth()-11+i, 1);
     const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -3247,6 +3263,13 @@ function renderAnalytics() {
       ${mo?`<button class="btn btn-g" style="padding:4px 12px;font-size:12px" onclick="setAnalyticsMonth('')">${LANG==='ar'?'↩ كل الأشهر':'↩ All Months'}</button>`:''}
       <button class="btn btn-p" style="margin-right:auto;padding:6px 14px;font-size:12.5px" onclick="openFinReport()">📄 ${LANG==='ar'?'تقرير الشهر المالي':'Monthly Financial Report'}</button>
     </div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)">
+      <span style="font-size:12px;color:var(--t3)">${LANG==='ar'?'حساب المحصّل:':'Cash incl.:'}</span>
+      <button class="btn ${_analCashMode==='with'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('with')">${LANG==='ar'?'مع الأبسيل':'With upsell'}</button>
+      <button class="btn ${_analCashMode==='only'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('only')">${LANG==='ar'?'الأبسيل فقط':'Upsell only'}</button>
+      <button class="btn ${_analCashMode==='without'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('without')">${LANG==='ar'?'بدون الأبسيل':'Without upsell'}</button>
+      <span style="font-size:10.5px;color:var(--t3);margin-right:auto">${LANG==='ar'?'الأبسيل = الترقيات/التجديدات + الخدمات الإضافية':'Upsell = upgrades/renewals + extra services'}</span>
+    </div>
   </div>
 
   <!-- KPIs -->
@@ -3254,8 +3277,7 @@ function renderAnalytics() {
     ${[
       {l:t('anal_coll_rate'),v:collRate+'%',c:'var(--g)',s:LANG==='ar'?'المحصّل ÷ المتوقع':'collected ÷ expected'},
       {l:t('anal_comp_rate'),v:compRate+'%',c:'var(--p2)',s:LANG==='ar'?'عملاء سدّدوا كامل العقد':'clients fully paid'},
-      {l:t('anal_total_cash'),v:fmtMoney(totalCol),c:'#10b981',s:LANG==='ar'?'من العملاء الموقّعين':'from signed clients'},
-      {l:LANG==='ar'?'المحصّل من العملاء الجدد':'Cash from new signups',v:fmtMoney(newSignedCash),c:'#8b5cf6',s:`${newSigned.length} ${LANG==='ar'?'موقّع':'signed'} · ${monthLabel(newMo)}`},
+      {l:LANG==='ar'?'المحصّل من العملاء الجدد':'Cash from new signups',v:fmtMoney(newSignedCash),c:'#8b5cf6',s:`${newSigned.length} ${LANG==='ar'?'موقّع':'signed'} · ${monthLabel(newMo)} · ${cashModeLbl}`},
       {l:t('anal_total_rem'),v:fmtMoney(totalRem),c:'var(--r)',s:LANG==='ar'?'ما تبقّى على الموقّعين':'owed by signed clients'},
       {l:t('anal_avg_val'),v:fmtMoney(avgVal),c:'var(--y)',s:LANG==='ar'?'المتوقع ÷ عدد العملاء':'expected ÷ clients'},
       {l:t('anal_total_exp'),v:fmtMoney(totalExp),c:'var(--bl)',s:LANG==='ar'?'قيمة كل العقود الموقّعة':'all signed contracts'},
