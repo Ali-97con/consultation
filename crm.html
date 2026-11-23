@@ -3247,22 +3247,25 @@ function renderAnalytics() {
   const newSigned = clients.filter(c=>c.status!=='lead' && c.status!=='refunded' && String(c.regDate||'').slice(0,7)===newMo);
   const cashModeLbl = _analCashMode==='with'?(LANG==='ar'?'مع الأبسيل':'with upsell'):_analCashMode==='only'?(LANG==='ar'?'الأبسيل فقط':'upsell only'):(LANG==='ar'?'بدون الأبسيل':'without upsell');
   const _planTot = c => ((c.customTotal!=null?c.customTotal:(PLANS[c.plan]||0))||0);
-  // This-month funnel for NEW signups (base contract; collected = sans upsell):
-  const newExp     = newSigned.reduce((a,c)=>a+_planTot(c),0);        // محتمل / expected
-  const newBaseCol = newSigned.reduce((a,c)=>a+_analBaseCash(c),0);   // محصّل / collected (base only)
-  const newRem     = Math.max(0, newExp - newBaseCol);               // المتبقّي
-  // Cash actually received DURING newMo (by payment date):
-  const _inNewMo = d => String(d||'').slice(0,7)===newMo;
+  const _today = new Date().toISOString().slice(0,10);
+  // Collected = ENCAISSÉ only (payment date ≤ today) — future scheduled installments are "qui reste", not collected.
+  const _collectedTo = c => clientBasePays(c).reduce((s,[amt,d])=>s+((amt>0 && d && d<=_today)?amt:0),0);
+  // This-month funnel for NEW signups (base contract; collected = encaissé, sans upsell):
+  const newExp     = newSigned.reduce((a,c)=>a+_planTot(c),0);        // محتمل / expected (contract value)
+  const newBaseCol = newSigned.reduce((a,c)=>a+_collectedTo(c),0);    // محصّل / encaissé (base, ≤ today)
+  const newRem     = Math.max(0, newExp - newBaseCol);               // المتبقّي (expected − encaissé)
+  // Cash actually RECEIVED during newMo (payment date in newMo AND ≤ today):
+  const _rcv = d => { const s=String(d||''); return s.slice(0,7)===newMo && s<=_today; };
   let _baseM=0, _upsM=0, _refM=0;
   clients.filter(c=>!c.deleted).forEach(c=>{
-    if(c.status==='refunded'){ payList(c).forEach(([a,d])=>{ if(a>0 && _inNewMo(d)) _refM+=a; }); return; }
-    clientBasePays(c).forEach(([a,d])=>{ if(a>0 && _inNewMo(d)) _baseM+=a; });
-    upgradeAddedItems(c).forEach(([a,d])=>{ if(a>0 && _inNewMo(d)) _upsM+=a; });
-    upsellItems(c).forEach(([a,d])=>{ if(a>0 && _inNewMo(d)) _upsM+=a; });
+    if(c.status==='refunded'){ payList(c).forEach(([a,d])=>{ if(a>0 && _rcv(d)) _refM+=a; }); return; }
+    clientBasePays(c).forEach(([a,d])=>{ if(a>0 && _rcv(d)) _baseM+=a; });
+    upgradeAddedItems(c).forEach(([a,d])=>{ if(a>0 && _rcv(d)) _upsM+=a; });
+    upsellItems(c).forEach(([a,d])=>{ if(a>0 && _rcv(d)) _upsM+=a; });
   });
-  const upsaleCashMonth = _upsM;                  // محصّل الأبسيل (du mois, par date)
-  const refundsMonth    = _refM;                  // المُسترجع (du mois)
-  const totalMonth      = _baseM + _upsM - _refM; // الإجمالي: base + upsale − refunds
+  const upsaleCashMonth = _upsM;                  // محصّل الأبسيل (encaissé ce mois)
+  const refundsMonth    = _refM;                  // المُسترجع (ce mois)
+  const totalMonth      = _baseM + _upsM - _refM; // الإجمالي: base + upsale − refunds (encaissé)
   const moOptions = Array.from({length:12},(_,i)=>{
     const d = new Date(now.getFullYear(), now.getMonth()-11+i, 1);
     const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
