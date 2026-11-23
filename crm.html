@@ -2980,13 +2980,23 @@ function renderWeekly(){
   const trend = prevTotal>0 ? Math.round((monthTotal-prevTotal)/prevTotal*100) : null;
   const allEntries = weekEntries.flat();
   const payingClients = new Set(allEntries.map(e=>e.cid)).size;
+  const monthNewCash = allEntries.filter(e=>e.isNew).reduce((s,e)=>s+e.amt,0);
+  const monthOldCash = monthTotal - monthNewCash;
   // Build one clickable (accordion) week row + its detail.
   const _chip = (lbl,val,col)=>`<span style="font-size:11px;background:var(--hv);border:1px solid var(--b1);border-radius:20px;padding:3px 9px;white-space:nowrap">${esc(lbl)} <strong style="color:${col||'var(--t1)'}">${fmtMoney(val)}</strong></span>`;
+  const _ms = (v,l,c)=>`<div style="flex:1;min-width:110px;background:var(--hv);border:1px solid var(--b1);border-radius:9px;padding:8px 11px"><div style="font-size:15px;font-weight:800${c?`;color:${c}`:''}">${v}</div><div style="font-size:10px;color:var(--t3);margin-top:2px">${l}</div></div>`;
   const _th = `padding:8px 10px;font-size:10px;color:var(--t3);text-align:right;white-space:nowrap`;
   const _wkRow = i => {
     const es = weekEntries[i], tot = weeks[i], [d1,d2] = weekRanges[i];
     const clientsN = new Set(es.map(e=>e.cid)).size;
     const newCash = es.filter(e=>e.isNew).reduce((s,e)=>s+e.amt,0), oldCash = tot - newCash;
+    const newPayers = new Set(es.filter(e=>e.isNew).map(e=>e.cid)).size, oldPayers = clientsN - newPayers;
+    // Clients who SIGNED (registered) during this week.
+    const newOfWeek = live.filter(c => c.status!=='lead' && String(c.regDate||'').slice(0,7)===month
+      && (()=>{ const dd=+String(c.regDate).slice(8,10); return dd>=d1 && dd<=d2; })());
+    const nwExp = newOfWeek.reduce((s,c)=>s+_wkPlanTotal(c),0);
+    const nwCol = newOfWeek.reduce((s,c)=>s+fx(c),0);
+    const nwRem = newOfWeek.reduce((s,c)=>s+fr(c),0);
     const by = k => { const m={}; es.forEach(e=>{ m[e[k]]=(m[e[k]]||0)+e.amt; }); return Object.entries(m).sort((x,y)=>y[1]-x[1]); };
     const tbl = es.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:640px">
         <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
@@ -3012,7 +3022,18 @@ function renderWeekly(){
         <div style="font-size:16px;font-weight:800;color:var(--g)">${fmtMoney(tot)}</div>
       </div>
       <div id="wk-detail-${i}" style="display:none;padding:2px 16px 14px;border-top:1px solid var(--b1)">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">${_chip('🆕 جديد',newCash,'#6366f1')}${_chip('قديم',oldCash,'var(--t2)')}</div>
+        <div style="font-size:11px;color:var(--t3);margin:10px 0 5px">💰 الكاش حسب نوع العميل:</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          ${_ms(fmtMoney(newCash),`كاش عملاء جدد (${newPayers})`,'#6366f1')}
+          ${_ms(fmtMoney(oldCash),`كاش عملاء قدامى (${oldPayers})`,'var(--t2)')}
+        </div>
+        <div style="font-size:11px;color:var(--t3);margin:0 0 5px">🆕 عملاء وقّعوا هذا الأسبوع: <strong style="color:var(--t1)">${newOfWeek.length}</strong></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          ${_ms(fmtMoney(nwExp),'القيمة المتوقعة','var(--t1)')}
+          ${_ms(fmtMoney(nwCol),'المحصّل منهم','var(--g)')}
+          ${_ms(fmtMoney(nwRem),'المتبقّي','var(--r)')}
+        </div>
+        ${newOfWeek.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${newOfWeek.map(c=>`<span onclick="event.stopPropagation();openDetail(${c.id})" style="cursor:pointer;font-size:11px;background:#6366f122;color:#6366f1;border-radius:20px;padding:3px 9px">${esc(c.name)}${fr(c)>0?` · متبقٍّ ${fmtMoney(fr(c))}`:' ✓'}</span>`).join('')}</div>`:''}
         <div style="font-size:11px;color:var(--t3);margin-bottom:4px">حسب الكلوزر:</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${by('closer').map(([k,v])=>_chip(k,v,'var(--p2)')).join('')||'—'}</div>
         <div style="font-size:11px;color:var(--t3);margin-bottom:4px">حسب السيتر:</div>
@@ -3060,6 +3081,8 @@ function renderWeekly(){
       ${kpi(fmtMoney(monthTotal),'إجمالي الشهر','var(--g)', trend!==null?`${trend>=0?'▲':'▼'} ${Math.abs(trend)}٪ عن الشهر السابق`:'')}
       ${kpi(allEntries.length,'عدد الدفعات','var(--p2)')}
       ${kpi(payingClients,'عملاء دفعوا','#6366f1')}
+      ${kpi(fmtMoney(monthNewCash),'كاش عملاء جدد','#6366f1')}
+      ${kpi(fmtMoney(monthOldCash),'كاش عملاء قدامى','var(--t2)')}
     </div>
     <div class="card mb" style="padding:14px"><div class="cb"><canvas id="wk-cash" height="100"></canvas></div></div>
     <div style="font-size:12px;color:var(--t3);margin:0 0 8px">▶ اضغط على أي أسبوع لعرض تفاصيله (الدفعات، الكلوزر/السيتر، الطريقة):</div>
