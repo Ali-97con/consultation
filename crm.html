@@ -3245,8 +3245,24 @@ function renderAnalytics() {
   // Cash collected from NEWLY-SIGNED clients (signed in the selected month, or current month if "all").
   const newMo = mo || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   const newSigned = clients.filter(c=>c.status!=='lead' && c.status!=='refunded' && String(c.regDate||'').slice(0,7)===newMo);
-  const newSignedCash = newSigned.reduce((a,c)=>a+analCashOf(c),0);
   const cashModeLbl = _analCashMode==='with'?(LANG==='ar'?'مع الأبسيل':'with upsell'):_analCashMode==='only'?(LANG==='ar'?'الأبسيل فقط':'upsell only'):(LANG==='ar'?'بدون الأبسيل':'without upsell');
+  const _planTot = c => ((c.customTotal!=null?c.customTotal:(PLANS[c.plan]||0))||0);
+  // This-month funnel for NEW signups (base contract; collected = sans upsell):
+  const newExp     = newSigned.reduce((a,c)=>a+_planTot(c),0);        // محتمل / expected
+  const newBaseCol = newSigned.reduce((a,c)=>a+_analBaseCash(c),0);   // محصّل / collected (base only)
+  const newRem     = Math.max(0, newExp - newBaseCol);               // المتبقّي
+  // Cash actually received DURING newMo (by payment date):
+  const _inNewMo = d => String(d||'').slice(0,7)===newMo;
+  let _baseM=0, _upsM=0, _refM=0;
+  clients.filter(c=>!c.deleted).forEach(c=>{
+    if(c.status==='refunded'){ payList(c).forEach(([a,d])=>{ if(a>0 && _inNewMo(d)) _refM+=a; }); return; }
+    clientBasePays(c).forEach(([a,d])=>{ if(a>0 && _inNewMo(d)) _baseM+=a; });
+    upgradeAddedItems(c).forEach(([a,d])=>{ if(a>0 && _inNewMo(d)) _upsM+=a; });
+    upsellItems(c).forEach(([a,d])=>{ if(a>0 && _inNewMo(d)) _upsM+=a; });
+  });
+  const upsaleCashMonth = _upsM;                  // محصّل الأبسيل (du mois, par date)
+  const refundsMonth    = _refM;                  // المُسترجع (du mois)
+  const totalMonth      = _baseM + _upsM - _refM; // الإجمالي: base + upsale − refunds
   const moOptions = Array.from({length:12},(_,i)=>{
     const d = new Date(now.getFullYear(), now.getMonth()-11+i, 1);
     const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -3286,13 +3302,14 @@ function renderAnalytics() {
   <!-- KPIs -->
   <div class="kpi-g" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
     ${[
-      {l:t('anal_coll_rate'),v:collRate+'%',c:'var(--g)',s:LANG==='ar'?'المحصّل ÷ المتوقع':'collected ÷ expected'},
+      {l:t('anal_coll_rate'),v:collRate+'%',c:'var(--g)',s:LANG==='ar'?'المحصّل ÷ المتوقع (بدون أبسيل)':'collected ÷ expected'},
       {l:t('anal_comp_rate'),v:compRate+'%',c:'var(--p2)',s:LANG==='ar'?'عملاء سدّدوا كامل العقد':'clients fully paid'},
-      {l:LANG==='ar'?'المحصّل من العملاء الجدد':'Cash from new signups',v:fmtMoney(newSignedCash),c:'#8b5cf6',s:`${newSigned.length} ${LANG==='ar'?'موقّع':'signed'} · ${monthLabel(newMo)} · ${cashModeLbl}`},
-      {l:t('anal_total_rem'),v:fmtMoney(totalRem),c:'var(--r)',s:LANG==='ar'?'ما تبقّى على الموقّعين':'owed by signed clients'},
-      {l:t('anal_avg_val'),v:fmtMoney(avgVal),c:'var(--y)',s:LANG==='ar'?'المتوقع ÷ عدد العملاء':'expected ÷ clients'},
-      {l:t('anal_total_exp'),v:fmtMoney(totalExp),c:'var(--bl)',s:LANG==='ar'?'قيمة كل العقود الموقّعة':'all signed contracts'},
-      ...(refCol>0?[{l:LANG==='ar'?'مُسترجع (مخصوم)':'Refunded (deducted)',v:'−'+fmtMoney(refCol),c:'var(--r)',s:LANG==='ar'?'أموال أُعيدت للعملاء':'money returned'}]:[]),
+      {l:LANG==='ar'?'المتوقع (محتمل)':'Expected',v:fmtMoney(newExp),c:'var(--bl)',s:`${LANG==='ar'?'عقود موقّعي':'contracts of'} ${monthLabel(newMo)} · ${LANG==='ar'?'بدون أبسيل':'no upsell'}`},
+      {l:LANG==='ar'?'المحصّل (فعلي)':'Collected',v:fmtMoney(newBaseCol),c:'#10b981',s:`${newSigned.length} ${LANG==='ar'?'موقّع هذا الشهر · بدون أبسيل':'signed · no upsell'}`},
+      {l:LANG==='ar'?'المتبقّي':'Remaining',v:fmtMoney(newRem),c:'var(--r)',s:LANG==='ar'?'المتوقع − المحصّل':'expected − collected'},
+      {l:LANG==='ar'?'محصّل الأبسيل':'Upsell cash',v:fmtMoney(upsaleCashMonth),c:'#8b5cf6',s:`${LANG==='ar'?'ترقيات/تجديدات + خدمات':'upgrades + services'} · ${monthLabel(newMo)}`},
+      {l:LANG==='ar'?'المُسترجع':'Refunded',v:(refundsMonth>0?'−':'')+fmtMoney(refundsMonth),c:'var(--r)',s:`${LANG==='ar'?'أموال أُعيدت · ':'returned · '}${monthLabel(newMo)}`},
+      {l:LANG==='ar'?'إجمالي الشهر':'Month total',v:fmtMoney(totalMonth),c:'#10b981',s:LANG==='ar'?'مع الأبسيل − المُسترجع':'with upsell − refunds'},
     ].map(k=>`<div class="kpi"><div class="kpi-v" style="color:${k.c};font-size:22px">${k.v}</div><div class="kpi-l">${k.l}</div>${k.s?`<div style="font-size:10px;color:var(--t3);margin-top:3px;line-height:1.3">${k.s}</div>`:''}</div>`).join('')}
   </div>
 
