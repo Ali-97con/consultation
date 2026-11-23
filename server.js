@@ -151,7 +151,8 @@ function sanitizeClientBody(body) {
     customTotal:undefined, discountType:50, discountValue:undefined, discountAmount:undefined,
     callsDone:undefined, callsTotal:undefined, calls:undefined, ci:undefined,
     upsellProspect:undefined, upsellContactedAt:50, upsellAlertOff:undefined, upsellSnoozeUntil:30,
-    waOptOut:undefined };
+    waOptOut:undefined,
+    programRating:undefined, programRatingDate:30, programRatingBy:100 };
   for (const [k, maxLen] of Object.entries(fields)) {
     if (b[k] !== undefined) {
       if (k === 'notes') { out.notes = b.notes; continue; }
@@ -168,6 +169,11 @@ function sanitizeClientBody(body) {
       if (maxLen === undefined) { out[k] = b[k]; continue; }
       out[k] = str(b[k], maxLen);
     }
+  }
+  // Program satisfaction rating: integer 1-10, or null to clear.
+  if (out.programRating !== undefined) {
+    const n = Math.round(Number(out.programRating));
+    out.programRating = (n >= 1 && n <= 10) ? n : null;
   }
   return out;
 }
