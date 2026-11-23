@@ -3021,25 +3021,26 @@ function renderWeekly(){
         </div>
         <div style="font-size:16px;font-weight:800;color:var(--g)">${fmtMoney(tot)}</div>
       </div>
-      <div id="wk-detail-${i}" style="display:none;padding:2px 16px 14px;border-top:1px solid var(--b1)">
-        <div style="font-size:11px;color:var(--t3);margin:10px 0 5px">💰 الكاش حسب نوع العميل:</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-          ${_ms(fmtMoney(newCash),`كاش عملاء جدد (${newPayers})`,'#6366f1')}
-          ${_ms(fmtMoney(oldCash),`كاش عملاء قدامى (${oldPayers})`,'var(--t2)')}
+      <div id="wk-detail-${i}" style="display:none;padding:4px 16px 16px;border-top:1px solid var(--b1)">
+        ${slab('💰 الكاش حسب نوع العميل')}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${_ms(fmtMoney(newCash),`عملاء جدد (${newPayers})`,'#6366f1')}
+          ${_ms(fmtMoney(oldCash),`عملاء قدامى (${oldPayers})`,'var(--t2)')}
         </div>
-        <div style="font-size:11px;color:var(--t3);margin:0 0 5px">🆕 عملاء وقّعوا هذا الأسبوع: <strong style="color:var(--t1)">${newOfWeek.length}</strong></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        ${slab(`🆕 عملاء وقّعوا هذا الأسبوع — ${newOfWeek.length}`)}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${_ms(fmtMoney(nwExp),'القيمة المتوقعة','var(--t1)')}
           ${_ms(fmtMoney(nwCol),'المحصّل منهم','var(--g)')}
           ${_ms(fmtMoney(nwRem),'المتبقّي','var(--r)')}
         </div>
-        ${newOfWeek.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${newOfWeek.map(c=>`<span onclick="event.stopPropagation();openDetail(${c.id})" style="cursor:pointer;font-size:11px;background:#6366f122;color:#6366f1;border-radius:20px;padding:3px 9px">${esc(c.name)}${fr(c)>0?` · متبقٍّ ${fmtMoney(fr(c))}`:' ✓'}</span>`).join('')}</div>`:''}
-        <div style="font-size:11px;color:var(--t3);margin-bottom:4px">حسب الكلوزر:</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${by('closer').map(([k,v])=>_chip(k,v,'var(--p2)')).join('')||'—'}</div>
-        <div style="font-size:11px;color:var(--t3);margin-bottom:4px">حسب السيتر:</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${by('setter').map(([k,v])=>_chip(k,v,'var(--g)')).join('')||'—'}</div>
-        <div style="font-size:11px;color:var(--t3);margin-bottom:4px">حسب طريقة الدفع:</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${by('pm').map(([k,v])=>_chip(k,v,'var(--y)')).join('')||'—'}</div>
+        ${newOfWeek.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${newOfWeek.map(c=>`<span onclick="event.stopPropagation();openDetail(${c.id})" style="cursor:pointer;font-size:11px;background:#6366f122;color:#6366f1;border-radius:20px;padding:3px 9px">${esc(c.name)}${fr(c)>0?` · متبقٍّ ${fmtMoney(fr(c))}`:' ✓'}</span>`).join('')}</div>`:''}
+        ${slab('👥 التوزيع على الفريق وطرق الدفع')}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+          <div><div style="font-size:10.5px;color:var(--t3);margin-bottom:5px">الكلوزر</div><div style="display:flex;gap:6px;flex-wrap:wrap">${by('closer').map(([k,v])=>_chip(k,v,'var(--p2)')).join('')||'<span style="color:var(--t3);font-size:11px">—</span>'}</div></div>
+          <div><div style="font-size:10.5px;color:var(--t3);margin-bottom:5px">السيتر</div><div style="display:flex;gap:6px;flex-wrap:wrap">${by('setter').map(([k,v])=>_chip(k,v,'var(--g)')).join('')||'<span style="color:var(--t3);font-size:11px">—</span>'}</div></div>
+          <div><div style="font-size:10.5px;color:var(--t3);margin-bottom:5px">طريقة الدفع</div><div style="display:flex;gap:6px;flex-wrap:wrap">${by('pm').map(([k,v])=>_chip(k,v,'var(--y)')).join('')||'<span style="color:var(--t3);font-size:11px">—</span>'}</div></div>
+        </div>
+        ${slab(`📋 كل الدفعات — ${es.length}`)}
         ${tbl}
       </div>
     </div>`;
@@ -3068,28 +3069,33 @@ function renderWeekly(){
   if(!months.includes(month)) months.unshift(month);
   const monthOpts = months.map(k=>`<option value="${k}"${k===month?' selected':''}>${monthLabel(k)}</option>`).join('');
   const kpi = (v,l,c,sub)=>`<div class="kpi" style="padding:14px"><div style="font-size:21px;font-weight:800${c?`;color:${c}`:''}">${v}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">${l}</div>${sub?`<div style="font-size:10.5px;color:var(--t3);margin-top:2px">${sub}</div>`:''}</div>`;
+  const sect = (ic,ti,sub)=>`<div style="display:flex;align-items:center;gap:10px;margin:26px 0 12px;padding-bottom:9px;border-bottom:2px solid var(--b2)"><span style="font-size:17px">${ic}</span><div style="flex:1"><div style="font-size:14.5px;font-weight:800">${ti}</div>${sub?`<div style="font-size:11px;color:var(--t3);margin-top:1px">${sub}</div>`:''}</div></div>`;
+  const slab = (t)=>`<div style="font-size:11px;font-weight:700;color:var(--t2);margin:14px 0 7px">${t}</div>`;
+  const grid = (min)=>`display:grid;grid-template-columns:repeat(auto-fit,minmax(${min||150}px,1fr));gap:12px`;
 
   el.innerHTML = `
     <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:12.5px;font-weight:600;color:var(--t2)">الشهر:</span>
-      <select class="fsl" onchange="setWeeklyMonth(this.value)" style="min-width:170px">${monthOpts}</select>
-      <span style="margin-right:auto;font-size:11px;color:var(--t3)">$ · الأسبوع 1 = الأيام 1-7 … الأسبوع 4 = 22-نهاية الشهر</span>
+      <span style="font-size:12.5px;font-weight:700;color:var(--t2)">الشهر:</span>
+      <select class="fsl" onchange="setWeeklyMonth(this.value)" style="min-width:160px">${monthOpts}</select>
+      ${trend!==null?`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${trend>=0?'var(--gbg)':'var(--rbg)'};color:${trend>=0?'var(--g)':'var(--r)'}">${trend>=0?'▲':'▼'} ${Math.abs(trend)}٪ عن الشهر السابق</span>`:''}
+      <span style="margin-right:auto;font-size:10.5px;color:var(--t3)">القيم بالدولار · الأسبوع 1 = 1-7 … الأسبوع 4 = 22-نهاية الشهر</span>
     </div>
 
-    <div style="font-size:13px;font-weight:700;margin:4px 0 10px">💵 المبلغ المحصّل أسبوعياً (كل العملاء)</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px">
-      ${kpi(fmtMoney(monthTotal),'إجمالي الشهر','var(--g)', trend!==null?`${trend>=0?'▲':'▼'} ${Math.abs(trend)}٪ عن الشهر السابق`:'')}
-      ${kpi(allEntries.length,'عدد الدفعات','var(--p2)')}
-      ${kpi(payingClients,'عملاء دفعوا','#6366f1')}
+    ${sect('💵','ملخّص الشهر',`المحصّل والعملاء — ${monthLabel(month)}`)}
+    <div style="${grid(150)}">
+      ${kpi(fmtMoney(monthTotal),'إجمالي المحصّل','var(--g)')}
       ${kpi(fmtMoney(monthNewCash),'كاش عملاء جدد','#6366f1')}
       ${kpi(fmtMoney(monthOldCash),'كاش عملاء قدامى','var(--t2)')}
+      ${kpi(allEntries.length,'عدد الدفعات','var(--p2)')}
+      ${kpi(payingClients,'عملاء دفعوا','var(--y)')}
     </div>
-    <div class="card mb" style="padding:14px"><div class="cb"><canvas id="wk-cash" height="100"></canvas></div></div>
-    <div style="font-size:12px;color:var(--t3);margin:0 0 8px">▶ اضغط على أي أسبوع لعرض تفاصيله (الدفعات، الكلوزر/السيتر، الطريقة):</div>
+
+    ${sect('📅','المحصّل أسبوعياً','اضغط على أي أسبوع لعرض دفعاته وتحليله الكامل')}
+    <div class="card mb" style="padding:14px"><div class="cb"><canvas id="wk-cash" height="90"></canvas></div></div>
     ${weekRanges.map((_,i)=>_wkRow(i)).join('')}
 
-    <div style="font-size:13px;font-weight:700;margin:18px 0 10px">🆕 العملاء الجدد هذا الشهر (${newC.length})</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px">
+    ${sect('🆕','العملاء الجدد هذا الشهر',`${newC.length} عميل · ${pct}٪ من قيمتهم محصّلة`)}
+    <div style="${grid(140)};margin-bottom:12px">
       ${kpi(newC.length,'عملاء جدد','#6366f1', `${nFull} مكتمل · ${nPartial} جزئي`)}
       ${kpi(fmtMoney(nExpected),'القيمة المتوقعة','var(--t1)')}
       ${kpi(fmtMoney(nCollected),'المحصّل','var(--g)', `${pct}٪ من المتوقع`)}
@@ -3111,8 +3117,8 @@ function renderWeekly(){
         <td style="padding:8px 12px;text-align:left;font-size:12px;color:${fr(c)>0?'var(--r)':'var(--g)'}">${fr(c)>0?fmtMoney(fr(c)):'✓'}</td>
       </tr>`).join('')}</tbody></table></div>`:'<div class="card mb" style="padding:24px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء جدد هذا الشهر</div>'}
 
-    <div style="font-size:13px;font-weight:700;margin:18px 0 10px">⭐ رضا العملاء عن البرنامج (تقييم 1-10)</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:14px">
+    ${sect('⭐','رضا العملاء عن البرنامج',`تقييم 1-10 · ${rated.length} مُقيَّم${notRated?` · ${notRated} بانتظار التقييم`:''}`)}
+    <div style="${grid(130)};margin-bottom:12px">
       ${kpi(rated.length?ratingAvg.toFixed(1):'—','متوسط التقييم', ratingAvg>=9?'var(--g)':ratingAvg>=7?'var(--y)':rated.length?'var(--r)':'var(--t3)', `${rated.length} مُقيَّم`)}
       ${kpi(nps>0?('+'+nps):nps,'مؤشر NPS', nps>=30?'var(--g)':nps>=0?'var(--y)':'var(--r)')}
       ${kpi(promoters,'مروّجون (9-10)','var(--g)')}
@@ -3121,7 +3127,7 @@ function renderWeekly(){
       ${kpi(notRated,'لم يُقيَّموا','var(--t3)','عملاء نشطون')}
     </div>
     <div class="card mb" style="padding:14px"><div class="cb"><canvas id="wk-rating" height="110"></canvas></div></div>
-    ${lowRated.length?`<div style="font-size:12px;font-weight:700;margin:10px 0 8px">⚠️ تقييمات منخفضة (≤6) — للمتابعة (${lowRated.length})</div>
+    ${lowRated.length?`${slab(`⚠️ تقييمات منخفضة (≤6) — للمتابعة · ${lowRated.length}`)}
       <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px"><tbody>
         ${lowRated.map(c=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openCsmDetail(${c.id})">
           <td style="padding:8px 12px;font-size:12.5px;font-weight:600">${esc(c.name)||'—'}</td>
