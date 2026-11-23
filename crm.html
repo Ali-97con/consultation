@@ -3251,7 +3251,10 @@ function renderAnalytics() {
   // Collected = ENCAISSÉ only (payment date ≤ today) — future scheduled installments are "qui reste", not collected.
   const _collectedTo = c => clientBasePays(c).reduce((s,[amt,d])=>s+((amt>0 && d && d<=_today)?amt:0),0);
   // This-month funnel for NEW signups (base contract; collected = encaissé, sans upsell):
-  const newExp     = newSigned.reduce((a,c)=>a+_planTot(c),0);        // محتمل / expected (contract value)
+  // base contract value = customTotal minus upgrade increments → محتمل « sans upsale », cohérent avec le محصّل (base)
+  const _upIncr = c => (c.upgrades||[]).reduce((s,u)=>s+(Number(u.increment)||Math.max(0,(+u.newTotal||0)-(+u.oldPrice||0))),0);
+  const _baseContract = c => Math.max(0, _planTot(c) - _upIncr(c));
+  const newExp     = newSigned.reduce((a,c)=>a+_baseContract(c),0);   // محتمل (valeur contrat de base, sans upsale)
   const newBaseCol = newSigned.reduce((a,c)=>a+_collectedTo(c),0);    // محصّل / encaissé (base, ≤ today)
   const newRem     = Math.max(0, newExp - newBaseCol);               // المتبقّي (expected − encaissé)
   // Cash actually RECEIVED during newMo (payment date in newMo AND ≤ today):
@@ -3265,7 +3268,7 @@ function renderAnalytics() {
   });
   const upsaleCashMonth = _upsM;                  // محصّل الأبسيل (encaissé ce mois)
   const refundsMonth    = _refM;                  // المُسترجع (ce mois)
-  const totalMonth      = _baseM + _upsM - _refM; // الإجمالي: base + upsale − refunds (encaissé)
+  const totalMonth      = _baseM + _upsM;         // net = base + upsale (clients remboursés déjà exclus → pas de double soustraction)
   const moOptions = Array.from({length:12},(_,i)=>{
     const d = new Date(now.getFullYear(), now.getMonth()-11+i, 1);
     const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -6179,24 +6182,38 @@ function markUpsellContacted(id, val){
 function upsellHistoryHtml(){
   const q=_upSearch.trim().toLowerCase();
   const items=[];
+  const _ihToday=new Date().toISOString().slice(0,10);
   clients.filter(c=>!c.deleted && (matchNamePhone(c.name,c.phone,q)||(c.email||'').toLowerCase().includes(q))).forEach(c=>{
-    (c.upgrades||[]).forEach(u=>items.push({kind:u.kind==='renew'?'تجديد':'ترقية',date:u.date,cid:c.id,client:c.name,label:u.kind==='renew'?('🔁 '+esc(u.to||'—')):`${esc(u.from||'—')} → ${esc(u.to||'—')}`,amount:Math.max(0,(u.newTotal||0)-(u.oldPrice||0)),by:u.by}));
-    (c.upsells||[]).forEach(u=>items.push({kind:'خدمة',date:u.date,cid:c.id,client:c.name,label:esc(u.type||'—'),amount:u.price||0,by:u.author}));
+    (c.upgrades||[]).forEach(u=>{
+      const amount=Math.max(0,(u.newTotal||0)-(u.oldPrice||0));
+      // encaissé à ce jour = paiements de la ترقية/تجديد dont la date ≤ aujourd'hui (le reste est dû, non محصّل)
+      const coll=Math.min(amount,(u.commPayments||[]).reduce((s,p)=>s+((+p.amt>0 && p.date && p.date<=_ihToday)?+p.amt:0),0));
+      items.push({kind:u.kind==='renew'?'تجديد':'ترقية',date:u.date,cid:c.id,client:c.name,label:u.kind==='renew'?('🔁 '+esc(u.to||'—')):`${esc(u.from||'—')} → ${esc(u.to||'—')}`,amount,collected:coll,by:u.by});
+    });
+    (c.upsells||[]).forEach(u=>{
+      const amount=u.price||0;
+      const coll=(amount>0 && u.date && u.date<=_ihToday)?amount:0;
+      items.push({kind:'خدمة',date:u.date,cid:c.id,client:c.name,label:esc(u.type||'—'),amount,collected:coll,by:u.author});
+    });
   });
   items.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const total=items.reduce((s,i)=>s+i.amount,0);
+  const totalColl=items.reduce((s,i)=>s+(i.collected||0),0);
+  const totalRem=Math.max(0,total-totalColl);
   const th=x=>`<th style="padding:9px 12px;font-size:11px;color:var(--t3);text-align:${x||'right'}">`;
   const rows=items.length?items.map(i=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openUpsellDetail(${i.cid})">
       <td style="padding:9px 12px;font-size:11.5px;color:var(--t2);white-space:nowrap">${i.date?fmtDate(i.date):'—'}</td>
       <td style="padding:9px 12px;font-size:12.5px;font-weight:600">${esc(i.client)||'—'}</td>
       <td style="padding:9px 12px"><span style="font-size:10px;font-weight:600;background:${i.kind==='ترقية'?'#6366f122;color:#6366f1':'#10b98122;color:#10b981'};padding:2px 8px;border-radius:20px">${i.kind}</span></td>
       <td style="padding:9px 12px;font-size:12px">${i.label}</td>
-      <td style="padding:9px 12px;text-align:center;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(i.amount)}</td>
+      <td style="padding:9px 12px;text-align:center;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(i.amount)}${(i.collected||0)<i.amount?`<div style="font-size:10px;font-weight:600;color:var(--y);margin-top:2px">محصّل ${fmtMoney(i.collected||0)} · باقي ${fmtMoney(i.amount-(i.collected||0))}</div>`:''}</td>
       <td style="padding:9px 12px;font-size:11px;color:var(--t3)">${esc(i.by||'')}</td>
     </tr>`).join(''):`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--t3)">لا توجد مبيعات بعد</td></tr>`;
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
       <div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800;color:#6366f1">${items.length}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">عدد العمليات</div></div>
-      <div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800;color:var(--g)">${fmtMoney(total)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">قيمة مضافة إجمالية</div></div>
+      <div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800;color:var(--t1)">${fmtMoney(total)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">قيمة مضافة إجمالية</div></div>
+      <div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800;color:var(--g)">${fmtMoney(totalColl)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">محصّل فعلياً (لليوم)</div></div>
+      <div class="kpi" style="padding:12px"><div style="font-size:20px;font-weight:800;color:var(--y)">${fmtMoney(totalRem)}</div><div style="font-size:11px;color:var(--t3);margin-top:3px">متبقّي مستحق</div></div>
     </div>
     <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:680px">
       <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">${th()}التاريخ</th>${th()}العميل</th>${th()}النوع</th>${th()}التفاصيل</th>${th('center')}القيمة</th>${th()}بواسطة</th></tr></thead>
@@ -6838,14 +6855,27 @@ function _renderUpgradeInner(){
 const _upRow=(k,idv,val,color)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px"><span style="color:var(--t3)">${k}</span><span id="${idv}" style="font-weight:700${color?`;color:${color}`:''}">${val||''}</span></div>`;
 // Shared: payment-mode (now / installments) block.
 function _payModeHtml(lbl){
-  const chip='flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--hv);border:1px solid var(--b1);padding:8px 10px;border-radius:8px;cursor:pointer';
+  const chip='flex:1;display:flex;align-items:center;justify-content:center;gap:5px;font-size:11.5px;background:var(--hv);border:1px solid var(--b1);padding:8px 7px;border-radius:8px;cursor:pointer;text-align:center';
   return `<label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">${lbl}</label>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <label style="${chip}"><input type="radio" name="up-paymode" value="now" checked onchange="_recalcActive()"/> دفع الآن</label>
-      <label style="${chip}"><input type="radio" name="up-paymode" value="installments" onchange="_recalcActive()"/> تقسيط (facilité)</label>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <label style="${chip}"><input type="radio" name="up-paymode" value="now" checked onchange="_recalcActive()"/> 💵 كامل الآن</label>
+      <label style="${chip}"><input type="radio" name="up-paymode" value="partial" onchange="_onPickPartial()"/> 🧮 دفعة + باقي</label>
+      <label style="${chip}"><input type="radio" name="up-paymode" value="installments" onchange="_recalcActive()"/> 📅 تقسيط</label>
+    </div>
+    <div id="up-paid-wrap" style="display:none;margin-bottom:10px">
+      <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">المدفوع الآن نقداً ($)</label>
+      <input class="inp" id="up-paidnow" type="number" min="0" step="1" value="0" oninput="_recalcActive()"/>
+      <div id="up-remaining-line" style="font-size:11.5px;color:var(--y);margin-top:5px"></div>
     </div>
     <div id="up-inst-wrap" style="display:none;margin-bottom:10px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px">عدد الأقساط (شهرياً)</label><input class="inp" id="up-instcount" type="number" min="2" max="24" value="3" oninput="_recalcActive()"/></div>
     <div id="up-inst-preview" style="font-size:11px;color:var(--t3);margin-bottom:12px"></div>`;
+}
+// Prefill the "paid now" field with the full increment the first time « دفعة + باقي » is picked, then let the user lower it.
+function _onPickPartial(){
+  const r = _upKind==='renew' ? _renewCalc() : _upgradeCalc();
+  const f = $('up-paidnow');
+  if(f && r && (!f.value || +f.value===0)) f.value = r.increment;
+  _recalcActive();
 }
 // Shared: start date + duration (months, typed) → auto end date (editable).
 function _startMonthsHtml(c, defMonths){
@@ -6866,21 +6896,32 @@ function _upAutoEnd(){ const s=($('up-start')||{}).value||''; const m=+($('up-mo
 function _upgradeMode(){ const el=document.querySelector('input[name="up-paymode"]:checked'); return el?el.value:'now'; }
 function _recalcActive(){ if(_upKind==='renew') _recalcRenew(); else _recalcUpgrade(); }
 // Build the payment entries to append for the added value (paid now, or split monthly).
-function _addedPaymentsFor(increment, payMode, instCount){
+function _addedPaymentsFor(increment, payMode, instCount, paidNow){
   if(increment<=0) return [];
+  const today=new Date().toISOString().slice(0,10);
   if(payMode==='installments'){
     const n=Math.max(2,instCount||2), per=Math.round(increment/n), out=[];
     for(let i=0;i<n;i++){ const d=new Date(); d.setMonth(d.getMonth()+i+1); out.push({ amt: i===n-1 ? increment-per*(n-1) : per, date: d.toISOString().slice(0,10) }); }
     return out;
   }
-  return [{ amt: increment, date: new Date().toISOString().slice(0,10) }];
+  // « دفعة + باقي » : seule la partie payée aujourd'hui entre dans payList ; le reste devient un solde dû (غير محصّل).
+  if(payMode==='partial'){
+    const p=Math.max(0, Math.min(increment, +paidNow||0));
+    return p>0 ? [{ amt:p, date:today }] : [];
+  }
+  return [{ amt: increment, date: today }];
 }
-function _instPreview(increment, payMode, instCount){
-  const wrap=$('up-inst-wrap'); if(wrap) wrap.style.display = payMode==='installments' ? '' : 'none';
+function _instPreview(increment, payMode, instCount, paidNow){
+  const instWrap=$('up-inst-wrap'); if(instWrap) instWrap.style.display = payMode==='installments' ? '' : 'none';
+  const paidWrap=$('up-paid-wrap'); if(paidWrap) paidWrap.style.display = payMode==='partial' ? '' : 'none';
+  const p=Math.max(0, Math.min(increment, +paidNow||0));
+  const remLine=$('up-remaining-line');
+  if(remLine && payMode==='partial') remLine.textContent = increment>0 ? `الباقي المستحق: ${fmtMoney(increment-p)} — يُضاف إلى رصيد العميل (غير محصّل)` : '';
   const pv=$('up-inst-preview'); if(!pv) return;
-  const add=_addedPaymentsFor(increment, payMode, instCount);
-  pv.textContent = increment<=0 ? '' : payMode==='installments'
-    ? `${add.length} أقساط بقيمة ~${fmtMoney(add[0].amt)} شهرياً بدءاً من ${add[0].date}`
+  const add=_addedPaymentsFor(increment, payMode, instCount, paidNow);
+  pv.textContent = increment<=0 ? ''
+    : payMode==='installments' ? `${add.length} أقساط بقيمة ~${fmtMoney(add.length?add[0].amt:0)} شهرياً بدءاً من ${add.length?add[0].date:''}`
+    : payMode==='partial' ? (add.length ? `دفعة الآن ${fmtMoney(add[0].amt)} · الباقي ${fmtMoney(increment-p)} يبقى مستحقاً` : `لا دفعة الآن · ${fmtMoney(increment)} يبقى مستحقاً`)
     : `دفعة واحدة ${fmtMoney(increment)} بتاريخ اليوم`;
 }
 
@@ -6924,16 +6965,17 @@ function _upgradeCalc(){
   const increment=Math.max(0, newTotal-oldTotal);
   const payMode=_upgradeMode();
   const instCount=Math.max(2,Math.min(24, +($('up-instcount')||{}).value||3));
-  return { c, oldTotal, plan, newPrice, diff, pct, disc, newTotal, increment, payMode, instCount };
+  const paidNow=Math.max(0, +($('up-paidnow')||{}).value||0);
+  return { c, oldTotal, plan, newPrice, diff, pct, disc, newTotal, increment, payMode, instCount, paidNow };
 }
-function _upgradeAddedPayments(r){ return _addedPaymentsFor(r.increment, r.payMode, r.instCount); }
+function _upgradeAddedPayments(r){ return _addedPaymentsFor(r.increment, r.payMode, r.instCount, r.paidNow); }
 function _recalcUpgrade(){
   const r=_upgradeCalc(); if(!r) return;
   if($('up-diff')) $('up-diff').textContent=fmtMoney(r.diff);
   if($('up-disc-amt')) $('up-disc-amt').textContent='−'+fmtMoney(r.disc)+` (${r.pct}%)`;
   if($('up-newtotal')) $('up-newtotal').textContent=fmtMoney(r.newTotal);
   if($('up-increment')) $('up-increment').textContent=fmtMoney(r.increment);
-  _instPreview(r.increment, r.payMode, r.instCount);
+  _instPreview(r.increment, r.payMode, r.instCount, r.paidNow);
 }
 
 // ── Renewal (تجديد عقد): re-sign for a new period (any plan), added to the contract total ──
@@ -6981,14 +7023,15 @@ function _renewCalc(){
   const newTotal=oldTotal+increment;
   const payMode=_upgradeMode();
   const instCount=Math.max(2,Math.min(24, +($('up-instcount')||{}).value||3));
-  return { c, oldTotal, plan, price, mode, disc, pct, finalPrice, increment, newTotal, payMode, instCount };
+  const paidNow=Math.max(0, +($('up-paidnow')||{}).value||0);
+  return { c, oldTotal, plan, price, mode, disc, pct, finalPrice, increment, newTotal, payMode, instCount, paidNow };
 }
 function _recalcRenew(){
   const r=_renewCalc(); if(!r) return;
   if($('up-disc-amt')) $('up-disc-amt').textContent='−'+fmtMoney(r.disc)+(r.mode==='pct'?` (${r.pct}%)`:'');
   if($('up-final')) $('up-final').textContent=fmtMoney(r.finalPrice);
   if($('up-newtotal')) $('up-newtotal').textContent=fmtMoney(r.newTotal);
-  _instPreview(r.increment, r.payMode, r.instCount);
+  _instPreview(r.increment, r.payMode, r.instCount, r.paidNow);
 }
 
 async function confirmUpgrade(){
@@ -7000,7 +7043,7 @@ async function confirmUpgrade(){
   const upsaler = (($('up-upsaler')||{}).value)||'';
   if(!upsaler){ toast('اختر البائع (الأبسيلر)','⚠️'); return; }
   const increment=r.increment;
-  const added=_addedPaymentsFor(increment, r.payMode, r.instCount);
+  const added=_addedPaymentsFor(increment, r.payMode, r.instCount, r.paidNow);
   const payments=[...payList(r.c).map(([amt,date])=>({amt,date})), ...added];
   const contractEnd = (($('up-end')||{}).value) || undefined;
   const start = (($('up-start')||{}).value) || '';
