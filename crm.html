@@ -2943,6 +2943,7 @@ let _weeklyMonth = null;   // 'YYYY-MM', default current month
 let _weeklyTab = 'weeks';  // 'weeks' | 'new' | 'rating'
 function setWeeklyMonth(v){ _weeklyMonth = v; renderWeekly(); }
 function setWeeklyTab(t){ _weeklyTab = t; renderWeekly(); }
+function setWeeklyCash(m){ _analCashMode = (m==='only'||m==='without')?m:'with'; renderWeekly(); }
 function toggleWeekDetail(i){
   const d = $(`wk-detail-${i}`), ch = $(`wk-chv-${i}`);
   if(!d) return;
@@ -2968,19 +2969,25 @@ function renderWeekly(){
   const weekRanges = [[1,7],[8,14],[15,21],[22,lastDay]];
   const weekEntries = [[],[],[],[]];
   let monthTotal = 0, prevTotal = 0;
+  // Cash mode (shared with التحليلات): مع / الأبسيل فقط / بدون. base = payList minus upgrade
+  // increments; upgrade increments + service upsells = الأبسيل.
+  const _modeKeep = kind => _analCashMode==='with' ? true : _analCashMode==='without' ? (kind==='base') : (kind!=='base');
+  const _pushWk = (c,a,d,kind) => {
+    if(!(a>0 && d) || !_modeKeep(kind)) return;
+    const ym = String(d).slice(0,7);
+    if(ym === month){
+      weekEntries[weekOf(+String(d).slice(8,10)||1)].push({ cid:c.id, name:c.name||'—', plan:c.plan||'—', amt:a, date:d, closer:c.closer||'—', setter:c.setter||'—', pm:c.payMethod||'—', kind, isNew:(c.status!=='lead' && String(c.regDate||'').slice(0,7)===month) });
+      monthTotal += a;
+    } else if(ym === prevMonth){ prevTotal += a; }
+  };
   live.forEach(c => {
-    const isNew = c.status!=='lead' && String(c.regDate||'').slice(0,7) === month;
-    payList(c).forEach(([a,d]) => {
-      if(!(a>0 && d)) return;
-      const ym = String(d).slice(0,7);
-      if(ym === month){
-        weekEntries[weekOf(+String(d).slice(8,10)||1)].push({ cid:c.id, name:c.name||'—', plan:c.plan||'—', amt:a, date:d, closer:c.closer||'—', setter:c.setter||'—', pm:c.payMethod||'—', isNew });
-        monthTotal += a;
-      } else if(ym === prevMonth){ prevTotal += a; }
-    });
+    clientBasePays(c).forEach(([a,d])=>_pushWk(c,a,d,'base'));
+    upgradeAddedItems(c).forEach(([a,d])=>_pushWk(c,a,d,'upgrade'));
+    upsellItems(c).forEach(([a,d])=>_pushWk(c,a,d,'upsell'));
   });
   const weeks = weekEntries.map(es => es.reduce((s,e)=>s+e.amt,0));
   const trend = prevTotal>0 ? Math.round((monthTotal-prevTotal)/prevTotal*100) : null;
+  const cashModeLbl = _analCashMode==='with'?'مع الأبسيل':_analCashMode==='only'?'الأبسيل فقط':'بدون الأبسيل';
   const allEntries = weekEntries.flat();
   const payingClients = new Set(allEntries.map(e=>e.cid)).size;
   const monthNewCash = allEntries.filter(e=>e.isNew).reduce((s,e)=>s+e.amt,0);
@@ -3008,7 +3015,7 @@ function renderWeekly(){
         </tr></thead><tbody>
         ${es.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(e=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${e.cid})">
           <td style="padding:7px 10px;font-size:11.5px;color:var(--t3);white-space:nowrap">${fmtDate(e.date)}</td>
-          <td style="padding:7px 10px;font-size:12.5px;font-weight:600">${esc(e.name)}${e.isNew?' <span style="font-size:9px;background:#6366f122;color:#6366f1;padding:1px 5px;border-radius:7px">جديد</span>':''}</td>
+          <td style="padding:7px 10px;font-size:12.5px;font-weight:600">${esc(e.name)}${e.isNew?' <span style="font-size:9px;background:#6366f122;color:#6366f1;padding:1px 5px;border-radius:7px">جديد</span>':''}${e.kind==='upsell'?' <span title="خدمة إضافية" style="font-size:9px;background:var(--gbg);color:var(--g);padding:1px 5px;border-radius:7px">🛒</span>':e.kind==='upgrade'?' <span title="ترقية/تجديد" style="font-size:9px;background:#0ea5e922;color:#0ea5e9;padding:1px 5px;border-radius:7px">⬆️</span>':''}</td>
           <td style="padding:7px 10px">${planBadge(e.plan)}</td>
           <td style="padding:7px 10px;text-align:left;font-size:12.5px;font-weight:700;color:var(--g)">${fmtMoney(e.amt)}</td>
           <td style="padding:7px 10px;font-size:12px">${esc(e.closer)}</td>
@@ -3138,11 +3145,15 @@ function renderWeekly(){
       <span style="font-size:12.5px;font-weight:700;color:var(--t2)">الشهر:</span>
       <select class="fsl" onchange="setWeeklyMonth(this.value)" style="min-width:160px">${monthOpts}</select>
       ${trend!==null?`<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:${trend>=0?'var(--gbg)':'var(--rbg)'};color:${trend>=0?'var(--g)':'var(--r)'}">${trend>=0?'▲':'▼'} ${Math.abs(trend)}٪ عن الشهر السابق</span>`:''}
-      <span style="margin-right:auto;font-size:10.5px;color:var(--t3)">القيم بالدولار · الأسبوع 1 = 1-7 … الأسبوع 4 = 22-نهاية الشهر</span>
+      <span style="font-size:11.5px;color:var(--t3);margin-right:6px">المحصّل:</span>
+      <button class="btn ${_analCashMode==='with'?'btn-p':'btn-g'}" style="padding:4px 10px;font-size:11px" onclick="setWeeklyCash('with')">مع الأبسيل</button>
+      <button class="btn ${_analCashMode==='only'?'btn-p':'btn-g'}" style="padding:4px 10px;font-size:11px" onclick="setWeeklyCash('only')">الأبسيل فقط</button>
+      <button class="btn ${_analCashMode==='without'?'btn-p':'btn-g'}" style="padding:4px 10px;font-size:11px" onclick="setWeeklyCash('without')">بدون</button>
+      <span style="margin-right:auto;font-size:10.5px;color:var(--t3)">الأسبوع 1 = 1-7 … 4 = 22-نهاية الشهر</span>
     </div>
 
     <div style="${grid(160)};margin-bottom:16px">
-      ${kpi(fmtMoney(monthTotal),'إجمالي المحصّل','var(--g)', `${payingClients} عميل دفعوا`)}
+      ${kpi(fmtMoney(monthTotal),'إجمالي المحصّل','var(--g)', `${payingClients} عميل · ${cashModeLbl}`)}
       ${kpi(fmtMoney(monthNewCash),'كاش عملاء جدد','#6366f1', `قدامى: ${fmtMoney(monthOldCash)}`)}
       ${kpi(newC.length,'عملاء جدد','#8b5cf6', `${pct}٪ من قيمتهم محصّلة`)}
       ${kpi(rated.length?ratingAvg.toFixed(1)+' /10':'—','متوسط الرضا', ratingAvg>=9?'var(--g)':ratingAvg>=7?'var(--y)':rated.length?'var(--r)':'var(--t3)', rated.length?`NPS ${nps>0?'+'+nps:nps}`:'لا تقييمات')}
