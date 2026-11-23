@@ -2939,7 +2939,9 @@ function renderTeamIncomeDetail(month) {
 
 // ═══════════════ WEEKLY ANALYTICS + SATISFACTION (تحليلات أسبوعية) ═══════════════
 let _weeklyMonth = null;   // 'YYYY-MM', default current month
+let _weeklyTab = 'weeks';  // 'weeks' | 'new' | 'rating'
 function setWeeklyMonth(v){ _weeklyMonth = v; renderWeekly(); }
+function setWeeklyTab(t){ _weeklyTab = t; renderWeekly(); }
 function toggleWeekDetail(i){
   const d = $(`wk-detail-${i}`), ch = $(`wk-chv-${i}`);
   if(!d) return;
@@ -3072,6 +3074,63 @@ function renderWeekly(){
   const sect = (ic,ti,sub)=>`<div style="display:flex;align-items:center;gap:10px;margin:26px 0 12px;padding-bottom:9px;border-bottom:2px solid var(--b2)"><span style="font-size:17px">${ic}</span><div style="flex:1"><div style="font-size:14.5px;font-weight:800">${ti}</div>${sub?`<div style="font-size:11px;color:var(--t3);margin-top:1px">${sub}</div>`:''}</div></div>`;
   const slab = (t)=>`<div style="font-size:11px;font-weight:700;color:var(--t2);margin:14px 0 7px">${t}</div>`;
   const grid = (min)=>`display:grid;grid-template-columns:repeat(auto-fit,minmax(${min||150}px,1fr));gap:12px`;
+  const tabBtn = (id,ic,label)=>`<button class="btn ${_weeklyTab===id?'btn-p':'btn-g'}" style="padding:8px 15px;font-size:12.5px" onclick="setWeeklyTab('${id}')">${ic} ${label}</button>`;
+
+  // ── Tab: الأسابيع ──
+  const _weeksBody = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${_ms(fmtMoney(monthNewCash),'كاش عملاء جدد','#6366f1')}
+      ${_ms(fmtMoney(monthOldCash),'كاش عملاء قدامى','var(--t2)')}
+      ${_ms(allEntries.length+' دفعة','إجمالي الدفعات','var(--p2)')}
+    </div>
+    <div class="card mb" style="padding:14px"><div class="cb"><canvas id="wk-cash" height="88"></canvas></div></div>
+    ${slab('اضغط على أي أسبوع لعرض كل تفاصيله:')}
+    ${weekRanges.map((_,i)=>_wkRow(i)).join('')}`;
+
+  // ── Tab: العملاء الجدد ──
+  const _newClTable = newC.length ? `<div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:520px">
+      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
+        <th style="${_th}">العميل</th><th style="${_th}">الباقة</th>
+        <th style="${_th};text-align:left">القيمة</th><th style="${_th};text-align:left">المحصّل</th><th style="${_th};text-align:left">المتبقّي</th>
+      </tr></thead>
+      <tbody>${newC.slice().sort((a,b)=>fr(b)-fr(a)).map(c=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${c.id})">
+        <td style="padding:8px 11px;font-size:12.5px;font-weight:600">${esc(c.name)||'—'}</td>
+        <td style="padding:8px 11px">${planBadge(c.plan)}</td>
+        <td style="padding:8px 11px;text-align:left;font-size:12px">${fmtMoney(_wkPlanTotal(c))}</td>
+        <td style="padding:8px 11px;text-align:left;font-size:12px;color:var(--g)">${fmtMoney(fx(c))}</td>
+        <td style="padding:8px 11px;text-align:left;font-size:12px;color:${fr(c)>0?'var(--r)':'var(--g)'}">${fr(c)>0?fmtMoney(fr(c)):'✓'}</td>
+      </tr>`).join('')}</tbody></table></div>` : '<div class="card" style="padding:28px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء جدد هذا الشهر</div>';
+  const _newBody = `
+    <div style="${grid(150)};margin-bottom:12px">
+      ${kpi(newC.length,'عملاء جدد','#8b5cf6', `${nFull} مكتمل · ${nPartial} جزئي`)}
+      ${kpi(fmtMoney(nExpected),'القيمة المتوقعة','var(--t1)')}
+      ${kpi(fmtMoney(nCollected),'المحصّل','var(--g)', `${pct}٪ من المتوقع`)}
+      ${kpi(fmtMoney(nRemaining),'المتبقّي','var(--r)')}
+    </div>
+    ${slab(`نسبة التحصيل — ${pct}٪`)}
+    <div style="height:10px;background:var(--b1);border-radius:6px;overflow:hidden;margin-bottom:16px"><div style="height:100%;width:${pct}%;background:var(--g)"></div></div>
+    ${slab(`قائمة العملاء الجدد (${newC.length})`)}
+    ${_newClTable}`;
+
+  // ── Tab: رضا العملاء ──
+  const _lowTable = `<div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px"><tbody>
+      ${lowRated.map(c=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openCsmDetail(${c.id})">
+        <td style="padding:8px 12px;font-size:12.5px;font-weight:600">${esc(c.name)||'—'}</td>
+        <td style="padding:8px 12px;font-size:12px;color:var(--t2);direction:ltr">${esc(c.phone)||'—'}</td>
+        <td style="padding:8px 12px;text-align:left"><strong style="color:var(--r)">${c.programRating}/10</strong></td>
+      </tr>`).join('')}</tbody></table></div>`;
+  const _ratingBody = `
+    <div style="${grid(130)};margin-bottom:12px">
+      ${kpi(rated.length?ratingAvg.toFixed(1):'—','متوسط التقييم', ratingAvg>=9?'var(--g)':ratingAvg>=7?'var(--y)':rated.length?'var(--r)':'var(--t3)', `${rated.length} مُقيَّم`)}
+      ${kpi(nps>0?('+'+nps):nps,'مؤشر NPS', nps>=30?'var(--g)':nps>=0?'var(--y)':'var(--r)')}
+      ${kpi(promoters,'مروّجون (9-10)','var(--g)')}
+      ${kpi(passives,'محايدون (7-8)','var(--y)')}
+      ${kpi(detractors,'منتقدون (1-6)','var(--r)')}
+      ${kpi(notRated,'لم يُقيَّموا','var(--t3)','عملاء نشطون')}
+    </div>
+    ${slab('توزيع التقييمات (1-10)')}
+    <div class="card mb" style="padding:14px"><div class="cb"><canvas id="wk-rating" height="100"></canvas></div></div>
+    ${lowRated.length?`${slab(`⚠️ تقييمات منخفضة (≤6) — للمتابعة · ${lowRated.length}`)}${_lowTable}`:'<div class="card" style="padding:20px;text-align:center;color:var(--t3);font-size:12.5px">لا تقييمات منخفضة 👍</div>'}`;
 
   el.innerHTML = `
     <div class="card mb" style="padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -3081,67 +3140,29 @@ function renderWeekly(){
       <span style="margin-right:auto;font-size:10.5px;color:var(--t3)">القيم بالدولار · الأسبوع 1 = 1-7 … الأسبوع 4 = 22-نهاية الشهر</span>
     </div>
 
-    ${sect('💵','ملخّص الشهر',`المحصّل والعملاء — ${monthLabel(month)}`)}
-    <div style="${grid(150)}">
-      ${kpi(fmtMoney(monthTotal),'إجمالي المحصّل','var(--g)')}
-      ${kpi(fmtMoney(monthNewCash),'كاش عملاء جدد','#6366f1')}
-      ${kpi(fmtMoney(monthOldCash),'كاش عملاء قدامى','var(--t2)')}
-      ${kpi(allEntries.length,'عدد الدفعات','var(--p2)')}
-      ${kpi(payingClients,'عملاء دفعوا','var(--y)')}
+    <div style="${grid(160)};margin-bottom:16px">
+      ${kpi(fmtMoney(monthTotal),'إجمالي المحصّل','var(--g)', `${payingClients} عميل دفعوا`)}
+      ${kpi(fmtMoney(monthNewCash),'كاش عملاء جدد','#6366f1', `قدامى: ${fmtMoney(monthOldCash)}`)}
+      ${kpi(newC.length,'عملاء جدد','#8b5cf6', `${pct}٪ من قيمتهم محصّلة`)}
+      ${kpi(rated.length?ratingAvg.toFixed(1)+' /10':'—','متوسط الرضا', ratingAvg>=9?'var(--g)':ratingAvg>=7?'var(--y)':rated.length?'var(--r)':'var(--t3)', rated.length?`NPS ${nps>0?'+'+nps:nps}`:'لا تقييمات')}
     </div>
-
-    ${sect('📅','المحصّل أسبوعياً','اضغط على أي أسبوع لعرض دفعاته وتحليله الكامل')}
-    <div class="card mb" style="padding:14px"><div class="cb"><canvas id="wk-cash" height="90"></canvas></div></div>
-    ${weekRanges.map((_,i)=>_wkRow(i)).join('')}
-
-    ${sect('🆕','العملاء الجدد هذا الشهر',`${newC.length} عميل · ${pct}٪ من قيمتهم محصّلة`)}
-    <div style="${grid(140)};margin-bottom:12px">
-      ${kpi(newC.length,'عملاء جدد','#6366f1', `${nFull} مكتمل · ${nPartial} جزئي`)}
-      ${kpi(fmtMoney(nExpected),'القيمة المتوقعة','var(--t1)')}
-      ${kpi(fmtMoney(nCollected),'المحصّل','var(--g)', `${pct}٪ من المتوقع`)}
-      ${kpi(fmtMoney(nRemaining),'المتبقّي','var(--r)')}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${tabBtn('weeks','📅','الأسابيع')}
+      ${tabBtn('new','🆕','العملاء الجدد')}
+      ${tabBtn('rating','⭐','رضا العملاء')}
     </div>
-    ${newC.length?`<div class="card mb" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:520px">
-      <thead><tr style="border-bottom:1px solid var(--b1);background:var(--hv)">
-        <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:right">العميل</th>
-        <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:right">الباقة</th>
-        <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:left">القيمة</th>
-        <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:left">المحصّل</th>
-        <th style="padding:9px 12px;font-size:10.5px;color:var(--t3);text-align:left">المتبقّي</th>
-      </tr></thead>
-      <tbody>${newC.slice().sort((a,b)=>fr(b)-fr(a)).map(c=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openDetail(${c.id})">
-        <td style="padding:8px 12px;font-size:12.5px;font-weight:600">${esc(c.name)||'—'}</td>
-        <td style="padding:8px 12px">${planBadge(c.plan)}</td>
-        <td style="padding:8px 12px;text-align:left;font-size:12px">${fmtMoney(_wkPlanTotal(c))}</td>
-        <td style="padding:8px 12px;text-align:left;font-size:12px;color:var(--g)">${fmtMoney(fx(c))}</td>
-        <td style="padding:8px 12px;text-align:left;font-size:12px;color:${fr(c)>0?'var(--r)':'var(--g)'}">${fr(c)>0?fmtMoney(fr(c)):'✓'}</td>
-      </tr>`).join('')}</tbody></table></div>`:'<div class="card mb" style="padding:24px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عملاء جدد هذا الشهر</div>'}
+    ${_weeklyTab==='weeks'?_weeksBody:''}
 
-    ${sect('⭐','رضا العملاء عن البرنامج',`تقييم 1-10 · ${rated.length} مُقيَّم${notRated?` · ${notRated} بانتظار التقييم`:''}`)}
-    <div style="${grid(130)};margin-bottom:12px">
-      ${kpi(rated.length?ratingAvg.toFixed(1):'—','متوسط التقييم', ratingAvg>=9?'var(--g)':ratingAvg>=7?'var(--y)':rated.length?'var(--r)':'var(--t3)', `${rated.length} مُقيَّم`)}
-      ${kpi(nps>0?('+'+nps):nps,'مؤشر NPS', nps>=30?'var(--g)':nps>=0?'var(--y)':'var(--r)')}
-      ${kpi(promoters,'مروّجون (9-10)','var(--g)')}
-      ${kpi(passives,'محايدون (7-8)','var(--y)')}
-      ${kpi(detractors,'منتقدون (1-6)','var(--r)')}
-      ${kpi(notRated,'لم يُقيَّموا','var(--t3)','عملاء نشطون')}
-    </div>
-    <div class="card mb" style="padding:14px"><div class="cb"><canvas id="wk-rating" height="110"></canvas></div></div>
-    ${lowRated.length?`${slab(`⚠️ تقييمات منخفضة (≤6) — للمتابعة · ${lowRated.length}`)}
-      <div class="card" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px"><tbody>
-        ${lowRated.map(c=>`<tr style="border-bottom:1px solid var(--b1);cursor:pointer" onclick="openCsmDetail(${c.id})">
-          <td style="padding:8px 12px;font-size:12.5px;font-weight:600">${esc(c.name)||'—'}</td>
-          <td style="padding:8px 12px;font-size:12px;color:var(--t2);direction:ltr">${esc(c.phone)||'—'}</td>
-          <td style="padding:8px 12px;text-align:left"><strong style="color:var(--r)">${c.programRating}/10</strong></td>
-        </tr>`).join('')}
-      </tbody></table></div>`:''}`;
+    ${_weeklyTab==='new'?_newBody:''}
 
-  if(S.charts.wkCash){ try{ S.charts.wkCash.destroy(); }catch(e){} }
-  S.charts.wkCash = new Chart($('wk-cash'), { type:'bar',
+    ${_weeklyTab==='rating'?_ratingBody:''}`;
+
+  if(S.charts.wkCash){ try{ S.charts.wkCash.destroy(); }catch(e){} S.charts.wkCash=null; }
+  if(_weeklyTab==='weeks' && $('wk-cash')) S.charts.wkCash = new Chart($('wk-cash'), { type:'bar',
     data:{ labels:['الأسبوع 1','الأسبوع 2','الأسبوع 3','الأسبوع 4'], datasets:[{ data:weeks, backgroundColor:'#10b981', borderRadius:6, maxBarThickness:64 }] },
     options:{ ...chartOpts(), plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:cx=>fmtMoney(cx.parsed.y) } } } } });
-  if(S.charts.wkRating){ try{ S.charts.wkRating.destroy(); }catch(e){} }
-  S.charts.wkRating = new Chart($('wk-rating'), { type:'bar',
+  if(S.charts.wkRating){ try{ S.charts.wkRating.destroy(); }catch(e){} S.charts.wkRating=null; }
+  if(_weeklyTab==='rating' && $('wk-rating')) S.charts.wkRating = new Chart($('wk-rating'), { type:'bar',
     data:{ labels:['1','2','3','4','5','6','7','8','9','10'], datasets:[{ data:dist, backgroundColor:dist.map((_,i)=>(i+1)>=9?'#10b981':(i+1)>=7?'#f59e0b':'#ef4444'), borderRadius:5, maxBarThickness:38 }] },
     options:{ ...chartOpts(), plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:cx=>`${cx.parsed.y} عميل` } } } } });
 }
