@@ -3227,48 +3227,61 @@ function renderAnalytics() {
   const monthlyRev  = months12.map(m=> aClients.reduce((r,c)=>r+_cashInMonth(c,m.key),0));
   const monthlyNew  = months12.map(m=>aClients.filter(c=>c.regDate&&c.regDate.startsWith(m.key)).length);
 
-  // Financial KPIs are computed on SIGNED clients only: exclude leads (not signed yet → would
-  // inflate expected/remaining with contracts that don't exist) and refunded (money returned).
-  const realC    = aClients.filter(c=>c.status!=='lead' && c.status!=='refunded');
-  const totalExp = realC.reduce((a,c)=>a+(c.customTotal||PLANS[c.plan]||0),0);
-  const totalCol = realC.reduce((a,c)=>a+analCashOf(c),0);      // headline cash — respects the upsell mode
-  const baseCol  = realC.reduce((a,c)=>a+_analBaseCash(c),0);   // base-only — for the collection rate (contract completion)
-  const totalRem = realC.reduce((a,c)=>a+fr(c),0);
-  const refCol   = aClients.filter(c=>c.status==='refunded').reduce((a,c)=>a+fx(c),0);
-  const collRate = totalExp>0?Math.round(Math.max(0,baseCol)/totalExp*100):0;
-  const fullPaid = realC.filter(c=>fr(c)===0).length;
-  const compRate = realC.length>0?Math.round(fullPaid/realC.length*100):0;
-  const avgVal   = realC.length>0?Math.round(totalExp/realC.length):0;
-
-  // ─── month selector options ───
+  // ══════════ KPIs — deux lentilles : « مبيعات الشهر » (cohorte signée) + « كاش الشهر » (par date d'encaissement) ══════════
   const now = new Date();
-  // Cash collected from NEWLY-SIGNED clients (signed in the selected month, or current month if "all").
   const newMo = mo || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-  const newSigned = clients.filter(c=>c.status!=='lead' && c.status!=='refunded' && String(c.regDate||'').slice(0,7)===newMo);
-  const cashModeLbl = _analCashMode==='with'?(LANG==='ar'?'مع الأبسيل':'with upsell'):_analCashMode==='only'?(LANG==='ar'?'الأبسيل فقط':'upsell only'):(LANG==='ar'?'بدون الأبسيل':'without upsell');
-  const _planTot = c => ((c.customTotal!=null?c.customTotal:(PLANS[c.plan]||0))||0);
   const _today = new Date().toISOString().slice(0,10);
-  // Collected = ENCAISSÉ only (payment date ≤ today) — future scheduled installments are "qui reste", not collected.
-  const _collectedTo = c => clientBasePays(c).reduce((s,[amt,d])=>s+((amt>0 && d && d<=_today)?amt:0),0);
-  // This-month funnel for NEW signups (base contract; collected = encaissé, sans upsell):
-  // base contract value = customTotal minus upgrade increments → محتمل « sans upsale », cohérent avec le محصّل (base)
-  const _upIncr = c => (c.upgrades||[]).reduce((s,u)=>s+(Number(u.increment)||Math.max(0,(+u.newTotal||0)-(+u.oldPrice||0))),0);
-  const _baseContract = c => Math.max(0, _planTot(c) - _upIncr(c));
-  const newExp     = newSigned.reduce((a,c)=>a+_baseContract(c),0);   // محتمل (valeur contrat de base, sans upsale)
-  const newBaseCol = newSigned.reduce((a,c)=>a+_collectedTo(c),0);    // محصّل / encaissé (base, ≤ today)
-  const newRem     = Math.max(0, newExp - newBaseCol);               // المتبقّي (expected − encaissé)
-  // Cash actually RECEIVED during newMo (payment date in newMo AND ≤ today):
-  const _rcv = d => { const s=String(d||''); return s.slice(0,7)===newMo && s<=_today; };
-  let _baseM=0, _upsM=0, _refM=0;
-  clients.filter(c=>!c.deleted).forEach(c=>{
-    if(c.status==='refunded'){ payList(c).forEach(([a,d])=>{ if(a>0 && _rcv(d)) _refM+=a; }); return; }
-    clientBasePays(c).forEach(([a,d])=>{ if(a>0 && _rcv(d)) _baseM+=a; });
-    upgradeAddedItems(c).forEach(([a,d])=>{ if(a>0 && _rcv(d)) _upsM+=a; });
-    upsellItems(c).forEach(([a,d])=>{ if(a>0 && _rcv(d)) _upsM+=a; });
-  });
-  const upsaleCashMonth = _upsM;                  // محصّل الأبسيل (encaissé ce mois)
-  const refundsMonth    = _refM;                  // المُسترجع (ce mois)
-  const totalMonth      = _baseM + _upsM;         // net = base + upsale (clients remboursés déjà exclus → pas de double soustraction)
+  const _planTot      = c => ((c.customTotal!=null?c.customTotal:(PLANS[c.plan]||0))||0);
+  const _upIncr       = c => (c.upgrades||[]).reduce((s,u)=>s+(Number(u.increment)||Math.max(0,(+u.newTotal||0)-(+u.oldPrice||0))),0);
+  const _baseContract = c => Math.max(0, _planTot(c) - _upIncr(c));                                            // valeur contrat de base (sans upsale)
+  const _collectedTo  = c => clientBasePays(c).reduce((s,[amt,d])=>s+((amt>0 && d && d<=_today)?amt:0),0);     // encaissé ≤ aujourd'hui
+  const _futureBase   = c => clientBasePays(c).reduce((s,[amt,d])=>s+((amt>0 && d && d>_today)?amt:0),0);      // échéances futures déjà planifiées
+  // Toutes les métriques d'un mois donné (cohorte signée + cash encaissé par date de paiement)
+  function _analMonthMetrics(ym){
+    const signed = clients.filter(c=>!c.deleted && c.status!=='lead' && c.status!=='refunded' && String(c.regDate||'').slice(0,7)===ym);
+    const signedValue = signed.reduce((a,c)=>a+_baseContract(c),0);                 // قيمة العقود الموقّعة (base)
+    const collected   = signed.reduce((a,c)=>a+_collectedTo(c),0);                  // المحصّل منها (≤ today)
+    const rem         = Math.max(0, signedValue - collected);
+    const notDue      = Math.min(rem, signed.reduce((a,c)=>a+_futureBase(c),0));    // لم يحن موعده (مجدول قادم)
+    const unsched     = Math.max(0, rem - notDue);                                   // غير مجدول (بلا موعد)
+    const fullyPaid   = signed.filter(c=>fr(c)===0).length;
+    const collRate    = signedValue>0?Math.round(collected/signedValue*100):0;
+    const compRate    = signed.length>0?Math.round(fullyPaid/signed.length*100):0;
+    const newIds = new Set(signed.map(c=>c.id));
+    const _rcv = d => { const s=String(d||''); return s.slice(0,7)===ym && s<=_today; };
+    let cashNew=0, cashOld=0, ups=0, ref=0;
+    clients.filter(c=>!c.deleted).forEach(c=>{
+      if(c.status==='refunded'){ payList(c).forEach(([a,d])=>{ if(a>0&&_rcv(d)) ref+=a; }); return; }
+      clientBasePays(c).forEach(([a,d])=>{ if(a>0&&_rcv(d)){ if(newIds.has(c.id)) cashNew+=a; else cashOld+=a; } });
+      upgradeAddedItems(c).forEach(([a,d])=>{ if(a>0&&_rcv(d)) ups+=a; });
+      upsellItems(c).forEach(([a,d])=>{ if(a>0&&_rcv(d)) ups+=a; });
+    });
+    const cashTotal = cashNew + cashOld;
+    const refundedN = clients.filter(c=>!c.deleted && c.status==='refunded' && String(c.regDate||'').slice(0,7)===ym).length;
+    const refundRate = (signed.length+refundedN)>0 ? Math.round(refundedN/(signed.length+refundedN)*100) : 0;
+    return { signedCount:signed.length, signedValue, collected, rem, notDue, unsched, fullyPaid, collRate, compRate, cashNew, cashOld, cashTotal, ups, ref, total:cashTotal+ups, refundedN, refundRate };
+  }
+  const M = _analMonthMetrics(newMo);
+  const prevMo = (()=>{ const d=new Date(newMo+'-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth()-1); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`; })();
+  const P = _analMonthMetrics(prevMo);
+  // Flèche de comparaison vs le mois précédent
+  const _delta = (cur, prev, goodUp, isPct) => {
+    if((prev||0)===0 && (cur||0)===0) return '';
+    const diff=(cur||0)-(prev||0);
+    if(diff===0) return `<span style="font-size:9.5px;color:var(--t3)">= ${monthLabel(prevMo)}</span>`;
+    const up=diff>0, good=goodUp?up:!up, col=good?'#10b981':'#ef4444';
+    return `<span style="font-size:9.5px;font-weight:700;color:${col}" title="${LANG==='ar'?'مقارنة بـ':'vs'} ${monthLabel(prevMo)}">${up?'▲':'▼'} ${isPct?Math.abs(diff)+'%':fmtMoney(Math.abs(diff))}</span>`;
+  };
+  // نسبة الاسترداد حسب الباقة (كل العملاء — إشارة مبكرة لمشكلة بيع/إعداد)
+  const _refundByPlan = (()=>{
+    const m={};
+    clients.filter(c=>!c.deleted && c.status!=='lead').forEach(c=>{ const p=c.plan||'—'; (m[p]=m[p]||{ref:0,tot:0}).tot++; if(c.status==='refunded') m[p].ref++; });
+    return Object.entries(m).map(([p,v])=>({plan:p,ref:v.ref,tot:v.tot,rate:v.tot>0?Math.round(v.ref/v.tot*100):0})).filter(x=>x.tot>0).sort((a,b)=>b.rate-a.rate);
+  })();
+  const _refTotN    = clients.filter(c=>!c.deleted && c.status==='refunded').length;
+  const _signedAllN = clients.filter(c=>!c.deleted && c.status!=='lead').length;
+  const _refundRateAll = _signedAllN>0?Math.round(_refTotN/_signedAllN*100):0;
+  const _refCol = v => v>=15?'#ef4444':v>=8?'#f59e0b':'#10b981';
   const moOptions = Array.from({length:12},(_,i)=>{
     const d = new Date(now.getFullYear(), now.getMonth()-11+i, 1);
     const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -3297,26 +3310,61 @@ function renderAnalytics() {
       <button class="btn btn-p" style="margin-right:auto;padding:6px 14px;font-size:12.5px" onclick="openFinReport()">📄 ${LANG==='ar'?'تقرير الشهر المالي':'Monthly Financial Report'}</button>
     </div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)">
-      <span style="font-size:12px;color:var(--t3)">${LANG==='ar'?'حساب المحصّل:':'Cash incl.:'}</span>
+      <span style="font-size:12px;color:var(--t3)">${LANG==='ar'?'الأبسيل في الرسوم أسفل:':'Upsell in charts:'}</span>
       <button class="btn ${_analCashMode==='with'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('with')">${LANG==='ar'?'مع الأبسيل':'With upsell'}</button>
       <button class="btn ${_analCashMode==='only'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('only')">${LANG==='ar'?'الأبسيل فقط':'Upsell only'}</button>
       <button class="btn ${_analCashMode==='without'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('without')">${LANG==='ar'?'بدون الأبسيل':'Without upsell'}</button>
-      <span style="font-size:10.5px;color:var(--t3);margin-right:auto">${LANG==='ar'?'الأبسيل = الترقيات/التجديدات + الخدمات الإضافية':'Upsell = upgrades/renewals + extra services'}</span>
+      <span style="font-size:10.5px;color:var(--t3);margin-right:auto">${LANG==='ar'?'يؤثّر على الرسوم البيانية فقط — بطاقات الأعلى تفصل الأبسيل دائماً':'affects the charts only — the KPI cards above always split upsell out'}</span>
     </div>
   </div>
 
-  <!-- KPIs -->
-  <div class="kpi-g" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+  <!-- ═══ Section 1 : مبيعات الشهر (cohorte signée) ═══ -->
+  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:2px 2px 10px">
+    <span style="font-size:15px;font-weight:800;color:var(--t1)">🧾 ${LANG==='ar'?'مبيعات الشهر':'Sales'} · ${monthLabel(newMo)}</span>
+    <span style="font-size:11px;color:var(--t3)">${LANG==='ar'?`العقود الموقّعة في هذا الشهر (${M.signedCount} عميل) — بدون الأبسيل`:`contracts signed this month (${M.signedCount}) — no upsell`}</span>
+  </div>
+  <div class="kpi-g" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:20px">
     ${[
-      {l:t('anal_coll_rate'),v:collRate+'%',c:'var(--g)',s:LANG==='ar'?'المحصّل ÷ المتوقع (بدون أبسيل)':'collected ÷ expected'},
-      {l:t('anal_comp_rate'),v:compRate+'%',c:'var(--p2)',s:LANG==='ar'?'عملاء سدّدوا كامل العقد':'clients fully paid'},
-      {l:LANG==='ar'?'المتوقع (محتمل)':'Expected',v:fmtMoney(newExp),c:'var(--bl)',s:`${LANG==='ar'?'عقود موقّعي':'contracts of'} ${monthLabel(newMo)} · ${LANG==='ar'?'بدون أبسيل':'no upsell'}`},
-      {l:LANG==='ar'?'المحصّل (فعلي)':'Collected',v:fmtMoney(newBaseCol),c:'#10b981',s:`${newSigned.length} ${LANG==='ar'?'موقّع هذا الشهر · بدون أبسيل':'signed · no upsell'}`},
-      {l:LANG==='ar'?'المتبقّي':'Remaining',v:fmtMoney(newRem),c:'var(--r)',s:LANG==='ar'?'المتوقع − المحصّل':'expected − collected'},
-      {l:LANG==='ar'?'محصّل الأبسيل':'Upsell cash',v:fmtMoney(upsaleCashMonth),c:'#8b5cf6',s:`${LANG==='ar'?'ترقيات/تجديدات + خدمات':'upgrades + services'} · ${monthLabel(newMo)}`},
-      {l:LANG==='ar'?'المُسترجع':'Refunded',v:(refundsMonth>0?'−':'')+fmtMoney(refundsMonth),c:'var(--r)',s:`${LANG==='ar'?'أموال أُعيدت · ':'returned · '}${monthLabel(newMo)}`},
-      {l:LANG==='ar'?'إجمالي الشهر':'Month total',v:fmtMoney(totalMonth),c:'#10b981',s:LANG==='ar'?'مع الأبسيل − المُسترجع':'with upsell − refunds'},
-    ].map(k=>`<div class="kpi"><div class="kpi-v" style="color:${k.c};font-size:22px">${k.v}</div><div class="kpi-l">${k.l}</div>${k.s?`<div style="font-size:10px;color:var(--t3);margin-top:3px;line-height:1.3">${k.s}</div>`:''}</div>`).join('')}
+      {l:LANG==='ar'?'نسبة التحصيل':'Collection %',v:M.collRate+'%',c:'var(--g)',s:`${fmtMoney(M.collected)} ÷ ${fmtMoney(M.signedValue)}`,d:_delta(M.collRate,P.collRate,true,true)},
+      {l:LANG==='ar'?'سدّدوا كامل العقد':'Fully paid',v:`${M.compRate}% <span style="font-size:13px;color:var(--t3)">(${M.fullyPaid}/${M.signedCount})</span>`,c:'var(--p2)',s:LANG==='ar'?'عملاء دفعوا 100٪ من عقدهم':'paid 100% of contract',d:_delta(M.compRate,P.compRate,true,true)},
+      {l:LANG==='ar'?'قيمة العقود الموقّعة':'Signed value',v:fmtMoney(M.signedValue),c:'var(--bl)',s:`${M.signedCount} ${LANG==='ar'?'عقد · بدون أبسيل':'contracts · no upsell'}`,d:_delta(M.signedValue,P.signedValue,true,false)},
+      {l:LANG==='ar'?'المحصّل منها':'Collected',v:fmtMoney(M.collected),c:'#10b981',s:LANG==='ar'?'محصّل لليوم · بدون أبسيل':'received to date · no upsell',d:_delta(M.collected,P.collected,true,false)},
+      {l:LANG==='ar'?'لم يحن موعده':'Not yet due',v:fmtMoney(M.notDue),c:'#0ea5e9',s:LANG==='ar'?'أقساط قادمة مجدولة (طبيعي)':'upcoming scheduled (normal)'},
+      {l:LANG==='ar'?'غير مجدول':'Unscheduled',v:fmtMoney(M.unsched),c:'var(--y)',s:LANG==='ar'?'من قيمة العقد بلا موعد — للتحصيل':'contract value with no date — to collect'},
+    ].map(k=>`<div class="kpi"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px"><div class="kpi-v" style="color:${k.c};font-size:21px">${k.v}</div>${k.d||''}</div><div class="kpi-l">${k.l}</div>${k.s?`<div style="font-size:10px;color:var(--t3);margin-top:3px;line-height:1.3">${k.s}</div>`:''}</div>`).join('')}
+  </div>
+
+  <!-- ═══ Section 2 : كاش الشهر (par date d'encaissement) ═══ -->
+  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:2px 2px 10px">
+    <span style="font-size:15px;font-weight:800;color:var(--t1)">💵 ${LANG==='ar'?'كاش الشهر':'Cash'} · ${monthLabel(newMo)}</span>
+    <span style="font-size:11px;color:var(--t3)">${LANG==='ar'?'كل ما دخل فعلياً حسب تاريخ الدفع (الجدد + القدامى + الأبسيل)':'all cash received this month by payment date'}</span>
+  </div>
+  <div class="kpi-g" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:16px">
+    ${[
+      {l:LANG==='ar'?'دفعات العملاء الجدد':'New clients cash',v:fmtMoney(M.cashNew),c:'#10b981',s:`${LANG==='ar'?'موقّعون هذا الشهر':'signed this month'} (${M.signedCount})`,d:_delta(M.cashNew,P.cashNew,true,false)},
+      {l:LANG==='ar'?'أقساط عملاء سابقين':'Older clients instalments',v:fmtMoney(M.cashOld),c:'#0ea5e9',s:LANG==='ar'?'دفعات من عقود قديمة':'payments from older contracts',d:_delta(M.cashOld,P.cashOld,true,false)},
+      {l:LANG==='ar'?'كل الكاش الداخل':'Total cash in',v:fmtMoney(M.cashTotal),c:'#10b981',s:LANG==='ar'?'جدد + سابقون · بدون أبسيل':'new + older · no upsell',d:_delta(M.cashTotal,P.cashTotal,true,false)},
+      {l:LANG==='ar'?'الأبسيل':'Upsell',v:fmtMoney(M.ups),c:'#8b5cf6',s:LANG==='ar'?'ترقيات/تجديدات + خدمات':'upgrades/renewals + services',d:_delta(M.ups,P.ups,true,false)},
+      {l:LANG==='ar'?'المُسترجع':'Refunded',v:(M.ref>0?'−':'')+fmtMoney(M.ref),c:'var(--r)',s:LANG==='ar'?'أموال أُعيدت (مستبعدة من الإجمالي)':'returned (already excluded)'},
+      {l:LANG==='ar'?'إجمالي الشهر':'Month total',v:fmtMoney(M.total),c:'#10b981',s:LANG==='ar'?'كل الكاش + الأبسيل (صافي)':'all cash + upsell (net)',d:_delta(M.total,P.total,true,false),big:true},
+    ].map(k=>`<div class="kpi"${k.big?' style="outline:1.5px solid #10b98155;outline-offset:-1px"':''}><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px"><div class="kpi-v" style="color:${k.c};font-size:21px">${k.v}</div>${k.d||''}</div><div class="kpi-l">${k.l}</div>${k.s?`<div style="font-size:10px;color:var(--t3);margin-top:3px;line-height:1.3">${k.s}</div>`:''}</div>`).join('')}
+  </div>
+
+  <!-- نسبة الاسترداد + حسب الباقة -->
+  <div class="card mb" style="padding:14px 16px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:${_refundByPlan.length?'12px':'0'}">
+      <span style="font-size:13.5px;font-weight:700;color:var(--t1)">↩️ ${LANG==='ar'?'نسبة الاسترداد':'Refund rate'}</span>
+      <span style="font-size:22px;font-weight:800;color:${_refCol(_refundRateAll)}">${_refundRateAll}%</span>
+      <span style="font-size:11px;color:var(--t3)">${_refTotN} ${LANG==='ar'?'مُسترجع من':'refunded of'} ${_signedAllN} ${LANG==='ar'?'(كل العملاء)':'(all clients)'}</span>
+      <span style="font-size:10.5px;color:var(--t3);margin-right:auto">${LANG==='ar'?'إشارة مبكرة لمشكلة في البيع أو الإعداد (onboarding)':'early signal of a sales/onboarding issue'}</span>
+    </div>
+    ${_refundByPlan.length?`<div style="display:flex;flex-direction:column;gap:7px">
+      ${_refundByPlan.map(r=>`<div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:11.5px;color:var(--t2);width:130px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.plan)}</span>
+        <div style="flex:1;height:8px;background:var(--b1);border-radius:6px;overflow:hidden"><div style="height:100%;width:${Math.max(2,Math.min(100,r.rate))}%;background:${_refCol(r.rate)}"></div></div>
+        <span style="font-size:11px;font-weight:700;color:var(--t1);width:96px;text-align:left;flex-shrink:0">${r.rate}% (${r.ref}/${r.tot})</span>
+      </div>`).join('')}
+    </div>`:''}
   </div>
 
   <!-- Monthly Income Detail -->
