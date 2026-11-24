@@ -3330,13 +3330,6 @@ function renderAnalytics() {
       ${mo?`<button class="btn btn-g" style="padding:4px 12px;font-size:12px" onclick="setAnalyticsMonth('')">${LANG==='ar'?'↩ كل الأشهر':'↩ All Months'}</button>`:''}
       <button class="btn btn-p" style="margin-right:auto;padding:6px 14px;font-size:12.5px" onclick="openFinReport()">📄 ${LANG==='ar'?'تقرير الشهر المالي':'Monthly Financial Report'}</button>
     </div>
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--b1)">
-      <span style="font-size:12px;color:var(--t3)">${LANG==='ar'?'الأبسيل في الرسوم أسفل:':'Upsell in charts:'}</span>
-      <button class="btn ${_analCashMode==='with'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('with')">${LANG==='ar'?'مع الأبسيل':'With upsell'}</button>
-      <button class="btn ${_analCashMode==='only'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('only')">${LANG==='ar'?'الأبسيل فقط':'Upsell only'}</button>
-      <button class="btn ${_analCashMode==='without'?'btn-p':'btn-g'}" style="padding:4px 11px;font-size:11.5px" onclick="setAnalyticsCash('without')">${LANG==='ar'?'بدون الأبسيل':'Without upsell'}</button>
-      <span style="font-size:10.5px;color:var(--t3);margin-right:auto">${LANG==='ar'?'يؤثّر على الرسوم البيانية فقط — بطاقات الأعلى تفصل الأبسيل دائماً':'affects the charts only — the KPI cards above always split upsell out'}</span>
-    </div>
   </div>
 
   <!-- ═══ Section 1 : مبيعات الشهر (cohorte signée) ═══ -->
@@ -3438,14 +3431,12 @@ function renderAnalytics() {
       <div class="cb"><canvas id="mAcqC" height="150"></canvas></div></div>
   </div>
 
-  <!-- Row 2: Pay Methods + Status Dist + Plan Revenue -->
-  <div class="g3c">
+  <!-- Row 2: Pay Methods + Status Dist -->
+  <div class="g22">
     <div class="card"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:8px;background:#3b82f618;border:1px solid #3b82f630;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg fill="none" stroke="#3b82f6" viewBox="0 0 24 24" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg></span>${t('anal_pay_methods')}</h3><span class="sub">${aClients.length} ${t('client_word')}</span></div>
       <div class="cb" id="pm-bars"></div></div>
     <div class="card"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:8px;background:#8b5cf618;border:1px solid #8b5cf630;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg fill="none" stroke="#8b5cf6" viewBox="0 0 24 24" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg></span>${t('anal_status_dist')}</h3><span class="sub">${aClients.length} ${t('client_word')}</span></div>
       <div class="cb" id="st-bars"></div></div>
-    <div class="card"><div class="ch"><h3 style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:8px;background:#f59e0b18;border:1px solid #f59e0b30;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><svg fill="none" stroke="#f59e0b" viewBox="0 0 24 24" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m-3-5h6"/></svg></span>${t('anal_plan_rev')}</h3></div>
-      <div class="cb"><canvas id="planRevC" height="200"></canvas></div></div>
   </div>
 
   <!-- Row 3: Payment Completion Progress + Closer Performance -->
@@ -3555,17 +3546,6 @@ function renderAnalytics() {
         </div>
       </div>`;
     }).join('') || `<div style="color:var(--t3);font-size:12px;text-align:center;padding:20px 0">${t('no_results')}</div>`;
-
-    // ── Bar: Plan Revenue ──
-    S.charts.planRev = new Chart($('planRevC'),{
-      type:'bar', data:{ labels:planKeys,
-        datasets:[
-          {label:t('collected_lbl'),data:planKeys.map(k=>byPlan[k]?byPlan[k].rev:0),backgroundColor:'rgba(99,102,241,.75)',borderRadius:5,borderSkipped:false},
-          {label:t('remaining_lbl'),data:planKeys.map(k=>byPlan[k]?Math.max(0,byPlan[k].total-byPlan[k].rev):0),backgroundColor:'rgba(239,68,68,.35)',borderRadius:5,borderSkipped:false}
-        ]
-      },
-      options:{...chartOpts(),scales:{x:{ticks:{color:tc},grid:{display:false}},y:{ticks:{color:tc,callback:v=>v.toLocaleString('en-US')},grid:{color:gc}}}}
-    });
 
     // ── Payment Completion Progress (stacked horizontal) ──
     $('prog-list').innerHTML = planKeys.map(k=>{
