@@ -6524,7 +6524,20 @@ function openUpsellDetail(id){
     </div>
     ${(ups.length||ug.length)?`<div style="font-size:12px;font-weight:700;margin-bottom:8px">🗂️ سجل المبيعات (${ups.length+ug.length})</div>
       <div style="margin-bottom:16px">
-        ${ug.map(u=>`<div style="background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:9px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div style="font-size:12.5px;font-weight:600">🆙 ${esc(u.from||'—')} → ${esc(u.to||'—')}</div><div style="font-size:11px;color:var(--t3)">📅 ${u.date?fmtDate(u.date):'—'}${u.by?' · '+esc(u.by):''}</div></div><span style="font-size:13px;font-weight:800;color:var(--g)">+${fmtMoney(Math.max(0,(u.newTotal||0)-(u.oldPrice||0)))}</span></div>`).join('')}
+        ${ug.map((u,ui)=>{
+          const inc=Math.max(0,(u.newTotal||0)-(u.oldPrice||0));
+          const coll=Math.min(inc,(u.commPayments||[]).reduce((s,p)=>s+((+p.amt>0&&p.date&&p.date<=today)?+p.amt:0),0));
+          const remU=Math.max(0,inc-coll);
+          const title=u.kind==='renew'?`🔁 تجديد — ${esc(u.to||'—')}`:`🆙 ${esc(u.from||'—')} → ${esc(u.to||'—')}`;
+          return `<div style="background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:9px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <div style="min-width:0"><div style="font-size:12.5px;font-weight:600">${title}</div>
+              <div style="font-size:11px;color:var(--t3)">📅 ${u.date?fmtDate(u.date):'—'}${u.by?' · '+esc(u.by):''}${remU>0?` · <span style="color:var(--y)">محصّل ${fmtMoney(coll)} · باقي ${fmtMoney(remU)}</span>`:''}</div></div>
+            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+              <span style="font-size:13px;font-weight:800;color:var(--g)">+${fmtMoney(inc)}</span>
+              ${(ui===0 && !isCoach())?`<button class="btn btn-r" style="padding:3px 9px;font-size:10.5px" onclick="undoUpgrade(${id})" title="إلغاء آخر ترقية/تجديد — للإعادة بـ «دفعة + باقي»">↩️ إلغاء</button>`:''}
+            </div>
+          </div>`;
+        }).join('')}
         ${ups.map(u=>`<div style="background:var(--hv);border:1px solid var(--b1);border-radius:10px;padding:9px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div style="font-size:12.5px;font-weight:600">💰 ${esc(u.type||'—')}</div><div style="font-size:11px;color:var(--t3)">📅 ${u.date?fmtDate(u.date):'—'}${u.author?' · '+esc(u.author):''}</div></div><span style="font-size:13px;font-weight:800;color:var(--g)">${fmtMoney(u.price||0)}</span></div>`).join('')}
       </div>`:''}
     <!-- follow-up form -->
